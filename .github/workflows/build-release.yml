@@ -1,0 +1,153 @@
+# Push to main: build and package on the same Xcode 27.1 image the project's
+# own CI uses, then publish a GitHub Release carrying the .deb files. The run
+# number is in the tag, so each successful build publishes exactly once and
+# never collides with an older release; nothing is published before the build
+# has passed. The IDE and its extensions are packaged for roothide and rootless.
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # The app links against the iOS 27.1 SDK (IOS_SDK_TIER in the Makefile);
+  # the Xcode 27.1 image is the one that carries it. The deployment floor
+  # stays 16.0. The marketing version stays the source of truth; the run
+  # number keeps each CI build's tag unique.
+  PACKAGE_VERSION: "0.4.7-${{ github.run_number }}"
+
+jobs:
+  build:
+    name: Build and publish the packages
+    # This label is the project's self-hosted Xcode 27.1 runner. It has to be
+    # attached to this repository for the build to start: hosted macOS images
+    # ship at most the iOS 26.2 SDK and cannot link this source. A self-hosted
+    # job waits, rather than producing a package that could not be built.
+    runs-on: xcode-27
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select Xcode 27.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_27.1.app/Contents/Developer
+          xcodebuild -version
+          echo "iPhoneOS SDK $(xcrun --sdk iphoneos --show-sdk-version)"
+
+      - name: Install packaging dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          formulae=()
+          command -v dpkg-deb >/dev/null 2>&1 || formulae+=(dpkg)
+          command -v ldid >/dev/null 2>&1 || formulae+=(ldid)
+          command -v zstd >/dev/null 2>&1 || formulae+=(zstd)
+          if (( ${#formulae[@]} > 0 )); then
+            brew install "${formulae[@]}"
+          fi
+
+      # The system prompt is authored as Markdown; the Swift it compiles into
+      # is generated before the build. PUSH_TOKEN is intentionally unset: no
+      # token here, so the generated file is built but not committed back.
+      - name: Regenerate the system prompt
+        shell: bash
+        run: Packages/ApelinAgent/Scripts/sync-prompts.sh
+
+      - name: Resolve package dependencies
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p "$RUNNER_TEMP/apelin-deriveddata"
+          status=0
+          xcodebuild -resolvePackageDependencies \
+            -derivedDataPath "$RUNNER_TEMP/apelin-deriveddata" \
+            -project Apelin.xcodeproj -scheme Apelin > "$RUNNER_TEMP/resolve.log" 2>&1 || status=$?
+          tail -n 20 "$RUNNER_TEMP/resolve.log"
+          exit "$status"
+
+      # One iOS build, packaged for both bootstraps (roothide and rootless)
+      # and every extension. BUILD_NUMBER drives CURRENT_PROJECT_VERSION;
+      # the run number keeps each CI build's version and tag unique.
+      - name: Build and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          make deb-all \
+            CONFIGURATION=Release \
+            SKIP_HARNESS=1 \
+            BUILD_NUMBER="$GITHUB_RUN_NUMBER" \
+            DERIVED_DATA="$RUNNER_TEMP/apelin-deriveddata" 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Report compiler errors
+        if: failure()
+        shell: bash
+        run: |
+          set -uo pipefail
+          [[ -f "$RUNNER_TEMP/build.log" ]] || exit 0
+          { echo '```'; grep -E "error:" "$RUNNER_TEMP/build.log" | head -80; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          grep -E "error:" "$RUNNER_TEMP/build.log" | head -60 || true
+
+      - name: Collect packages
+        id: packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/packages"
+          count=0
+          while IFS= read -r -d '' deb; do
+            cp "$deb" "$RUNNER_TEMP/packages/"
+            count=$((count + 1))
+          done < <(find build/Packages -maxdepth 1 -name '*.deb' -print0)
+          if [[ "$count" -eq 0 ]]; then
+            echo "::error::the build produced no .deb"
+            exit 1
+          fi
+          (cd "$RUNNER_TEMP/packages" && shasum -a 256 ./*.deb > SHA256SUMS)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "::notice::collected $count .deb package(s)"
+          ls -la "$RUNNER_TEMP/packages"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apelin-debs-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/packages/*.deb
+            ${{ runner.temp }}/packages/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+      # The release is created only after the build succeeded, and carries the
+      # exact .deb files this run produced. The run number makes the tag unique.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.PACKAGE_VERSION }}
+          name: Apelin ${{ env.PACKAGE_VERSION }}
+          body: |
+            Apelin ${{ env.PACKAGE_VERSION }}, built from commit ${{ github.sha }}.
+
+            `.deb` packages for roothide and rootless bootstraps are attached.
+            SHA-256 sums are in `SHA256SUMS`.
+          files: |
+            ${{ runner.temp }}/packages/*.deb
+            ${{ runner.temp }}/packages/SHA256SUMS
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
