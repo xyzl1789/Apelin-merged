@@ -352,7 +352,7 @@ public enum AgentWorker {
         case .openAICodex, .cursor, .devin, .kiro, .antigravity, .qoder, .qoderCN, .workBuddy, .workBuddyAI,
              .trae, .traeIntl, .raccoon,
              .kimiCoding, .kimiCodingGlobal, .xai, .zai, .zaiCodingCN, .openRouter, .openAI, .google, .deepSeek,
-             .openCodeGo, .openCodeZen:
+             .openCodeGo, .openCodeZen, .openAICompatibleEndpoint:
             return .stored(storeID: provider.storeID, model: model)
         }
     }
