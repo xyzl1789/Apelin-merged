@@ -1,0 +1,51 @@
+# Says, in red lines on the run page, whether this repository's token may
+# create a release. Nothing is published: a release it manages to create as a
+# draft is deleted in the same step. The step never fails, so both answers
+# always print.
+name: Token check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    name: Can the token write?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Ask GitHub
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+
+          # The token's own role on the repository: push=true means contents
+          # may be written, which is what a release needs.
+          role="$(gh api "repos/$GH_REPO" --jq '.permissions' 2>&1 | head -c 300)" || true
+          echo "::error::The token's role here: ${role:-nothing came back}"
+
+          out=""
+          rc=0
+          out="$(gh api -X POST "repos/$GH_REPO/releases" \
+            -f tag_name="token-check-$GITHUB_RUN_ID" \
+            -f name="token check" \
+            -f body="Created by Token check; deleted at once." \
+            -F draft=true 2>&1)" || rc=$?
+
+          if [[ "$rc" == 0 ]]; then
+            echo "::error::Release creation: ALLOWED"
+            id="$(printf '%s' "$out" | jq -r '.id // empty' 2>/dev/null)" || true
+            if [[ -n "${id:-}" ]]; then
+              gh api -X DELETE "repos/$GH_REPO/releases/$id" > /dev/null 2>&1 || true
+              echo "::error::The draft it made has been deleted again."
+            fi
+          else
+            echo "::error::Release creation: REFUSED (exit $rc) — $(printf '%s' "$out" | tr '\n' ' ' | head -c 300)"
+          fi
+          exit 0

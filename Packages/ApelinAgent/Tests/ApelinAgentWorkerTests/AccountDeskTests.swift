@@ -604,115 +604,128 @@ struct AccountDeskTests {
         #expect(AccountDesk.lapses(OAuthCredentials(access: "k", refresh: "", expires: 1000)) == Date(timeIntervalSince1970: 1))
     }
 
-    // MARK: - Several OpenAI-compatible endpoints (#60)
-
-    @Test
-    func `the list always has one OpenAI-compatible endpoint to add, after those signed in to`() {
-        let first = CredentialProviderID.openAICompatible
-        func listed(_ stored: [String]) -> [String] {
-            AccountDesk.listed(.openAICompatible, stored: Set(stored)).map(\.rawValue)
-        }
-        #expect(listed([]) == ["openAICompatible"])
-        #expect(listed([first]) == ["openAICompatible", "openAICompatible.2"])
-        #expect(listed([first, "openai-compatible.2", "openai-compatible.4"])
-            == ["openAICompatible", "openAICompatible.2", "openAICompatible.4", "openAICompatible.3"])
-        // The first one, signed out of, is the one to add again.
-        #expect(listed(["openai-compatible.2"]) == ["openAICompatible.2", "openAICompatible"])
-        // Another provider's item, or a spelling that names no endpoint, is none.
-        #expect(listed([first, "openai-compatible.02", "openai-compatible.1", "openai-compatible.x", "openai-codex"])
-            == ["openAICompatible", "openAICompatible.2"])
-        #expect(AccountDesk.listed(.deepSeek, stored: [first]) == [.deepSeek])
-        #expect(AgentProvider.openAICompatibleEndpoint(7).storeID == "openai-compatible.7")
-        #expect(CredentialProviderID.endpointNumber("openai-compatible.7") == 7)
-        #expect(CredentialProviderID.endpointNumber(first) == nil)
-        #expect(CredentialInbox.isKnown("openai-compatible.7") && !CredentialInbox.isKnown("openai-compatible.100"))
-    }
-
-    @Test
-    func `a second OpenAI-compatible endpoint signs in beside the first, with a key, address and models of its own`() async throws {
-        let first = OAuthCredentials(access: "sk-FIRST-SECRET", refresh: "", expires: .max, extras: [
-            "baseUrl": .string("https://one.example.invalid/v1"), "defaultModel": .string("model-one"),
-        ])
-        let store = DeliveredCredentialSource([CredentialProviderID.openAICompatible: first])
-        let desk = AccountDesk(store: store, login: Self.neverCalled, listener: Self.silent, verifyKey: { _, _, _ in })
-        func endpoints() async -> [AgentAccount] {
-            await desk.list().accounts.filter { $0.provider.kind == .openAICompatible }
-        }
-        let second = AgentProvider.openAICompatibleEndpoint(2)
-        let offered = await endpoints()
-        #expect(offered.map(\.provider) == [.openAICompatible, second])
-        #expect(offered.map(\.signedIn) == [true, false])
-        #expect(offered[1].method == .apiKey)
-
-        let recorder = SignInRecorder()
-        let task = TaskID("endpoint-2")
-        try await desk.start(AgentSignInRequest(provider: second), taskID: task, reporter: recorder.reporter)
-        try await recorder.waitFor { !$0.events.isEmpty }
-        // The first endpoint's form.
-        #expect(recorder.events[0].payload?["fields"] == .array([
-            .object(["key": .string("apiKey"), "required": .bool(true), "secure": .bool(true)]),
-            .object(["key": .string("baseUrl"), "required": .bool(true), "secure": .bool(false), "placeholder": .string("https://…")]),
-            .object(["key": .string("defaultModel"), "required": .bool(true), "secure": .bool(false)]),
-        ]))
-        try await desk.respond(AgentSignInRespondRequest(taskID: task, fields: [
-            .apiKey: "sk-SECOND-SECRET", .baseURL: "https://two.example.invalid/v1", .defaultModel: "model-two",
-        ]))
-        try await recorder.waitFor { $0.state != nil }
-        #expect(recorder.state == .succeeded)
-        #expect(!recorder.transcript.contains("SECRET"))
-        #expect(try await store.credentials(for: "openai-compatible") == first)
-        let stored = try #require(try await store.credentials(for: "openai-compatible.2"))
-        #expect(stored.access == "sk-SECOND-SECRET")
-        #expect(stored.extras["baseUrl"] == .string("https://two.example.invalid/v1"))
-
-        let listed = await endpoints()
-        #expect(listed.map(\.provider) == [.openAICompatible, second, .openAICompatibleEndpoint(3)])
-        #expect(listed.map(\.account) == ["one.example.invalid", "two.example.invalid", nil])
-        #expect(listed.map(\.models) == [["model-one"], ["model-two"], nil])
-        #expect(try await desk.apiConfiguration(for: second).values["baseUrl"] == "https://two.example.invalid/v1")
-        #expect(try await desk.apiConfiguration(for: .openAICompatible).values["apiKey"] == "sk-FIRST-SECRET")
-
-        // Signing out of the first leaves the second, and the first is the one to add.
-        try await desk.signOut(.openAICompatible)
-        #expect(try await store.credentials(for: "openai-compatible.2") == stored)
-        let left = await endpoints()
-        #expect(left.map(\.provider) == [second, .openAICompatible])
-        #expect(left.map(\.signedIn) == [true, false])
-    }
-
-    @Test
-    func `each OpenAI-compatible endpoint resolves to its own address and key`() async throws {
-        func endpoint(_ key: String, _ host: String, _ model: String) -> OAuthCredentials {
-            OAuthCredentials(access: key, refresh: "", expires: .max, extras: [
-                "baseUrl": .string("https://\(host)/v1"), "defaultModel": .string(model),
-            ])
-        }
-        let manager = OAuthManager(source: DeliveredCredentialSource([
-            "openai-compatible": endpoint("sk-one", "one.example.invalid", "model-one"),
-            "openai-compatible.2": endpoint("sk-two", "two.example.invalid", "model-two"),
-        ]))
-        let one = try #require(try await ProviderRegistration.resolve(storeID: "openai-compatible", manager: manager))
-        let two = try #require(try await ProviderRegistration.resolve(
-            storeID: "openai-compatible.2",
-            manager: manager,
-            modelOverride: "model-b",
-        ))
-        #expect(one.model.baseURL == "https://one.example.invalid/v1" && one.model.id == "model-one")
-        #expect(two.model.baseURL == "https://two.example.invalid/v1" && two.model.id == "model-b")
-        #expect(one.model.api == two.model.api && one.model.provider == two.model.provider)
-        // Resolving one after the other leaves each its own key.
-        #expect(try await two.authResolver?(two.model, nil)?.token == "sk-two")
-        #expect(try await one.authResolver?(one.model, nil)?.token == "sk-one")
-        // An endpoint nobody signed in to resolves to nothing.
-        #expect(try await ProviderRegistration.resolve(storeID: "openai-compatible.3", manager: manager) == nil)
-    }
-
     @Test
     func `every provider maps to the store id its session reads`() {
         #expect(Set(AgentProvider.allCases.map(\.storeID)) == CredentialInbox.knownProviders)
         #expect(Set(AgentProvider.allCases.map(\.storeID)).count == AgentProvider.allCases.count)
         #expect(Set(AgentProvider.signInOrder) == Set(AgentProvider.allCases))
         #expect(AgentProvider.signInOrder.count == AgentProvider.allCases.count)
+    }
+
+    // MARK: - The narrower list
+
+    /// A store that lists an id it cannot read back, as a keychain item that
+    /// no longer decodes does.
+    actor UnreadableCredentialSource: CredentialSource {
+        private let ids: [String]
+        init(_ ids: [String]) { self.ids = ids }
+        func providerIds() -> [String] { ids }
+        func credentials(for providerId: String) -> OAuthCredentials? { nil }
+        func store(_ credentials: OAuthCredentials, for providerID: String) {}
+        func remove(_ providerID: String) {}
+    }
+
+    /// What the composer asks for: one model list per account, nothing else.
+    /// The asked-for models stand exactly as asked — a live provider's own
+    /// list is where its models come from, and it names models no bundled
+    /// catalog has, so nothing is cut against a catalog.
+    @Test
+    func `a narrower list answers only the models it was asked for`() async throws {
+        let relay = OAuthCredentials(access: "relay-SECRET", refresh: "", expires: .max, extras: [
+            "baseUrl": .string("https://relay.example.invalid/v1"), "defaultModel": .string("relay-default"),
+        ])
+        let subscription = OAuthCredentials(access: "token", refresh: "refresh", expires: 1)
+        let key = OAuthCredentials(access: "deepseek-SECRET", refresh: "", expires: .max)
+        let desk = AccountDesk(store: DeliveredCredentialSource([
+            CredentialProviderID.openAICompatible: relay,
+            CredentialProviderID.deepSeek: key,
+            "antigravity": subscription,
+        ]))
+        let asked = [
+            AgentProvider.openAICompatible.rawValue: ["cn:deepseek-v4.1-flash", "cn:deepseek-v4.1-flash", "", "another"],
+            AgentProvider.antigravity.rawValue: ["gemini-4-argon", "live-only-model"],
+        ]
+        let narrow = await desk.list(extraModels: asked, onlyExtraModels: true)
+
+        // Every provider is still answered, in kwwk's order, and still signed in.
+        #expect(narrow.accounts.map(\.provider) == AgentProvider.signInOrder)
+        let relayed = try #require(narrow.accounts.first { $0.provider == .openAICompatible })
+        #expect(relayed.signedIn)
+        #expect(relayed.models == ["cn:deepseek-v4.1-flash", "another"])
+        // A subscription keeps what it was asked for too, including a model
+        // only its live config names: the account list must not drop one the
+        // app enabled because a bundled catalog never heard of it.
+        let subscribed = try #require(narrow.accounts.first { $0.provider == .antigravity })
+        #expect(subscribed.signedIn)
+        #expect(subscribed.models == ["gemini-4-argon", "live-only-model"])
+
+        // An account asked for nothing names no model, and no catalog is read
+        // for it: no levels, no tiers, no capabilities.
+        let quiet = try #require(narrow.accounts.first { $0.provider == .deepSeek })
+        #expect(quiet.signedIn)
+        #expect(quiet.models == [])
+        #expect(quiet.reasoningEfforts == nil)
+        #expect(quiet.serviceTiers == nil)
+        #expect(quiet.capabilities == nil)
+
+        // Settings and onboarding read the whole catalogue, as before, with
+        // the caller's own models added to it.
+        let wide = await desk.list(extraModels: [AgentProvider.openAICompatible.rawValue: ["another"]]).accounts
+        let wideRelay = try #require(wide.first { $0.provider == .openAICompatible })
+        let wideSubscription = try #require(wide.first { $0.provider == .antigravity })
+        let wideKey = try #require(wide.first { $0.provider == .deepSeek })
+        #expect(wideRelay.models == ["relay-default", "another"])
+        #expect(wideSubscription.models?.contains("gemini-4-argon") == true)
+        #expect(wideKey.models == ["deepseek-flash", "deepseek-v4-pro"])
+        #expect(wideKey.capabilities?.isEmpty == false)
+    }
+
+    /// A narrower list does not carry the whole catalogue in its other fields
+    /// either: the levels and tiers it answers are the ones for the models it
+    /// named, while the whole list keeps every field it always had.
+    @Test
+    func `a narrower list trims the levels and tiers to the models it named`() async throws {
+        let subscription = OAuthCredentials(access: "token", refresh: "refresh", expires: 1)
+        let desk = AccountDesk(store: DeliveredCredentialSource([
+            AgentProvider.openAICodex.storeID: subscription,
+            AgentProvider.antigravity.storeID: subscription,
+        ]))
+        let asked = [
+            AgentProvider.openAICodex.rawValue: ["gpt-6-sol"],
+            AgentProvider.antigravity.rawValue: ["gemini-4-argon"],
+        ]
+        let narrow = await desk.list(extraModels: asked, onlyExtraModels: true).accounts
+        let codex = try #require(narrow.first { $0.provider == .openAICodex })
+        #expect(codex.models == ["gpt-6-sol"])
+        #expect(codex.serviceTiers?.keys.sorted() == ["gpt-6-sol"])
+        #expect(codex.reasoningEfforts?.keys.allSatisfy { $0 == "gpt-6-sol" } == true)
+        let antigravity = try #require(narrow.first { $0.provider == .antigravity })
+        #expect(antigravity.reasoningEfforts?.keys.sorted() == ["gemini-4-argon"])
+
+        let wide = await desk.list().accounts
+        let wideCodex = try #require(wide.first { $0.provider == .openAICodex })
+        #expect((wideCodex.serviceTiers?.count ?? 0) > 1)
+    }
+
+    /// An item that does not decode stays signed in — Sign Out is how it goes
+    /// away — and names no model, in either list.
+    @Test
+    func `an item that cannot be read stays signed in and names no model`() async throws {
+        let desk = AccountDesk(store: UnreadableCredentialSource(["anthropic-api-key", "openai-compatible"]))
+        let asked = [AgentProvider.openAICompatible.rawValue: ["asked-model"]]
+        for accounts in [
+            await desk.list(extraModels: asked, onlyExtraModels: true).accounts,
+            await desk.list(extraModels: asked).accounts,
+        ] {
+            #expect(Set(accounts.filter(\.signedIn).map(\.provider)) == [.anthropic, .openAICompatible])
+            for account in accounts where account.signedIn {
+                #expect(account.models == nil)
+                #expect(account.reasoningEfforts == nil)
+                #expect(account.serviceTiers == nil)
+                #expect(account.capabilities == nil)
+                #expect(account.account == nil)
+            }
+        }
     }
 
     // MARK: - Every login kwwk offers
@@ -980,11 +993,11 @@ struct AccountDeskTests {
         }
     }
 
-    /// kwwk's refreshers for the sessions, with Kimi's given an identity:
-    /// every login that renews itself, and Devin's.
+    /// Every renewing login remains supported, but a session constructs
+    /// only the selected account's refresher (and none for API keys).
     @Test
     func `sessions refresh every renewing login without kwwk's files`() {
-        let ids = Set(KimiIdentity.refreshers().map(\.id))
+        let ids = Set(AgentProvider.allCases.flatMap { KimiIdentity.refreshers(for: $0.storeID).map(\.id) })
         #expect(ids.isSuperset(of: OAuthSubscriptions.refreshedIds))
         #expect(ids.contains("devin"))
     }

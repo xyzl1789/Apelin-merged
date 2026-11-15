@@ -20,7 +20,15 @@ the same executable in session mode; the workers are its children.
   first and lists what is still open. An agent starting here works through
   it top to bottom and ticks a box only after doing or deciding the thing;
   one that does not apply is ticked with the reason beside it. The file
-  stays, ticked: it is the record of what was decided.
+  stays, ticked: it is the record of what was decided. **A `make check` that
+  cannot run is not a closed gate.** Where the environment has no way to run
+  it — no `make`, no Xcode, a script or tool it calls absent, a device that
+  cannot build this app at all — an agent still changes code, cautiously:
+  keep the change small enough to review by eye, read the rule in this file
+  that it touches, run whatever checks do exist (`Scripts/*.py`, a grep, a
+  syntax parse), and say in its reply that `make check` did not run and is
+  still owed to the first environment that can. It ticks no box, lowers no
+  check and skips no rule because the gate could not run.
 - **One app, several wrappers, and the backend is resolved at runtime.** Never a
   build flag, never a compilation condition, never a per-packaging source
   variant. The handshake with the daemon is the only honest answer to "am I
@@ -41,6 +49,36 @@ the same executable in session mode; the workers are its children.
 - **No install prefix is written in Swift.** Derive it from the daemon's own
   `proc_pidpath`; anything that needs it asks the daemon. Packaging fails on
   `libvroot` in the app, daemon or helper.
+- **A build's package is a deb unless the project's description asks for an
+  `.ipa`.** `package.format` is `deb` (absent, the default) or `ipa`; an
+  `ipa` project builds one app and `IPAPackager` writes `Payload/<name>.app/`
+  zipped, the bytes the `sign` step left, read back with libarchive before
+  it is recorded (`format: "ipa"`). An `.ipa` carries the app's extensions:
+  each `appex` product the build made goes in at
+  `Payload/<name>.app/PlugIns/<extension>.appex`, the one place iOS loads a
+  widget, a share sheet or any other extension from, and the packager
+  refuses one whose `Info.plist` names no executable it holds, no
+  `NSExtensionPointIdentifier`, or an identifier not under the app's. An
+  `.ipa` installs as an app, never as a
+  package: `installPackage` on an ipa artifact unpacks it inside the host,
+  copies its one `Payload/*.app` under `<install root>/Applications`, signs
+  every Mach-O with the bootstrap's `ldid`, registers it with `uicache`, and
+  keeps the bundle in the installation record so a removal unregisters and
+  deletes it. dpkg and irisind never see one, no package repository takes
+  one, and the Distribute… page offers Share `.ipa` alone. The two formats
+  are never one renamed into the other, and a deb keeps every check it had.
+- **A Swift module is the project's own sources, never a resolution.** A
+  package a project vendors is a folder of the project: `swiftModules` names
+  each module's `.swift` files and the modules it imports, the build compiles
+  one `.swiftmodule` and one object per module per architecture with the
+  project's own `swiftc`, and a product compiles against and links the modules
+  it names together with the ones those import. SwiftPM never runs, no
+  `Package.swift` is read, nothing is fetched and no lockfile or package cache
+  exists — so a vendored module's resources and `Bundle.module` are out of
+  scope, and a missing dependency is a project that must vendor it, never a
+  network call. A module's dependencies are built before it, a cycle is
+  refused, and its declaration is in the build digest while its files are
+  sources like any other.
 - **roothide is recognised by the process's own path** (`RoothideRoot`,
   libroothide's own name rule), never by loading libroothide through the
   `.jbroot` link, which is not promised, and never by falling back to
@@ -231,15 +269,7 @@ the same executable in session mode; the workers are its children.
   GPL-family text fails the build. Vendored code keeps its upstream `LICENSE`
   beside it and its header on each file; MIT / BSD / Apache only. `make check`
   requires the phase, the packager requires the file. Read the generated list
-  after adding a dependency. A package pinned by revision has no version in
-  its pin, so one whose checkout states its own is read there
-  (`statedVersions` in `Licenses/review.json`: kwwk's, from
-  `Sources/KWWKCli/Theme.swift`; a checkout that no longer states exactly
-  one where the rule says fails the build). The app shows a linked
-  package's version only from this list (`LinkedPackage`): Model
-  Providers' footer ends "Currently using kwwk 0.1.121." (owner,
-  2026-11-14), which is the kwwk the workers of the same build link, with
-  no number kept by hand.
+  after adding a dependency.
 - **No absolute build path in a shipped binary.** `#file` is concise
   (`SWIFT_UPCOMING_FEATURE_CONCISE_MAGIC_FILE`, prefix maps in `Base.xcconfig`);
   the packager greps every binary for the repository root and fails on a hit.
@@ -302,6 +332,47 @@ the same executable in session mode; the workers are its children.
   name, optional delegate method answered by accident and plain override in a
   final class; fix them, or list one kept on purpose in its `ACCEPTED` with the
   reason, before committing.
+- **A model finds its catalog entry by id, and by the name the catalog gives
+  it.** kwwk files the model a relay serves as `cn:deepseek-v4.1-flash` under
+  `deepseek-flash` and spells it "DeepSeek V4.1 Flash", so the lookup
+  (`ModelIdentity`, `ModelCatalogIndex`) tries the name as an id first and then
+  as a name with every break written one way (`deepseek v4.1 flash`). A stretch
+  from the middle of a word still matches nothing (`v4.1` alone is not a
+  model), and nothing is ever renamed: the endpoint's own id stays what the
+  pickers and the provider page show, and the catalog only supplies the window,
+  the reply ceiling, images and thinking levels — the entry a model was read as
+  is named, with those figures, in Settings ▸ Models ▸ that model.
+- **models.dev's catalog is a file in this repository, not a download.**
+  `.github/workflows/model-catalog.yml` reads `https://models.dev/api.json`
+  every day at 12:00 UTC (20:00 Asia/Shanghai), trims it with
+  `Scripts/refresh-models-dev.py` to the fields `ModelDataSnapshot` keeps, and
+  commits `Apelin/Resources/models.dev.json` only when a model's figures
+  changed — that commit's `generatedAt` is the stamp the app measures a week
+  from. The app ships the file, writes it into
+  `~/Documents/wiki.qaq.apelin/ModelData/models.json` on the first launch (the
+  one file the agent reads), and replaces it once its copy is a week old
+  (`ModelDataRefresh`): this repository's copy through jsDelivr first, which
+  answers where models.dev does not, then models.dev itself. There is no page
+  for it — it updates itself, and the page that had the buttons aborted inside
+  UIKit's reconfigure when its second update arrived.
+
+- **The composer opens its model sheet before asking the worker.** Saved
+  enabled IDs (or the last in-memory account answer for those same IDs) are
+  previews only: rows stay disabled until a fresh account read supplies their
+  context windows and sign-in status. `SharedModelLoad` joins the automatic
+  selection check and the picker while a read is in flight; cancelling one
+  waiter leaves the other intact, and an older answer never replaces a newer
+  key's preview. The composer requests `agentAccountList` with
+  `onlyExtraModels: true` and `EnabledModels.selectedModelIDs()`; settings and
+  onboarding keep the full default request. `ProviderModels.catalogFacts`
+  reads both reasoning levels and capabilities in one batch, with one snapshot
+  file check per account. Catalog matching precedence is unchanged. Logs under
+  `ModelPicker`, `Accounts` and `ModelCatalog` separate the request, aggregation
+  and cold-index timings, without credentials. `Tests/ModelPicker/SharedModelLoadCheck.swift`
+  is a Foundation-only executable, run by `Scripts/test-chat-transcript.sh`
+  in CI; on-device it can be compiled with `SharedModelLoad.swift`, signed and
+  run independently. UI presentation, dismissal, retry and small-window model
+  switching still require testing the built app.
 
 ## Decisions
 
@@ -323,18 +394,26 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   `crashOpen`, `crashSymbolicate`; `confirmLoaded`, `confirmLoadedAttach`, `captureScreen`,
   `readUITree`, `uiAction`; `agentOpen`, `agentPrompt`, `agentSteer`,
   `agentAbort`, `agentCompact`, `agentApprove`, `agentAttach`, `agentList`, `agentClose`,
-  `agentRunCode`, `agentCredentialImport`, `agentAccountList`, `agentSkillList`, `agentAPIConfiguration`, `agentModelList`, `agentModelActivate`, `agentSignIn`,
-  `agentSignInRespond`, `agentSignInCancel`, `agentSignOut`; `toolHostOpen`, `toolHostClose`,
+  `agentRunCode`, `agentCredentialImport`, `agentAccountList`, `agentSkillList`, `agentAPIConfiguration`, `agentModelList`, `agentModelTest`, `agentModelActivate`, `agentSignIn`,
+  `agentSignInRespond`, `agentSignInCancel`, `agentSignOut`, `agentRewind`, `agentEditMessage`,
+  `agentDeleteReply`, `agentFork`; `toolHostOpen`, `toolHostClose`,
   `toolHostCall`;
   `gitStatus`, `gitDiff`, `gitStage`, `gitUnstage`, `gitCommit`, `gitInit`,
   `gitClone`, `gitCloneInto`, `gitFetch`, `gitPull`, `gitPush`, `gitSettings`,
   `gitAuthorSet`, `gitCredentialSet`, `gitCredentialRemove`,
   `gitRepositoryCreate`, `gitIssueCreate`, `gitSquash`, `gitRemoteList`,
   `gitRemoteSet`, `gitRemoteRemove`, `gitResetPreview`, `gitResetToRemote`;
+  `gitBranches`, `gitBranchCreate`, `gitBranchCheckout`, `gitBranchDelete`,
+  `gitBranchRename`, `gitMerge`, `gitMergeAbort`, `gitTagCreate`,
+  `gitTagDelete`, `gitLog`, `gitCommitDetail`, `gitCommitFileDiff`,
+  `gitFileVersions`, `gitRestore`, `gitDeletePaths`, `gitIgnoreAppend`,
+  `gitReset`, `gitStashList`, `gitStashSave`, `gitStashApply`,
+  `gitStashDrop`, `gitStashClear`, `gitCheckpointSave`, `gitCheckpointRestore`;
   `distributionRepositoryList`, `distributionRepositoryCreate`,
   `distributionRepositoryLink`, `distributionRepositoryUnlink`,
   `distributionPublish`, `feedbackSend`, `feedbackRead`, `feedbackEdit`,
-  `feedbackStarState`, `feedbackStar`;
+  `feedbackStarState`, `feedbackStar`; `channelStatus`, `channelSignIn`,
+  `channelVerifyCode`, `channelConfigure`, `channelSignOut`;
   `transferExport`, `transferInspect`, `transferImport`. Every one is
   in the list today; most answer `unimplemented` until their domain lands.
   The envelope (protocol version 2) carries `op`, `protocolVersion`,
@@ -345,6 +424,13 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   (`Shared/Protocol/XPCEnvelope.swift`, descriptors as XPC fd objects); between
   apelind, its session host and the workers it is a `WorkerChannel` frame
   (length-prefixed JSON over a socketpair, descriptors by `SCM_RIGHTS`).
+  Cancelling a task awaiting `WorkerChannel.call` releases that local wait
+  with `CancellationError`, including cancellation before registration. It
+  neither closes the shared channel nor cancels work already sent to the
+  peer: remote work still needs its domain's abort/cancel operation. Reply,
+  timeout, cancellation and close take the continuation under the same lock;
+  late replies are discarded. `WorkerChannelTests` covers cancellation before
+  and during a call, channel reuse, and cancellation racing reply and close.
   Long work is a task: `TaskID`, events numbered by `EventSeq` from 1 with no
   gaps, read by a long-poll attach with `afterSeq` (replay is a lower
   `afterSeq`), ended by a `state` event, stopped by a cancel.
@@ -354,6 +440,57 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   `Apelind/Dispatch/<Domain>Handler.swift` (and `CallerPolicy` if a worker may
   call it); and this list. A worker-served operation is then a case in that
   worker's handler.
+- **A chat channel belongs to the session host, not to a worker**
+  (`Apelind/Session/Channel/WeChatChannel.swift`; the wire in
+  `Operations/Channel.swift`, the page in `Interface/Settings/ChannelController.swift`).
+  Settings ▸ Plugins signs one in — today the WeChat ClawBot plugin, through
+  its iLink bot API (`ApelinCore/Ilink`): a QR code the reader scans with a
+  phone, a long poll for messages, one POST per reply. It lives in the host
+  because what a message becomes is the host's own work: the channel asks
+  through the dispatcher as the app's caller, so a message gets every check a
+  request gets — `agentOpen` in the project the reader chose (or a temporary
+  chat), `agentPrompt` with the message's text — and the reply is that
+  turn's own `text`/`message` events, sent when `finished` or the task's
+  final `state` arrives. An approval or one of the agent's questions is
+  pushed to the phone that talks in that conversation too (`ChannelReplies`):
+  `approvalRequested` becomes one message — a question with its options
+  numbered, or what the approval is for and how to answer it — and the reply
+  is read back as an answer, so a chat can settle what the app settles. A
+  number picks a question's option (several, comma-separated, when it takes
+  several), "同意" or "approve" approves once, "拒绝" or "deny" refuses, any
+  other sentence is a new turn while the ask waits, and a decision taken in
+  the app clears the ask the phone was given (`approvalResolved`). The one
+  thing WeChat cannot give is a command as root: that takes the device
+  owner's check (`ownerVerified`), so it is announced with a line saying so
+  and approved only in Apelin. The credential is
+  A phone asks for the rest with commands, answered by the channel and never
+  by the agent (`ChannelCommand`): `/sessions` lists the conversations the
+  host runs and the ones on disk (`ChannelDirectory`), `/use <n>` binds one
+  — the worker that served it may have gone, and the next message reopens
+  the same conversation — `/use new` opens one, `/workspace [n]` picks the
+  project new ones go in, `/model [n] [lo|mid|hi]` and `/effort` choose the
+  model and its effort from the agent's own account list, applied to the
+  open conversation with `agentConfigure` and carried by every prompt, and
+  `/send <path>` sends a file of the workspace. Files travel both ways: what
+  a phone sends is downloaded from the CDN, decrypted (AES-128-ECB, the
+  `aes_key` in either spelling), saved under the channel's `attachments/`
+  and given to the conversation as descriptors beside the prompt, the way
+  the app hands over an attachment; what a turn writes — a `toolResult`
+  with attachments, which is what `file_show` hands over — is uploaded and
+  sent, as is `/send`. Uploads take a
+  ticket from `getuploadurl`, POST the ciphertext, and read
+  `x-encrypted-param` back (`IlinkMedia`, `IlinkMediaClient`). Every prompt it
+  sends carries `source: ChatChannel.weChat`: the worker names it in that
+  message's `<system-state>`, so the model knows the reader is in WeChat and
+  gets no file it does not show with `file_show` (the relay above sends it),
+  and the app shows "From WeChat" over that message's bubble.
+  The credential stays in the channel's own `channel.json`, and
+  the phones it has talked to are `peers.json` (a
+  `PreservedList`, so one unreadable entry costs no other). A channel that is
+  on and signed in counts as work in `reportWork`, so apelind stays up and
+  answers the phone while the app is closed, and `resume()` puts it back to
+  reading when the host starts again. Text, images, files and videos in this
+  version; a voice note reads as no message unless WeChat transcribed it.
 - **The authenticator** (`Apelind/PeerAuthenticator.swift`) decides before a
   request field is decoded, in this order: the kernel audit token; pid > 1;
   euid 0 or 501; the entitlements `wiki.qaq.apelin.client`,
@@ -652,10 +789,14 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
     layout it finds by walking up and runs none of its pagers or hooks —, and
     the development environment of the terminal's project (none: the
     defaults), the one shell_run gets (Agent sessions ▸ `agentRunCode`). A login
-    shell's `/etc/profile` sets `PATH` anew, so the package ships
-    `etc/profile.d/wiki.qaq.apelin.sh` (`Packaging/profile.d/`), which puts
-    `APELIN_TOOLCHAIN_BIN` back in front when it is set and does nothing
-    anywhere else;
+    shell's `/etc/profile` sets `PATH` and the prompt anew, so the package ships
+    `etc/profile.d/wiki.qaq.apelin.sh` (`Packaging/profile.d/`): it puts
+    `APELIN_TOOLCHAIN_BIN` back in front when it is set, and — for bash only,
+    and only when `APELIN_TERMINAL` says the shell is Apelin's own — cuts the
+    prompt to the folder and the shell's own `$`/`#`, since that profile's
+    `\w` puts the whole path on every line. A shell opened anywhere else, and
+    a prompt the user's own `.bash_profile` or `.bashrc` sets after it, are
+    left alone;
     the host then reads the shell's credentials from the kernel
     and kills it unless all six ids are mobile's. Output is numbered into the
     `terminal` task (`started`, `output` {base64, text}, `exit`), so a
@@ -683,7 +824,8 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
     `initWithBundleIdentifier:`, looked up at run time) when an agent
     session relays `approvalRequested` (title the conversation, subtitle
     "Approval Required", body the call's `reason` from its `toolCall`, else
-    the gate's) or `finished` with `completed` (body the turn's last
+    the gate's; for a question, `detail.question`, subtitle "Answer Needed"
+    and body the question) or `finished` with `completed` (body the turn's last
     `message` with text, its first paragraph as plain text in at most 180
     characters, else "Done") or `failed` (subtitle "Failed", body the last
     `error`), and for the agent's own `notice` {title?, body} (2026-10-24:
@@ -775,7 +917,11 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   Apple's under Apple's terms.
   *Git*: libgit2 in `ApelinGit`, no libgit2 type public. A project is named
   by its `projectID` or, before it has a description, its folder name, and
-  resolved to exactly one component below the realpath of `Projects/`;
+  resolved to exactly one component below the realpath of `Projects/` — or,
+  for a repository the workspace keeps in a subdirectory, that and `/` and
+  the folder inside it (owner, 2026-11-04: a workspace may hold a repository
+  below its root, which the page opens and uses as it uses the root's; the
+  same component checks apply to each part);
   every path is plain, literal (never a pathspec glob) and resolves inside.
   A commit's author is the request's, else `Settings/git.json`, else the
   repository's config; `gitCommit{all: true}` stages every change first,
@@ -792,14 +938,6 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   writer's and the file tools' temporary files); a repository made
   without it is given it by its next git call once the project has an
   `Attachments` folder. SSH would exec `ssh`; HTTPS is the only transport.
-  libgit2 waits on a silent server for ever unless told otherwise, so
-  `GitLibrary` gives a remote 30 s to accept a connection and 120 s of
-  silence during a transfer (#59; `GIT_OPT_SET_SERVER_CONNECT_TIMEOUT`,
-  `GIT_OPT_SET_SERVER_TIMEOUT`, set through the two C functions of
-  `ApelinGitOptions`, since Swift cannot call the variadic
-  `git_libgit2_opts`): a stalled clone, fetch or push fails "timed out"
-  instead of holding its task, and whoever reads that task, for good.
-  `GitTimeoutTests` clones from a server that says nothing.
   Remotes (2026-10-22): `gitFetch`, `gitPull` (fetch, then a fast-forward
   only: a diverged branch or a worktree change it would overwrite is
   `conflict` and nothing changes) and `gitPush` (one branch to the branch
@@ -1033,18 +1171,10 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   of its table of contents) and is offered from there when Apple's catalog
   no longer names it (2026-11-06: Apple replaced 27.0 with 27.2 and went on
   serving 27.0's file, and it left every device's list). The catalog's own
-  entry wins, and the bytes are checked the same either way. A package
-  Apple stops serving too is marked `withdrawn` and offered only while the
-  catalog lists it, since no device could download it (#58: 27.0's address
-  answers 403 from 2026-11-12, so the catalog now offers 27.2, 16.4, 15.3,
-  15.0 and 14.2). Its review stands: 27.0 stays in `releases`, so a
-  toolchain of it set up earlier, and a transfer file of one, still read.
-  A download Apple refuses (403 or 404) says that the server refused the
-  package and to pick another release if it keeps refusing.
+  entry wins, and the bytes are checked the same either way.
   `.github/workflows/apple-catalog.yml` reads the catalog every day
   (`Scripts/check-apple-catalog.py`) and files one issue when a reviewed
-  package can no longer be downloaded or a new release waits for a review;
-  a withdrawn package's address is not asked again.
+  package can no longer be downloaded or a new release waits for a review.
   roothide Bootstrap, the TrollStore one, runs none of them (issue #35;
   `HostSigning` in ApelinCore): it trust-caches nothing it installs and
   runs only a Mach-O carrying the CoreTrust-bypass signature its dpkg
@@ -1347,55 +1477,32 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   again here at most twice, 1 s apart. A failure after text, thinking or a
   call has streamed is kwwk's alone to take back and retry, a certificate
   error is never retried, and no tool runs twice: kwwk runs a call only once
-  its message has settled. The wait for a route is said at once
-  (`waitingForNetwork`), so the reader is told the device is offline the
-  moment the first request fails, not after the retries run out.
-  A failure says why where the agent can tell (owner, 2026-11-14;
-  `FailureReason`, the reasons of ApelinProtocol's `AgentFailure.swift`): kwwk's own
-  reading of it (`ProviderFailure.category`) and whether there is a route
-  come to `offline`, `network` (a route, and a provider out of reach: a name
-  that does not resolve, a connection refused, dropped or not made
-  securely), `timeout`, `authentication`, `quota`, `rateLimit`, `server` or
-  `contextOverflow`, which the `error` event carries as `reason` beside the
-  provider's words; a refusal, a request the provider would not take and
-  anything that is not a model request carry none. It is an
-  `ApelinError.Reason`, as an error reply's is, open-ended on the wire and
-  in the log, so one a peer does not know still reads.
-  A sign-in is exchanged or renewed when a session opens and when a message
-  changes its provider, with the app's send waiting behind it, and kwwk's
-  own request gives a connection that answers nothing five minutes:
-  `ProviderResolver.resolve` gives it 20 s (`exchangeWait`, `Deadline`,
-  which stops waiting whether or not the request answers its
-  cancellation). One that fails is `ProviderResolutionError.unresolved`
-  with the same reasons, answered `unavailable` with that `reason`
-  (`AgentWorker.signInError`; `internal` in the provider's words when it
-  has none), and a sign-in that is not saved stays `denied`, from
-  `agentPrompt` too, which used to answer the error's Swift description.
+  its message has settled. Stop also cancels the wrapper's stream creation,
+  forwarding and retry waits, not only its wait for a network route. Those
+  waits use a one-result `AsyncThrowingStream`, never a task group whose
+  scope would wait for a provider that ignores cancellation. Cancelling
+  releases the local waiter and cancels its operation; a provider may still
+  finish late, but its result is discarded and the relay checks cancellation
+  before forwarding another event. An aborted outer stream keeps the model
+  identity and the partial reply already delivered. A shared output lock
+  publishes one terminal event and its final result together when normal
+  completion races Stop. The journal's intermediate relay uses the same
+  cancellation boundary, so it stops consuming and retaining a stopped
+  request. `NetworkCancellationTests` covers hung creation and streams, a hung
+  TLS retry, late output, terminal races, journal lifetime, session close,
+  and another prompt after abort or same-ID reopen while the old provider
+  is still open. Title generation uses the same cancellation boundary around
+  model/credential resolution, stream creation and completion: Stop, close
+  and its 20-second timeout release the waiter even if the provider does not
+  cooperate. Cancellation is checked again after each setup wait, before a
+  request starts, and before a title is saved. Tests also cover a title stuck
+  reading credentials and a title stream that never ends.
+  The on-device isolated probe passes the network-layer cases, with data
+  types/collections adapted; the actual Swift 6.1 tests (including session,
+  title and reopen cases) and full `make check` still need a capable build
+  host. An installed-device Stop/close/reopen check is still owed.
   Prompt, steer, abort, compact, approve and close go
-  to that session's running worker and to no other. A stop always ends
-  the turn (#59: a conversation whose tool call waited on something that
-  never answered could be neither stopped nor continued, since the run
-  went on until the call returned and every later message queued behind
-  it). Three bounds, each for what the one before cannot reach.
-  `ToolRunner.run` no longer waits on a call once the run is stopped: the
-  call is cancelled, given `stopGrace` (2 s) to end in its own words (an
-  approval denied, a command's output up to where the host killed it) and
-  then left, its answer unread, with `ToolStoppedError` as the result the
-  model reads, which says the work it started on the device may still
-  finish; a build the call was reading is cancelled with it
-  (`ChannelHostBackend.read`, `buildCancel`), while an install, a
-  toolchain setup, an SDK import and a git transfer go on by themselves.
-  The worker then gives the stopped run 20 s to end (`WorkerState.abort`,
-  `AgentSession.StoppedWork`): one that has not, a model request or a
-  compaction that does not answer its cancellation, has its task ended
-  `cancelled` with an `error` saying so, and the process exits. And the
-  host gives the worker 10 s to take the stop at all
-  (`AgentHandler.abort`, `Patience`): one that does not is ended
-  (`WorkerSupervisor.end`: its channel closed, which ends its task, and
-  the process killed unless it was reaped already). Either way the app
-  reads the task's end as the turn's, and the conversation opens again on
-  its next message with the transcript its last finished run left; a run
-  that ends by itself in time loses nothing. The worker refuses a
+  to that session's running worker and to no other. The worker refuses a
   second `agentOpen` with `conflict` from its first suspension, and frees
   the place if the open fails. Its log, `sessions/<id>/events.jsonl`
   (`SessionEventLog`), joins streamed `textDelta`/`thinkingDelta` into one
@@ -1404,8 +1511,18 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   pending text (2026-10-29: one reply had written every provider delta as
   a line, 684,540 of them, and reopening it took 104 s on a device). It is
   opened in one pass that decodes only the lines a session needs (its user
-  message ids, whether it has a title, the approvals left waiting, the
-  last number), and a reattach replays from disk outside the log's actor
+  message ids, whether it has a title, the approvals left waiting, turn and
+  compaction boundaries, and the last number). A reopened session has no
+  running model task: before its replay boundary it appends `finished(aborted)`
+  for a turn with no end, and `compactionFinished(cancelled)` for a compaction
+  with no end. Otherwise a historical prompt or reconnect leaves readers
+  showing Running forever, and Stop has no live run to end. Recovery keeps
+  every old record, is idempotent, and is never a new live completion.
+  `InterruptedSessionTests` covers recovery, repeated opens and a subsequent
+  prompt; the reader and long-log tests cover idle state and selective decoding.
+  An on-device scanner probe passes synthetic histories and the failing log
+  read-only; full session tests and installed UI validation remain owed.
+  A reattach replays from disk outside the log's actor
   while appends go on, so an open answers at once and a send never waits
   behind the history; a line that will not decode stands as an `error` of
   its number. Beside it the worker keeps the conversation's diagnostic
@@ -1483,22 +1600,62 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   is too large and compaction failed: …"); a status, a transport failure, a
   refusal and anything kwwk retries stay errors. Task events: `prompt`, `title` {text},
   `projectNameSuggested` {name} (only a concrete project intent),
-  `steer`, `queued` {id, text, attachments} (a message sent while a run
-  goes, handed to the run as a steer and recorded as its `prompt` of the
-  same id only when the run's loop takes it, after the tool call in
-  progress or before the run would end; one a run that failed or had just
-  ended never took starts the next run, whose kwwk `continue` takes it),
-  `queueDropped` {ids} (queued messages a stopped run never took, cleared
-  from kwwk's steering queue too so no later run reads them; the app puts
-  them back in the composer, text and files, ahead of what was typed
-  since, and says "N Messages Not Sent" once the reader sees the
-  conversation: `DroppedMessages`), `messageStarted`,
+  `steer`, `queued` {id, text, attachments} (only an explicit insertion
+  into the active run; its `prompt` uses the same id when the model takes
+  it). A message a chat channel sent says so in `source` (`ChatChannel.weChat`)
+  — on the `prompt` or `queued` payload, kept with the waiting message
+  (`PendingMessage.source`) while it waits — and the app writes it over the
+  bubble where a message from another conversation writes `from`. Idle reader Send with no backlog reserves a durable handoff
+  directly, never a waiting message; preparation and the subsequent run
+  own the slot before suspending. New, idle and stopped-empty chats take
+  this path. Later arrivals wait in FIFO order. Stop or preparation
+  failure recovers an untaken direct handoff into the paused queue.
+  Other ordinary Send goes to the session-owned `PendingQueue`, persisted
+  before acceptance in `pending.json`, not kwwk's steering queue. A
+  `pendingQueue` {messages: [{id, text, attachments, editing, sender?, source?, delivery?, modelChoice?}], paused}
+  snapshot replaces the app's waiting list; it is not conversation history.
+  One message starts a new run after the previous run succeeds. The app's
+  Stop cancels the current run, waits for the host to stop its shell calls,
+  then requests Resume Queue: existing input continues in FIFO order once
+  the old run and preparation have settled. An empty stopped queue stays
+  paused. Stop-and-delete, source stops, failed runs and recovered sessions
+  keep input paused; Resume Queue or a fresh reader Send continues it.
+  A source delivery or duplicate retry never resumes a paused queue.
+  A newer Stop or Rewind supersedes an older restart; the app invalidates
+  unsent Stop continuations on Rewind/close, and the session checks the Stop
+  generation after awaiting cleanup. `agentQueue` is app-only: hold/edit/resume
+  reserve an editor's message, delete removes it, reorder names the complete
+  set of current IDs, and steer explicitly inserts a chosen message into
+  a live run. Preparation rechecks the queue revision and stop generation
+  after every suspension before consuming anything. Durable handoffs keep
+  input across a crash between taking it and saving model history.
+  `queueDropped` {ids} remains for legacy steering receipts and source
+  messages; ordinary pending messages never return through it. Source
+  messages use the same durable FIFO, not kwwk's follow-up queue. The sender
+  chooses `delivery: queue|steer`: queue starts a separate run after success;
+  steer is inserted at the active run's next input boundary without killing
+  tools or bypassing approvals. Source stops, failures and reopening retain
+  input paused. Each reader input retains its own credential-free model choice,
+  resolved only at dispatch; source input never brings the sender's model.
+  Rewind claims the history boundary before stopping, settles consumed
+  handoffs, then clears all waiting input (including holds and unconsumed
+  handoffs) after replacing history. Seen IDs stay, so retries cannot revive
+  the cleared queue. The app's existing refillComposer restores only the
+  selected original message and attachments, under a fresh draft ID. A
+  code-only restore pauses but keeps input. A stale Resume rechecks the Stop
+  generation after its awaits. At dispatch, `conversationMessageQueued` becomes
+  `queued` {id, text, from}; only the matching model `messageStart` emits
+  `conversationMessageTaken`, mapped to `prompt` with the same id and from.
+  The app shows that source above the active thinking row and outlines its
+  bubble in green. A queued source never replaces the active source until
+  taken. Source messages carrying `from` never return to the reader's
+  composer. Text plus the exact user-message timestamp match acceptance,
+  so a runtime aside cannot consume another message's entry.
+  `messageStarted`,
   `messageDiscarded` (kwwk gave up the message streaming since the last
   `messageStarted` and asks for it again: its text and thinking are not the
   reply), `reconnecting` (a failed model request is being made again:
-  kwwk's retry, or a failed handshake `NetworkRecovery` asks again),
-  `waitingForNetwork` (a request failed with no route to the network and
-  waits for one, `NetworkRecovery`'s wait), `toolCallPreparing` (the model began writing a
+  kwwk's retry, or `NetworkRecovery`'s wait), `toolCallPreparing` (the model began writing a
   call, which `toolCall` follows once its arguments are whole), `text` and `thinking` (streamed text coalesced
   to ≥ 512 bytes or 250 ms), `received` {tokens} (the output tokens the
   run has received so far: what streams of a message — text, thinking and
@@ -1513,19 +1670,142 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   detail} followed by `state` `waitingForApproval`, `approvalResolved`
   followed by `state` `running` when none is left, `notice` {title?, body}
   (`apelin_notification_send`, between its `toolCall` and `toolResult`; the host posts
-  it, Notifications above; the transcript shows only the call), `error`
-  {message, reason?} (`reason` one of `AgentFailure.swift`'s, absent when
-  the agent names none), `finished` {reason}, `compactionStarted` and
+  it, Notifications above; the transcript shows only the call),
+  `runModeChanged` {mode, why} (`apelin_run_mode`, 2026-11-11: the
+  conversation's own run mode, which the app writes where the pill reads
+  it), `error`
+  {message}, `finished` {reason}, `compactionStarted` and
   `compactionFinished` {outcome: compacted, tooShort, cancelled or failed,
   messagesCompacted?, message?, summary?} (`AgentCompactionResult`; only
   `agentCompact` records them — kwwk's own compaction as the context fills
-  is no event). `summary` (2026-10-28), when compacted, is what the
+  is no event). `contextUsage` {tokens, window} (2026-11-02), how full the
+  conversation's context is by the measure compaction goes by, recorded
+  when a run ends and once a compaction has ended: the composer shows it
+  as a ring, whose tap offers `Compact Context…`. `summary` (2026-10-28),
+  when compacted, is what the
   conversation goes on from as the reader reads it: the history and
   current-turn sections of kwwk's recap, unescaped, without its markup or
   its file ledger (`CompactionRecap`; a recap of another shape whole),
   bounded by the recap's budget, about 1,800 tokens; it stays in the
   session's log, so a reopened session's replay carries it, and an event
-  recorded before it has none. A failure kwwk
+  recorded before it has none. The reader's own changes (2026-11-06):
+  `usage` {input, output, cacheRead, cacheWrite} after each reply's
+  `message`, as the provider counted it (`input` is what it read fresh), which
+  the transcript sums per turn under the turn's last reply with the turn's
+  time; `checkpoint` {id} once the work tree is saved before message `id`'s
+  run (`gitCheckpointSave`, by the agent before the run starts, at most 5 s,
+  under `refs/apelin/checkpoints/<id>`, never for a message that joins a run
+  going); and the history's changes, each the app's alone and between runs,
+  each recorded after what it changes so the log stays append-only:
+  `historyRewound` {id} (`agentRewind`: the run stops, and the message and
+  everything after it leave the model's conversation), `messageEdited` {id,
+  text} and `replyEdited` {id, text} (`agentEditMessage`; nothing is sent
+  again), `replyDeleted` {id} (`agentDeleteReply`: the reply ending message
+  `id`'s turn). Each message is found in the model's conversation by its
+  anchor (`anchors.json`: the digest of the text the model got, what the
+  reader typed in it), or for one sent before anchors by its text; one a
+  compaction summarised is refused. A reopened session's replay ends at a
+  change of the history it has not seen, as at a compaction (`SessionReplay`).
+  An event the worker relays from the session's own log — a fork's whole
+  history, a reopened session's replay — carries `historical` and `at`
+  beside its payload, seconds since 1970, when the record was written: the
+  host numbers and stamps every event with the moment it relayed it, so
+  without `at` a whole fork read as a single second and its turns as no
+  time while running and none thinking.
+  `agentFork` reads the conversation `messages.jsonl` kept through message
+  `id` — the segment that holds it, cut after it, so a turn a later
+  compaction replaced is still the context it was read in — including image
+  bytes, untruncated tool results and provider metadata, rather than
+  reconstructing model messages from the visible log. A session that
+  predates the log, or a message it cannot find, falls back to the snapshots
+  below. Its boundary is either
+  a direct `userMessage` or a source message's `conversationMessageTaken`;
+  a queued-but-untaken source is never a model-history boundary. `forks/<message-id>.json`
+  references immutable SHA-256 objects under `forks/objects/`; each completed
+  turn is sealed, so later edits, rewind and compaction cannot rewrite it.
+  Those snapshots are no longer written for a new turn: the log holds every
+  turn, and the manifests stay readable for the sessions that have them.
+  A version 2 manifest names only the turn's messages, and the turn's UI
+  records are derived from the append-only event log when the turn is
+  forked: the log still holds every turn after an edit, a rewind or a
+  compaction, so a copy per turn only made every turn — and every fork —
+  write the whole history again. A version 1 manifest kept one object per
+  record, and that copy is what shortened a fork's visible replies when it
+  had been written from a reopened session's opening summary; it is still
+  read, and its list is used only when the log no longer has the turn.
+  Deriving the records is what repairs such a snapshot — a sealed one is
+  never rewritten to do it.
+  The session captures complete model-message boundaries, then seals at run
+  end and before destructive edits/manual compaction. The model's
+  conversation lives in `messages.jsonl` beside it: one line per record,
+  appended and never edited — a `snapshot` line when a compaction, a repair
+  or the reader's edit rewrites it, and an `append` line for the messages
+  finished since, written after every kwwk event (a tool's result enters the
+  conversation without a `messageEnd`, and a session killed in its first
+  turn used to save nothing at all). A conversation is its last snapshot and
+  the appends after it; what a compaction replaces stays in the file, which
+  is what a fork of an older turn reads. Appending a tail after the
+  conversation shrank is refused — a compaction, a repair and an edit each
+  start a segment of their own. `transcript.json` is still written at each
+  run's end, for a build that predates the log. A state that lost messages
+  is restored from the saved conversation before a prompt, and a history
+  that comes back empty while the log took messages is read back from the
+  last saved boundary — or the reader is told it could not be.
+  The interruption events a reopening writes are what let a transcript a
+  killed process left in the middle be read as a run that stopped. An outstanding tool
+  call cannot replace the last resumable boundary. A fork copies its selected
+  version and its ancestors' objects, so removing the source session does not
+  remove the fork's model context. A missing legacy snapshot is seeded only
+  from surviving messages, never invented from a truncated UI log.
+  Whether a run is going is the app's own record (`ChatRecord.run`:
+  running, stopping, ended), never inferred from the events it happens to
+  have read: a task that ended while the app was away, or a session the host
+  no longer serves, leaves a turn that otherwise still looks as if it were
+  going with nothing left to stop. A task's end clears the replay it was
+  reading past, and the app reconciles with `agentList` at launch and
+  whenever it comes back in front.
+  The app starts the new session with an empty event projection and replays
+  its own log; historical events must not repeat business side effects.
+  The fast opening scan is only a summary, never snapshot input. The first
+  history snapshot after reopening strictly reads the full event log once;
+  later snapshots use that complete cache plus appended records. A failed
+  read leaves no partial cache. Fork copying collects the union of ancestor
+  references and the selected snapshot's verified bytes, then atomically
+  publishes one binary `forks/objects/inherited.plist` (version 1) before
+  publishing ancestor manifests. It owns every byte; no parent links or hard
+  links remain. Each archive key and SHA-256 digest is validated on opening;
+  loose objects remain readable and new captures may add loose objects beside
+  the archive. Selected bytes are reused only within that fork transaction,
+  still checked against their digest, never fetched again from an advancing
+  source. Batch reads pin the object directory once. A failed copy leaves no
+  published partial archive or successful copied-set entries. Damaged objects
+  are still errors. Existing sealed snapshots and saved branches are not
+  rewritten by this fix.
+  Selecting a saved session without an active reader opens its history even
+  when the UI record is empty; an open error is shown and the same record
+  can be retried, rather than leaving a silent empty fork. Fork success must
+  call the root's `open(summary, picked: true)` as well as `sidebar.select`:
+  selecting there only changes the highlight. Both `ChatController.use` and
+  its runtime refresh pass `titlePresentation`, including the branch number,
+  so equally named branches still update the title badge. These UI changes
+  still need installed-device verification. The ordinary request timeout can
+  still finish before a slow fork; pending-fork reconciliation is not yet
+  implemented, and storage-only timings do not prove the three-second
+  click-to-open target. On an explicit
+  stop with an incomplete tool batch, `runEnded` restores the last complete
+  model prefix and seals existing snapshots without recapturing partial UI
+  events. It never invents tool results. Reopening an older unfinished
+  transcript repairs only a recorded aborted run; malformed middle batches,
+  orphan results, damaged objects and IO failures remain errors.
+  General Chat, a picker for turns removed by rewind, and historical system
+  prompt/tool-configuration provenance are not implemented by this change.
+  `ForkContextTests` covers preservation and independent forks; the production
+  object store also has an on-device check at `Tests/HistoryObjects/Check.swift`.
+  Full verification still needs `make harness` on the supported Swift/Xcode
+  host and an installed-device check; the on-device object test is not an
+  end-to-end branching test. `gitCheckpointRestore` (the app's) writes the checkpoint's files
+  back and removes the rest, ignored files left, after committing the work
+  tree on `apelin-backup/checkpoint-<time>`. A failure kwwk
   kept as an NSError's whole `description` (`Error Domain=… Code=…
   "…" UserInfo={…}`, a lost connection: every one before kwwk 0.1.106,
   since then only one with no text of its own) is cut to its localized
@@ -1837,10 +2117,11 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   opener's task, from which the app adopts it as a conversation of that
   project without selecting it (and from `agentList`'s `parentSessionID`
   and `projectName` at launch: `ChatAdoption`). The worker names the new
-  session by its title, else generates one. apelin_conversation_send {project?}
-  → `agentPrompt` to another session as the user's message (never a
+  session by its title, else generates one. apelin_conversation_send {project?, delivery: queue|steer}
+  → `agentPrompt` to another session as a collaborating agent's message (never a
   temporary chat): the host writes `fromSessionID` (the app's is dropped)
-  and clears the mode, provider, model, effort, tier, message ID and
+  and preserves delivery (legacy absent means queue), binds it to cross-project
+  approval, and clears the approval/run mode, provider, model, effort, tier, message ID and
   attachments, and refuses descriptors; the worker records it as
   `prompt` {text, from}, the model reading one line before it naming the
   sending conversation (`ConversationSender`), and the app names the
@@ -1893,6 +2174,65 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   characters or empty, a title past 40, a fourth in one run — and one
   sent within 30 s of the session's last; the host cuts and counts again
   (`AgentNoticeRules`).
+  Questions (2026-11-05, `Tools/UserQuestions.swift`, `AgentQuestion` in
+  ApelinProtocol), in any chat: apelin_question_ask {question, options:
+  [{label, detail?}] (2 to 4), multiple?} → no host request: the call
+  waits on the gate as an approval does, its `approvalRequested` carrying
+  `detail.question` {question, options, multiple}, and the app shows the
+  options in the approval card's place, with Other… for an answer of the
+  reader's own and Skip in Deny's. `agentApprove` brings the reply back:
+  `approve` with `answer` {selected, other?}, or `deny` for a skip. The
+  gate takes an answer only for a question and only one that fits it
+  (`AgentQuestionRules.accepts`: labels of its options, each once,
+  something given, one choice unless `multiple`), and leaves the question
+  waiting otherwise; the host matches nothing to it, since the answer
+  reaches only the model, as the call's result. The card sends what the
+  gate takes (`AgentQuestionRules.fitting`, 2026-11-13): a card can reach
+  an option tapped and then Other… written, which `accepts` refuses, so
+  what the reader wrote stands in place of the option on a question that
+  takes one, labels that are not its options and repeats go, and Other is
+  cut to its limit — the alert no longer reads "answerDoesNotFit" for the
+  card's own doing, and a gate that does refuse reaches it as its sentence
+  (`AgentSession.approve` rethrows it as an `ApelinError`). Owner's decision
+  (2026-11-05): the call blocks rather than ending the turn, so the answer
+  is the same turn's; it rides the approval path so a question survives a
+  closed app, a reconnect and a new attach, and the banner says "Answer
+  Needed" with the question. It is a read (`ToolRisk.readOnly`), so a plan
+  run may ask; Strict lets it through without a card of its own; it is
+  never granted for the session. A picked option is never consent to a
+  step the prompt says needs explicit consent in the reader's reply; the
+  result and the prompt both say so. The journal keeps a result's size
+  only. Tested by `QuestionToolTests` and `Tests/ChatTranscript/
+  QuestionCardCheck.swift`.
+  Run mode (2026-11-11, `Tools/RunModes.swift`, `AgentRunModeRequest` in
+  ApelinProtocol), in any chat: apelin_run_mode {mode: plan | build, why}
+  → the conversation's own run mode, the pill's setting, changed by the
+  agent. A switch to plan asks nobody and is applied at once: a plan run
+  can only read, and the case it is for — a task too large or too unclear
+  for one step — is exactly when stopping to ask would leave it
+  unthought-through. A switch to build is the reader's decision: the call
+  waits on the gate as a question does, `detail.runMode` {mode, why}
+  carrying the agent's own sentence, which the card shows under the title
+  Switch to build mode; `agentApprove`'s approve applies it and deny keeps
+  the plan, the result saying so. `auto` is refused: a run that stops
+  asking is the reader's choice about the device, not the model's about
+  the task. Either way the session records `runModeChanged` {mode, why},
+  which the app's transcript reads into the composer's pill and
+  `ComposerModeStore`, so the change outlives the run and the next prompt
+  goes out with it, a change made while the app was away included. It is
+  a read (`ToolRisk.readOnly`: it changes no file), a plan run may ask for
+  a build, Strict lets it through without a card of its own, and it is
+  never granted for the session. A plan run's wall (`ToolRunner
+  .planVerdict`) lets every read through, and with them the two things a
+  plan is made of: its own record, apelin_todo_write (the list above the
+  message box), and the shell_run presets that only read — `ls`, `cat`,
+  `head`, `tail`, `wc`, `file`, `stat`, `plutil -p`, `git status`,
+  `git diff`, `git log` — matched as the approval policy matches them, as
+  a plain argv, inside the project and never as root. Everything that
+  writes, builds, installs or runs as root is refused before the gate,
+  whatever the approval mode says: a plan is not the approval mode. The
+  prompt tells the agent when to take a plan and that a plan writes its
+  steps with apelin_todo_write before it asks to build.
   Web pages (2026-10-29, `Tools/WebFetch.swift`, `HTMLText.swift`,
   `PublicHost.swift`), in any chat: apelin_web_fetch {url, offset?} → no
   host request: the worker fetches one public http or https page itself,
@@ -2211,9 +2551,32 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   Anthropic-compatible endpoint maps to the DeepSeek model family, not the
   Claude catalog; API-key discovery reads the endpoint's model-list API.
   `EnabledModels` owns only local, non-secret selections and custom IDs;
-  sign-out clears them. The chat picker is an uncached deferred context
-  menu reading enabled IDs only, and opens
-  Model Providers when there are none. API-key model IDs need not occur in
+  sign-out clears them. The chat picker's sheet reads enabled IDs afresh at
+  each opening and opens Model Providers when there are none. Each model row
+  has a trailing Test button (also a VoiceOver custom action); it opens
+  `ModelConnectivityController` without choosing the model or dismissing the
+  picker. `agentModelTest` is app-only and goes to the credential worker, not
+  a conversation: one user `Hi`, no system prompt, history or tools. Providers
+  whose transport cannot avoid adding instructions fail explicitly before a
+  model request rather than silently changing that contract. The result page
+  shows success/failure, stage durations, first-event and first-text latency,
+  total time, reply and any thinking, and a sanitized failure reason. A stage
+  never reached is shown as such, not as zero. These are SDK/request timings,
+  not DNS, TCP or TLS measurements. Results are selectable and stay only in
+  that page; no conversation is created. The worker bounds its probe at 60 s;
+  the app's IPC bound for this operation is 80 s so it does not discard the
+  final report at the ordinary 20 s limit. The result sheet stays open while
+  testing (a local Task cancellation would not cancel an XPC request).
+  `Tests/ModelConnectivity/check.py --ios --entitlements build/Tool.entitlements`
+  compiles and signs the standalone report regression on-device (the entitlement
+  file comes from the device-executables skill). It uses the production report
+  and wire values, with only trailing call commas removed for Swift 5.10, and
+  checks stage timing, partial replies, empty replies, cancellation and deadline
+  races. It does not test the SDK transports or replace `make check`.
+  `ModelConnectivityTests` in ApelinAgentWorkerTests covers the pure-Hi context,
+  optional settings, local-start filtering, missing credentials, blocked prompt
+  providers and failure redaction; run it with the package suite on the CI toolchain.
+  API-key model IDs need not occur in
   kwwk's static catalog; OAuth IDs remain restricted to that provider's list.
   Each login is an `AgentProvider` case kept
   under one store id (`AgentProvider.storeID`), with kwwk's own flows:
@@ -2252,7 +2615,7 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   which kwwk finds the account's Code Assist project, onboarding a new
   account and polling until Google has set it up, and keeps the project,
   the tier and, when Google names it, the email as extras; it renews at Google (`upkeep: .refreshed`, in
-  `KimiIdentity.refreshers()` with the rest) and answers through Code
+  `KimiIdentity.refreshers(for:)` for that account) and answers through Code
   Assist's `streamGenerateContent`. A free Google account signs in too;
   which models a plan serves is Google's. Apelin adds the case, after
   Cursor in the order, and its mark (its official logo on a white plate):
@@ -2292,29 +2655,7 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   kwwk's registration order;
   `AccountDeskTests` fails when kwwk gains a subscription or a stored
   provider (`providerDirectory`) the table lacks, or when a provider here is
-  one neither kwwk nor Apelin can register for a session.
-  Several OpenAI-compatible endpoints (#60: there was one, and adding
-  another replaced it): the first is `openAICompatible` as before, and
-  each further one is a provider of its own, `openAICompatibleEndpoint(n)`,
-  `openAICompatible.<n>` on the wire in that one spelling, n from 2 to 99,
-  kept under `openai-compatible.<n>` (`CredentialProviderID`). So
-  `AgentProvider` is no longer a raw-value enum: it is `RawRepresentable`
-  and `Codable` by hand, one string as before, `allCases` lists the
-  providers there are to sign in to (never an endpoint), and `kind` names
-  the provider whose form, transport, name and mark an endpoint has.
-  Whatever is kept by provider is then kept for each endpoint by itself,
-  with nothing to migrate: the keychain item, the enabled, custom and
-  hidden model IDs, the composer's model. `agentAccountList` lists the
-  login once for each endpoint signed in to, in number order, each under
-  its host, then once more not signed in, which is the one to add: the
-  first while that is free, else the lowest number no endpoint has
-  (`AccountDesk.listed`). kwwk knows one OpenAI-compatible login, so
-  `ProviderRegistration` registers a further endpoint as that login from
-  its own credentials; the model carries its base URL and the key is
-  bound to the resolution, so two endpoints never share one. In Model
-  Providers they are told apart by host, in the list, in the model menu's
-  headings and in Sign Out's question, and Search finds one by its host.
-  OpenRouter signs in both ways
+  one neither kwwk nor Apelin can register for a session. OpenRouter signs in both ways
   under one store id: `AgentAccount.alternativeMethods` names the key form
   beside its browser sign-in, and `agentSignIn{provider, method}` picks one
   (any other method is refused `badRequest` before the task is accepted).
@@ -2322,7 +2663,15 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   (`deviceId`), a sign-in again reuses the recorded one, a first one makes a
   new one (`KimiIdentity`), and neither the sign-in nor a session's refresh
   ever reaches kwwk's `~/.kwwk/kimi-device-id` (sessions build their
-  `OAuthManager` with `KimiIdentity.refreshers()`). Sessions can use every
+  `OAuthManager` with `KimiIdentity.refreshers(for:)`). A session constructs
+  only its selected account's refresher; API keys construct none. Kimi's
+  identity reads the local name through `gethostname` (`PrivateShapes`),
+  never `ProcessInfo.hostName`, which may wait for network name resolution.
+  Provider startup logs time credential reads, refresher preparation and
+  registration separately; the extensions/MCP timer begins after provider
+  resolution, so it never includes that earlier wait. `ProviderStartupTests`
+  covers the per-account refresher set and recorded/new Kimi device ids.
+  Sessions can use every
   provider: the first four keep their `ProviderConfiguration` cases, every
   other is `.stored(storeID:, model:)`. `ProviderRegistration` is shared
   by account verification and conversations: it uses kwwk's registration
@@ -2681,9 +3030,10 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   conversation is restored, its first layout comes inside the restore's
   own showing of it, and a New Chat took its place (issue #38). The
   drawer's pan yields to content scrolled sideways (a
-  code block, a table, the attachments) and to a text selection. Pinned
-  conversations come first, the rest under the day the reader last started
-  or wrote in each (Today, Yesterday, the weekday
+  code block, a table, the attachments) and to a text selection. Conversations
+  form a tree (owner, 2026-11-07): only roots participate in pinned/day
+  sections, under the day the reader last started or wrote in the root
+  (Today, Yesterday, the weekday
   within the week, then the date), newest first (owner, 2026-10-29:
   `SidebarOrder` by `ChatSummary.lastInteraction`, saved as `updated`).
   New Chat sets that time, on an untouched conversation it reuses too, and
@@ -2765,20 +3115,19 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   page's foot, and the list's bottom
   inset follows it. Its actions reach `ChatController` through
   `ComposerView.Delegate`; Send shows the message at once, a local row
-  under the draft's UUID, and empties the composer; the host's `prompt` or
-  `queued` event with that id takes the row's place. Until then the message
-  is kept on disk (`ChatRecord.sending`), and a launch puts one never echoed
-  back in the draft. A failed send removes the row and puts the draft back
-  in an empty composer. A message on its way and a turn running are one
-  state (owner, 2026-11-14: sent offline, a message sat alone until the
-  host answered or gave up): the first message sent to a conversation at
-  rest has its turn's running summary, "Thinking…", under it from the tap,
-  under the id the echo's takes, and the conversation works from then —
-  its spinner in the sidebar, the widgets, and Stop, which takes a message
-  whose send has not answered back into the composer (Live chat and
-  project UI). A send that fails for a reason the agent named is a passing
-  line, "Message Not Sent" over the reason (`SPIndicator`, spoken too);
-  any other keeps its words in the alert. Only one submission is accepted
+  under the draft's UUID, and empties the composer; the host's `prompt`,
+  `queued` or `pendingQueue` receipt with that id takes the row's place.
+  Pending messages live in one compact, scrollable, height-capped panel
+  below the todo list and above the input, never in the transcript until
+  taken. Its rows show text and attachment names, reorder handles and
+  Send Now, Edit and Delete actions. An editor holds its message before
+  opening and keeps the sheet open on a failed save. Snapshot receipts
+  retain attachment metadata for the same file cache as normal prompts.
+  `SessionReplay` counts old snapshots so the first new one ends replay
+  even when recovery, editing or deleting produces no new prompt.
+  Until acceptance the message is kept on disk (`ChatRecord.sending`),
+  and a launch puts one never echoed back in the draft. A failed send
+  removes the row and puts the draft back in an empty composer. Only one submission is accepted
   at a time; switching conversations invalidates its completion so a late
   reply cannot touch the incoming draft. More uses FlowDown's inline
   ControlPanel and GiantButton layout, with its camera, photo, file and web
@@ -2790,11 +3139,13 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   (`ComposerDropPolicy`). Attachments use its
   horizontal preview layout, removal and Quick Look; camera, Photos and
   Files use system pickers, and web text uses FlowDown's ScrubberKit at its
-  pinned revision. The address is read as it is typed (`WebAddress`, tested in `Tests/ChatTranscript`): without a scheme it is https, since the field's placeholder was `https://`, which read as if the scheme were there already, and every address typed without one was refused as invalid (#61; the placeholder is `example.com` now); another scheme, a name and password, white space, or a single word with no scheme is no address, and the notice that says so asks again with what was typed. Live assistant text uses `MarkdownStreamView` with a stable message identity and immediate first fill, so only streaming additions fade in. Each turn is followed while a reader can keep up (`TurnFollowing`): from its user message (a local row just sent, a message a run took, or one another conversation sent) the list follows new output to the end of the turn while the reply streams at no more than 50 tokens a second. The pace is the reply's estimated tokens (`TokenEstimate`: about four ASCII characters to a token, a token to each other character, so Chinese and English both count sensibly) over the time since its first text, judged once a second of it has passed; the first update marks the start and does not count, so neither the first coalesced chunk nor a backlog reads as speed. Faster than that, the turn is followed only until its message reaches the top of the visible area, under the bar's blur, at most a page; the list then holds still while the reply grows below and the downward chevron above the composer shows (Liquid Glass on iOS 26, the system material's blur before it). The chevron scrolls to the latest content once and does not follow again; a drag ends following for the turn, and reaching the bottom does not bring it back: only the next turn does. A message a running turn will take later is shown once on Send and starts no turn until it is taken. The chat header uses a 1 pt private `variableBlur` CAFilter with an alpha-gradient mask on an owned `CABackdropLayer`, following VariableBlur; the old transcript opacity mask and the system top scroll-edge effect are removed. Drafts persist their attachment bytes; submitted and received files are stored in the chat workspace. User attachments sit above the bubble with the same trailing edge. Image previews, PDF first pages and supported Quick Look thumbnails use the same album layout as assistant images; text and other files use document cards with a filename and up to three lines of text, preserving single line breaks and collapsing consecutive blank lines in at most eight passes over the 220-character preview. Each card is capped at the smallest of its natural content width, its user bubble’s width and 350 pt; size labels are omitted. All user attachment previews stay within the maximum user-bubble width. Each image album and document card is at most 30% of the window height; album fitting preserves tile proportions. An album is also no larger than its images (owner, 2026-10-30, issue #20; `MessageImageLayout.frames(aspectRatios:naturalSizes:…)`): shrunk until the image it enlarges least is drawn at its own size, one of its pixels (the original's, read by ImageIO, not the thumbnail's) to each of the screen's (`displayScale`), but no tile under 32 pt on its shorter side, and never larger than those limits, so an icon stays small and sharp while a photo or a screenshot fills the limits as before; an image of unknown size (a PDF page, a Quick Look thumbnail) keeps its album as large as the limits, and a small album's corners round as an icon's. Card borders use the user bubble’s background tint. Attachment changes cross-fade, while ordinary reconfiguration does not. Presentation thumbnails are bounded and cached separately from the original attachment, which remains unchanged for sending, persistence and Quick Look. Ordinary blocks share a 16 pt gap. Unordered, ordered and task-list items use MarkdownView’s independent list spacing with no extra item gap, retaining the renderer’s 4 pt wrapped-line spacing; the transcript normalizer preserves this instead of replacing it with 16 pt. An empty body adds neither height nor spacing. Imports are bound to a chat and draft ID, so a late result cannot
-  land in a newly cleared draft. The model control is below the input
-  (owner, 2026-11-12: 0.4.4 alone had it above, from PR #40, and the owner
-  had it put back; it stays below), the import panel it gives way to in
-  its place, with
+  pinned revision. Live assistant text uses `MarkdownStreamView` with a stable message identity and immediate first fill, so only streaming additions fade in. Each turn is followed while a reader can keep up (`TurnFollowing`): from its user message (a local row just sent, a message a run took, or one another conversation sent) the list follows new output to the end of the turn while the reply streams at no more than 50 tokens a second. The pace is the reply's estimated tokens (`TokenEstimate`: about four ASCII characters to a token, a token to each other character, so Chinese and English both count sensibly) over the time since its first text, judged once a second of it has passed; the first update marks the start and does not count, so neither the first coalesced chunk nor a backlog reads as speed. Faster than that, the turn is followed only until its message reaches the top of the visible area, under the bar's blur, at most a page; the list then holds still while the reply grows below and the downward chevron above the composer shows (Liquid Glass on iOS 26, the system material's blur before it). The chevron scrolls to the latest content once and does not follow again; a drag ends following for the turn, and reaching the bottom does not bring it back: only the next turn does. A message a running turn will take later is shown once on Send and starts no turn until it is taken. The chat header uses a 1 pt private `variableBlur` CAFilter with an alpha-gradient mask on an owned `CABackdropLayer`, following VariableBlur; the old transcript opacity mask and the system top scroll-edge effect are removed. Drafts persist their attachment bytes; submitted and received files are stored in the chat workspace. User attachments sit above the bubble with the same trailing edge. Image previews, PDF first pages and supported Quick Look thumbnails use the same album layout as assistant images; text and other files use document cards with a filename and up to three lines of text, preserving single line breaks and collapsing consecutive blank lines in at most eight passes over the 220-character preview. Each card is capped at the smallest of its natural content width, its user bubble’s width and 350 pt; size labels are omitted. All user attachment previews stay within the maximum user-bubble width. Each image album and document card is at most 30% of the window height; album fitting preserves tile proportions. An album is also no larger than its images (owner, 2026-10-30, issue #20; `MessageImageLayout.frames(aspectRatios:naturalSizes:…)`): shrunk until the image it enlarges least is drawn at its own size, one of its pixels (the original's, read by ImageIO, not the thumbnail's) to each of the screen's (`displayScale`), but no tile under 32 pt on its shorter side, and never larger than those limits, so an icon stays small and sharp while a photo or a screenshot fills the limits as before; an image of unknown size (a PDF page, a Quick Look thumbnail) keeps its album as large as the limits, and a small album's corners round as an icon's. Card borders use the user bubble’s background tint. Attachment changes cross-fade, while ordinary reconfiguration does not. Presentation thumbnails are bounded and cached separately from the original attachment, which remains unchanged for sending, persistence and Quick Look. Ordinary blocks share a 16 pt gap. Unordered, ordered and task-list items use MarkdownView’s independent list spacing with no extra item gap, retaining the renderer’s 4 pt wrapped-line spacing; the transcript normalizer preserves this instead of replacing it with 16 pt. An empty body adds neither height nor spacing. Imports are bound to a chat and draft ID, so a late result cannot
+  land in a newly cleared draft. The model control is above the input
+  (JanXiao, PR #40, 2026-11-11; it was below it through 0.4.3), so the
+  model a chat runs with is the first thing read: the model row, then the
+  import panel it gives way to, then the attachments and the text band on
+  their one ground, where the composer ends; an approval card covers the
+  text band's place. The row keeps
   the exact FlowDown BlockButton geometry and original editor SVGs, with
   reasoning choices from kwwk's supported-thinking-level metadata; High is
   selected by default when supported. The UI offers only supported Low,
@@ -2821,9 +3172,17 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   Model, effort, Speed and Stop blocks fade and reposition on the composer's spring, including
   when the import panel hides or restores the row; Reduce Motion applies
   changes immediately. `AgentOpenRequest.reasoningEffort` and
-  `serviceTier` reach the worker's session configuration. The stop control's icon, text
-  and border are red. It takes a
-  live output cancellation callback and stays hidden without one. Settings stores a global `AgentPermissions.mode`,
+  `serviceTier` reach the worker's session configuration. Since 2026-11-02
+  so do `AgentOpenRequest.modelParameters` and `AgentPromptRequest`'s
+  (`AgentModelParameters`: the context window and the output cap), which
+  Settings ▸ Model Providers ▸ Model Parameters keeps per model
+  (`ModelParameters`, app side): the worker lays them over kwwk's own
+  record before the session reads compaction and the request budget from
+  it, so the figure the user set is the one the agent compacts by. The
+  model row is on the input's own ground, not below the box
+  (`ComposerView.layoutSubviews`), with the context ring at its end.
+  The stop control's icon, text and border are red. It takes a live output
+  cancellation callback and stays hidden without one. Settings stores a global `AgentPermissions.mode`,
   default relaxed, one of Strict / Relaxed / Full (严格 / 宽松 / 完全), with a
   confirmation when changing into Relaxed from Strict, and, for Full, a
   confirmation that root runs without asking followed by `DeviceOwnerCheck`
@@ -3046,11 +3405,75 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   slices, products, dSYMs, `build.log`, the deb), never in the project. Tools
   are the registered toolchain's `usr/bin/<tool>`, posix_spawn'd by argv,
   stdin `/dev/null`, `POSIX_SPAWN_CLOEXEC_DEFAULT`, a process group each
-  (cancel kills the group). clang gets `-isysroot <SDK>`, `-arch`,
-  `-mios-version-min`, `-O`, `-g`, `-fobjc-arc`, `-Wall -Wextra`,
+  (cancel kills the group). clang gets `-isysroot <SDK>` and an explicit
+  `-target <arch>-apple-ios<deploymentTarget>` (the retargeted driver must not
+  infer macOS), `-O`, `-g`, `-Wall -Wextra`,
   `-Werror=unguarded-availability-new`, `-fvisibility=hidden`,
   `-ffile-prefix-map=<project>=.` and the `APELIN_*` defines, run in the
-  project folder with relative sources. Signing is `ApelinCodeSign`, no ldid:
+  project folder with relative sources. `ProductSourcePlan` classifies each
+  expanded source, not the manifest's primary `language`: `.c`, `.m`,
+  `.cc`/`.cpp`/`.cxx`/`.C`, `.mm`, and `.swift` may share one product.
+  Swift compiles first; native sources compile one by one with explicit
+  `-x`, ARC only for Objective-C/Objective-C++, and `cxxStandard` plus
+  configuration `cxxFlags` only for C++/Objective-C++. Native objects retain
+  their relative directories so similarly named sources never overwrite
+  each other. A product with Swift sources or linked `swiftModules` links
+  through swiftc; otherwise clang; C++ sources add libc++ automatically.
+  Both linkers receive library/framework search paths and weak frameworks.
+  A product's `bridgingHeader` imports C/Objective-C declarations into
+  Swift, with header search paths and the Clang defines; its path, not its
+  source bytes, is in the approval digest. In a mixed Swift/Objective-C
+  product, native sources may import `<ProductName-Swift.h>`, emitted into
+  a per-product/per-architecture directory. A mixed executable without
+  `main.swift` parses Swift as a library (native main or Swift `@main`);
+  pure Swift executables retain their previous top-level behavior.
+  Direct Swift/C++ interop is opt-in with `cxxInterop: true` on a product
+  or a vendored Swift module. A project's `module.modulemap` and C++ headers
+  live under its `headerSearchPaths`; Swift imports that Clang module and
+  uses the compiler-supported C++ types directly, without a C ABI wrapper.
+  `CXXInteropSettings` propagates interop, header search paths and explicit
+  standards through Swift module dependencies. An explicit `false` that
+  conflicts with an enabled dependency, conflicting standards and C++11 in
+  interop mode are errors; the default standard is C++17. CLT 15 / Swift 5.9
+  or newer and the module compiler's CPU features are required.
+  Swift gets `-cxx-interoperability-mode=default`, the resolved C++ standard,
+  the native defines, and `cFlags`/`cxxFlags` through `-Xcc`. Native C++ gets
+  the same standard and inherited header paths. Interop links libc++ even
+  for header-only C++ or C++ used only by a Swift module. Plain Swift modules
+  keep their previous configuration. Header and module-map contents are
+  source edits, never hashed into approval descriptions.
+  The importer's macro set is part of clang's module-cache key, so it never
+  sees the identity strings — `APELIN_BUILD_ID`, `APELIN_PACKAGE_ID`,
+  `APELIN_VERSION`: one extra `-D` on device rebuilt every imported
+  standard-library module (a warm import of `<vector>` and `<string>` took
+  4 s, the same import with one more `-D` took 183 s). Native compilation
+  still gets them, and `APELIN_BOOTSTRAP_*`/`APELIN_CONFIGURATION_*` stay in
+  the importer because a header may select declarations by them — so the
+  standard library is compiled once per bootstrap and configuration, and a
+  project's own defines fork it too. The cache lives in
+  `Builds/.swift-module-cache/<toolchain>-<sdk>`, shared by every build, and
+  the first build that imports the standard library is slow — 222 s measured
+  for `<vector>`/`<string>`, then 4 s — so it is kept, never cleaned with the
+  build.
+  A product may not have both a `bridgingHeader` and C++ interop, and the
+  build refuses one that does: with the importer on, Swift never reads the
+  bridging header, so every declaration in it disappears with no diagnostic
+  (measured on CLT 15.3 / Swift 5.10, with and without `-Xcc -std`). C
+  declarations belong in a module of a `module.modulemap` under
+  `headerSearchPaths`, imported beside the C++ one, and that module carries
+  `[extern_c]` (or the header its own `extern "C"` guards): the importer
+  reads the header as C++ there, and without it the C functions are exported
+  C++-mangled and fail only at link, silently. That combination was
+  run on both architectures.
+  `python3 Scripts/test-mixed-build-device.py` compiles the actual pipeline
+  methods in a small signed harness and runs eleven cases for arm64 and
+  arm64e on device, including direct C++ construction/member calls,
+  header-only heap allocation, a C module beside a C++ module, and
+  transitive Swift modules, plus the refusal above; its outputs
+  stay in `.build/mixed-device`. It checks
+  compile/link/runtime only, not host integration, packaging or installation.
+  XCTest and the full `make check` remain CI's job on this device without
+  make/Xcode. Signing is `ApelinCodeSign`, no ldid:
   byte for byte what `ldid -Hsha256 -S[entitlements]` writes. It is the one
   signer: the toolchain retarget (`Packages/ApelinToolchain`,
   `MachOImage.signed`) lays out its own slice but builds the blobs with the
@@ -3058,6 +3481,45 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   device fixtures there hold too; never a second copy. Script steps
   run with the bootstrap's own interpreter, in the project folder, as
   mobile; Confirm reviews them through the build digest before `buildStart`.
+- **A compile is reused by content, never by time** (owner, 2026-11-15;
+  `BuildCache`): a build wipes its work directory, so what a compile made is
+  kept beside the builds — `Builds/.build-cache/<projectID>/`
+  (`BuildLayout`; beside, and not inside, `.swift-module-cache`, which the
+  compiler writes and this cache never reads). A unit — one Swift module per
+  architecture, a product's own Swift compile, one C-family file — is
+  compiled again only when its key changes: the toolchain and SDK digests,
+  `-target`, `optimization`, `debugInfo`, the flags and defines that compile
+  passes, every source's SHA-256, every regular file under the declared
+  `headerSearchPaths` and the `bridgingHeader`, and the keys of the modules
+  it imports. Never a modification time, never `APELIN_BUILD_ID` for Swift
+  (it is not passed to it; a C-family object's key carries the whole define
+  list, the build ID among it, so those compile every build — a documented
+  macro, not a bug), never the work directory or a path under the project or
+  the install root, which the key spells relative, so a renamed jbroot keeps
+  what the last boot compiled. Every byte restored is checked against its
+  digest; an entry that does not verify is compiled again and replaced, and
+  a cache that cannot be written never fails a build. Entries are written in
+  a temporary directory and renamed into place, two are kept per unit and
+  1 GiB in all, least recently used first, and a project's cache is removed
+  with the project (`ProjectDeletion`). Link, `lipo`, `bundle-resources`,
+  `dsym`, `strip`, `sign` and packaging still run on every build: the linked
+  image carries a new `LC_UUID`. The log gives each unit's time or says it
+  was reused, and ends `compile cache: N unit(s) reused, M compiled`; bump
+  `BuildCache.version` when a key or an entry changes shape.
+- **A build keeps its own folder only while it is worth reading** (owner,
+  2026-11-15; `BuildCleanup`): each build leaves
+  `Builds/<projectID>/<buildID>/` — module objects, linked slices, the `.app`,
+  its dSYM, the package, about 94 MB for a Swift app — and sixty-five of them
+  were six gigabytes, the app's largest tenant. Nothing reads an old one (a
+  build wipes its own work directory; the compiled code it reuses lives in
+  `Builds/.build-cache/`), so before a build starts the project's older
+  folders go: the newest two stay — the package most likely installed and the
+  dSYM a crash of that installed build is read with — and a folder written in
+  the last hour stays too, since another worker's build may still be writing
+  it. One log line says how many went and how much they held. A release is
+  published when it is made: after two more builds its package is gone.
+  Artifact records are left alone, and the Distribute page lists only the
+  packages whose file still exists.
 - **Its task events**: `stage {stage, product?}`, `log {line}`, `diagnostic`
   (a `ProjectDiagnostic`; clang and ld lines parsed to file, line, column,
   severity), `artifact` (a `BuildArtifact` with `path` — the deb, inside
@@ -3503,6 +3965,17 @@ manifest.json            the owngoal-packages entry
   scripts), the system-only check, and apelind and
   every worker typechecked for macOS. Run this first. `SWIFTPM_SCRATCH`
   moves the package's build directory (default `Packages/ApelinKit/.build`).
+- `bash Scripts/test-application-install.sh` — standalone IPA signing regression
+  on the Mac, also run by `make harness`. It compiles the production installer
+  with its two core path utilities, checks roothide/rootless argument spelling
+  and keeps the entitlements file alive through signing, cleaning it on success,
+  a refused signature and a thrown runner error. On a prepared device use
+  `bash Scripts/test-application-install.sh --device build/Tool.entitlements`
+  after placing the device-executables skill's tool entitlements there. The
+  script signs the test runner and tests real `ldid` on a project-local fixture;
+  it installs nothing. This does not replace a full app build or an IPA install
+  on each bootstrap. The full app still needs the Xcode/SDK tier above; the
+  standalone check can run with Swift 5.10 and the registered iPhoneOS SDK.
 - `make check` — project and packaging validation, including the floor greps.
 - `make old-runtime` — on Apple's iOS 15.5 runtime, unbooted: what one call
   through an `@objc` thunk leaves behind, by bridged type, and the real
@@ -3518,6 +3991,14 @@ manifest.json            the owngoal-packages entry
   `let` first).
 - `make build` — unsigned app, daemon and workers for iPhoneOS.
 - `make deb` / `make deb-all` — roothide and rootless packages, verified.
+- `make fast` — the loop, and only that: the app built per file and put over
+  the one on the vphone, exactly `make vphone-app INCREMENTAL=1`. It ships no
+  package, so the daemon, the workers and dpkg's record stay as the last
+  package left them. `FAST=1` on a packaging target still means every gate and
+  test skipped (no checklist, no `check`, no `harness`, no catalog gate):
+  `make vphone FAST=1` is that whole package straight onto the vphone. CI runs
+  every gate, and a release ships only what CI built — do not tag a build
+  either of these made.
 - Packages go onto a device through Irisin's installer (`irisin-cli install
   --yes <deb>`, as root), never apt or dpkg; `install-device.sh` and
   `device.py install` do so.
@@ -3534,6 +4015,22 @@ manifest.json            the owngoal-packages entry
   workers and dpkg's record stay as the last package left them, so a
   change outside the app, and anything that ships, takes `make vphone`.
   `make install-app` is the same onto `DEVICE_HOST`.
+- **The loop compiles per file: `make vphone-app INCREMENTAL=1`.** Release
+  sets `SWIFT_COMPILATION_MODE = wholemodule`, so one edited Swift file
+  recompiles the app target's every file — a minute, every time. The flag
+  passes `SWIFT_COMPILATION_MODE=incremental` to xcodebuild instead: same
+  Release products, same dependencies already built there, but only the
+  files that changed are rewritten, which is seconds. Reach for it
+  whenever the edit is inside the app; the mode change costs one rebuild
+  the first time and after each switch back. Debug (`CONFIGURATION=Debug`)
+  is per-file by itself, but its products are a second tree nothing else
+  has built, so the first Debug build compiles every dependency too — do
+  not mistake that cold build for the loop.
+- **Never interrupt a build to start another one.** A killed `xcodebuild`
+  leaves the build database half-written, and the next run throws away
+  what it cannot vouch for: the dependency packages rebuild in full, which
+  is fifteen minutes where a minute was asked for. Stop a build only when
+  there is nothing left to run.
 - `make device-test [SUITE=smoke|regression|…]` — console scripts on that
   vphone or device (`DEVICE_HOST`), set up, followed, checked and cleaned up
   by `Scripts/device.py`; `make device-run SCRIPT='i1-smoke terminal'` for
@@ -3542,9 +4039,12 @@ manifest.json            the owngoal-packages entry
   the rest (`call` one operation, `out`, `crashes --pull`, `screenshot`,
   `kill-host`, `shell`).
 
-Give every parallel worker its own `DERIVED_DATA=/private/tmp/<name>` — spelled
-`/private/tmp`, never `/tmp`, or a package manifest that strips its own
-checkout path finds no headers.
+Give every parallel worker its own `DERIVED_DATA` — each worktree's default
+under `build/` is already its own; two workers in one checkout take
+`/private/tmp/<name>` (spelled `/private/tmp`, never `/tmp`, or a package
+manifest that strips its own checkout path finds no headers). Keeping the
+folder across sessions matters more than it looks: it is also SwiftPM's
+`SourcePackages`, and a fresh one refetches every pinned dependency.
 
 ## Package Pages
 
@@ -3748,9 +4248,9 @@ adding a dated record beside it.
 - `agentPrompt` accepts an optional message UUID and descriptor-indexed attachments (at most eight, at most 32 MiB each). The worker saves them under random workspace-relative `Attachments/` paths; filenames remain display metadata. The session log records the message UUID and relative attachments, deduplicates a retried send, and supplies image content to the provider. Tool-returned images are saved the same way and replay into the image album UI. So are the files `file_show` puts in front of the reader (2026-10-29, `Tools/FileShow.swift`), the agent's one way to show a project file, since a path or a `file:` link in a reply opens nothing: one to eight regular files inside the project, each at most 32 MiB, every one checked before any is copied into `Attachments/` as it is then, listed in the result's `details` (which no provider reads) and handed by the session to the call's `toolResult` attachments, where the album, the document cards and Quick Look show them. A read preset with no host request; the model hears what was shown, never the contents.
 - Every app prompt also carries the current approval mode and Ask Before Using the Screen, which the message's `<system-state>` names beside the mode (owner, 2026-10-30). The host updates its ledger and session table before forwarding; the session updates its tool policy and metadata, records the message (its `prompt` or `queued` event, the text alone), then builds the message's `<system-state>`: the mode reaches the model there, with whatever the session's system prompt shows that changed since (Prompt caching). A prompt naming the provider and model the session already resolved, with the same stored sign-in, keeps that resolution: no token exchange before the message is recorded, and a signed-out provider is still refused. An existing pending approval is not silently accepted. A bounded, tool-free completion on the current model summarizes the first user message into a `title` event; title failure leaves the local fallback and does not fail the turn; a later message asks again, until three completions have named nothing (`maximumTitleMisses`) or, while the project keeps its generated name, on every message. A JSON answer in one Markdown fence is read as the JSON.
 - `ChatRuntime.transcript` brings a conversation's rows up to date only when they would differ (`ChatTranscriptCache`, kept for the followed conversations and the page's). `ChatTranscript` is a fold: new events (`ChatRecord.events` are only appended to) are read onto the rows the earlier ones made (`append`), and the rows shown are made afresh from those, as a build from every event at once at the same `now` makes them (`Tests/ChatTranscript/TranscriptFold.swift` compares the two over random logs). A change to the messages it is sending, or a `quietDeadline` passed since it was shown, shows the rows again, so the refresh `ChatQuietWatch` asks for at the deadline adds the stand-in; only a sender's new title builds it again from every event. A row equal to one shown before is that very value, so the page's comparison stops at its storage. The composer is told of its approval request and its Stop only when either changes, a long-poll that ran out with nothing writes nothing, and a conversation is written once at a time, then once more with what changed meanwhile.
-- Working state comes from the reader's Send and from session events, never a late send acknowledgement: `ChatRuntime.submit` makes the conversation work while its message is on its way (`summary.isWorking`), a turn or compaction of the followed session keeps it working, and a send that fails or is stopped leaves it working only if one of those still does (`works`). `stop` withdraws every message whose send has not answered (`PendingSend`): its row goes and its draft returns as a failed send's does, and whoever waits for the send hears it cancelled at once, so the composer takes the next Send without waiting for the host; the send itself runs to its own end, where the host is not handed a message it has not got, and the run of one it had taken is stopped once the send answers, since a stop before the run starts finds nothing to stop; a session that ended with the host answers `notFound`, which is no failure to stop. An approval card needs a turn of the session actually running (`runsTurn`), so a message on its way never brings back a request a stopped session left. Completed zero-second, zero-tool thought rows are omitted. A positive duration without tools shows only the duration; tools without a positive duration show only their count; “and” joins the clauses only when both values are positive. Thought headers use Litext numeric transitions, with reduced motion respected. User messages and reply text are selectable.
+- Working state comes from session events, never a late send acknowledgement. Completed zero-second, zero-tool thought rows are omitted. A positive duration without tools shows only the duration; tools without a positive duration show only their count; “and” joins the clauses only when both values are positive. Thought headers use Litext numeric transitions, with reduced motion respected. User messages and reply text are selectable.
 - The conversation alternates a single thinking summary with response content. Consecutive thinking steps merge across tools and approvals. Tool calls and completed approvals stay out of the main transcript; tapping the summary opens their ordered trace in a form sheet, a list of the steps, provider-supplied thinking included, each opening its own plain text. Headers use body-size 50% primary text aligned to the body margin, with a sentence for duration and tool count. Pending approval still replaces the composer.
-- Every agent tool, MCP tools included, requires a short `reason` (`ToolReason`), stripped from the arguments before the approval gate, the fingerprint, the tool or the host sees them; the `toolCall` event keeps it. The file tools end their result's first line with `+a -b` lines added and removed. While a turn runs, its trailing summary stays unfinished across calls and approvals, the run's received tokens climbing at the trailing end of its title line (and of the summary above the reply while the reply streams). Once the summary has a call, `ToolCallBannerView` shows one line under it, at the reading width, between hairlines on a 5% grey ground drawn out to the row's edges: the newest call in its trace (`ToolCallBanner`), by its reason, or its title for a call made without one, and for a file tool (`ToolCallBanner.fileTools`) the file's name first, then the lines added in green and removed in red once its result is in, read from the result's first line (a failed call has none), so truncation takes the end of the reason, never the numbers. Thinking after a call leaves that call there; nothing of the thinking shows (owner, 2026-10-24: no thinking tail, typing or character fade). On the same summary, a new call, or its counts coming in, fades in over 0.2 s; the line's first call, a row taken over by another summary and everything under Reduce Motion show at once. VoiceOver reads the line after the title: the reason, then the file and its counts in words as its value. Only the running summary in the transcript has it; the trace sheet lists every call and opens each whole. The running summary reads “Waiting for Network…” after a `waitingForNetwork`, until the request is asked again, and “Reconnecting…” after a `reconnecting`, each until the request made again streams or the run moves on, else “Executing N tools…” only while N calls await a result, “Thinking…” otherwise, and its title changes at most once a second: the first change at once, the latest of the rest when the second is up. A running summary stands in under a prompt, or under images a tool returned, until the turn shows something, with the id its next thought takes, and `toolCallPreparing` starts one while the model writes a call's arguments, so a turn never shows a gap. One stands in under a message on its way too (owner, 2026-11-14): the first of `sending` when no turn runs starts the next one, and `ChatTranscript.show` puts the summary its echo will have under it, under the same id, so opening the session, a reopened session's replay and the host recording the message all pass with the turn already shown at work, and the echo and the first thought change nothing on screen; any other message on its way waits, faded, for that turn. One stands in under the turn's last reply (or error) too once the running turn has gone `ChatTranscript.quietInterval` (1.5 s) without an event — the model may be writing a call it has not announced, or the provider has stalled —, never under a running summary or a waiting approval. The transcript is given the time (`now`) and answers `quietDeadline`; the page builds its rows again once, then (`ChatQuietWatch`), and nothing polls. The reply's next thought, call or message start takes the stand-in's id, so it becomes that row with no flash, and more of the reply ends it. A `messageDiscarded` takes back the rows its message made, while it was still streaming, and leaves unanswered again what it answered, so the stand-in comes back under the same id and the retried reply is drawn once, never under the partial one. An `error` is a row of its own kind (owner, 2026-11-14; `ChatFailure`, `ChatFailureRow`), never drawn as a reply: one line in red naming what went wrong by the event's `reason` (“No Internet Connection”, “Unable to Reach Model Provider”, “Request Timed Out”, “Sign-In Not Accepted”, “Usage Limit Reached”, “Too Many Requests”, “Model Provider Error”, “Chat Too Long”, and “Something Went Wrong” for an error with no reason or one this version does not know), and under it, in the secondary colour, what to do where the reason says it (connect, check the network or proxy, send again, check the sign-in in Settings ▸ Model Providers, compact the context) and otherwise the provider's own words; plain selectable text, one VoiceOver element reading both lines. The row's `text` stays the recorded message, so following, unread and the journal read it as before. Transcript content is centred in at most 730 pt, the composer card's widest, so the two edges line up; the list itself spans the page's safe area side to side, so its margins scroll, and stops at a vertical bar's strip, which is the bar's (iPhone Duo at the 27.1 SDK tier: a trailing safe-area inset on one side only).
+- Every agent tool, MCP tools included, requires a short `reason` (`ToolReason`), stripped from the arguments before the approval gate, the fingerprint, the tool or the host sees them; the `toolCall` event keeps it. The file tools end their result's first line with `+a -b` lines added and removed. While a turn runs, its trailing summary stays unfinished across calls and approvals, the run's received tokens climbing at the trailing end of its title line (and of the summary above the reply while the reply streams). Once the summary has a call, `ToolCallBannerView` shows one line under it, at the reading width, between hairlines on a 5% grey ground drawn out to the row's edges: the newest call in its trace (`ToolCallBanner`), by its reason, or its title for a call made without one, and for a file tool (`ToolCallBanner.fileTools`) the file's name first, then the lines added in green and removed in red once its result is in, read from the result's first line (a failed call has none), so truncation takes the end of the reason, never the numbers. Thinking after a call leaves that call there; nothing of the thinking shows (owner, 2026-10-24: no thinking tail, typing or character fade). On the same summary, a new call, or its counts coming in, fades in over 0.2 s; the line's first call, a row taken over by another summary and everything under Reduce Motion show at once. VoiceOver reads the line after the title: the reason, then the file and its counts in words as its value. Only the running summary in the transcript has it; the trace sheet lists every call and opens each whole. The running summary reads “Reconnecting…” after a `reconnecting`, until the request made again streams or the run moves on, else “Executing N tools…” only while N calls await a result, “Thinking…” otherwise, and its title changes at most once a second: the first change at once, the latest of the rest when the second is up. A running summary stands in under a prompt, or under images a tool returned, until the turn shows something, with the id its next thought takes, and `toolCallPreparing` starts one while the model writes a call's arguments, so a turn never shows a gap. One stands in under the turn's last reply (or error) too once the running turn has gone `ChatTranscript.quietInterval` (1.5 s) without an event — the model may be writing a call it has not announced, or the provider has stalled —, never under a running summary or a waiting approval. The transcript is given the time (`now`) and answers `quietDeadline`; the page builds its rows again once, then (`ChatQuietWatch`), and nothing polls. The reply's next thought, call or message start takes the stand-in's id, so it becomes that row with no flash, and more of the reply ends it. A `messageDiscarded` takes back the rows its message made, while it was still streaming, and leaves unanswered again what it answered, so the stand-in comes back under the same id and the retried reply is drawn once, never under the partial one. Transcript content is centred in at most 730 pt, the composer card's widest, so the two edges line up; the list itself spans the page's safe area side to side, so its margins scroll, and stops at a vertical bar's strip, which is the bar's (iPhone Duo at the 27.1 SDK tier: a trailing safe-area inset on one side only).
 - `ProjectPickerController` lists real projects; `NewProjectController` chooses a catalog template, using its default parameters and calls `projectCreate`. Settings includes a read-only Templates catalog with single-line names with source-file byte counts at the trailing edge, no subtitles and no disclosure navigation. The built-in `wiki.qaq.apelin.workspace/empty` template creates only a workspace identity manifest, atomically and without SDK/toolchain requirements. It supplies no build or install baseline; a build requires a real build description.
 
 - Templates are a single read-only release catalog, with additions and corrections submitted as repository pull requests. There is no create/delete action or separate user template library. `make template-archive` validates and reproducibly packs sources, support files and licenses as `Apelin_<version>_Templates.tar.zst`; CI records its checksum and Release publishes that exact artifact without rebuilding. The command-line tool templates' `Tool.entitlements` carry the app templates' GPU and IOSurface IOKit user-client list under both keys from `wiki.qaq.apelin.dev.cli` 0.1.1 (owner, 2026-10-29; `make check` holds the app's entitlements and every app and cli template's to `Scripts/check-gpu-entitlements.py`, while a tweak or preference bundle, a library, runs with its host process's), and a project keeps the entitlements its template wrote, so a cli project made from 0.1.0 has no list until one is added, a build description change Strict reviews. Every template writes its extension's package manager icon on Pages, `https://owngoal-dev.github.io/Apelin/icons/<extension id>.png`, as `package.icon` (owner, 2026-10-29; app and tweak 0.1.1, cli and preferences 0.1.2), which the build writes as the deb's `Icon`, so a package manager shows it beside the installed package and in the user's package repository; the user keeps it or names their own https image, a packaging description change Strict reviews. It is not an app's own icon, nor a Settings row's: the preference bundle template carries that one in its bundle from `wiki.qaq.apelin.dev.preferences` 0.1.3 (owner, 2026-10-30, issue #19), `Resources/icon.png` with its @2x and @3x at 29 points, the extension's plate scaled from the `ProjectIconPreferences` image set, named by the PreferenceLoader entry's `icon`, for the developer to replace. A project made before has none and keeps its digests.
@@ -3831,10 +4331,10 @@ project metadata without changing the selected folder or chat. All Projects
 uses type section headers and single-line display names.
 
 The chat's More menu (`ChatActions`) acts on its conversation and its current
-project, in four groups: Rename… and Compact… (the conversation); Open in
-iGhostVT and Open in Fila; the project's Rename…, Export… and Distribute…;
+project, in four groups: Rename… and Compact… (the conversation); Open Terminal
+and Browse Files; the project's Rename…, Export… and Distribute…;
 and Delete Conversation…. General
-Chat has Rename…, Compact…, the two Open items for the conversation's own `Temporary/<conversation>/`,
+Chat has Rename…, Compact…, the two folder items for the conversation's own `Temporary/<conversation>/`,
 made if missing (`ProjectActions.temporaryDirectory`), and Delete
 Conversation…. Delete Conversation… (owner, 2026-10-30) is the sidebar's
 Delete (`SidebarController.delete(_:from:presenter:)`), but always asks
@@ -3866,9 +4366,24 @@ owner, 2026-10-24); it is disabled, saying what is missing, for a manifest
 with no `build` and for a workspace with no `external` script, and the
 distribution page checks again, lists the check's errors (a script that is
 not in the project, say) and keeps Build off until they are fixed.
-Fila opens the canonical folder with `fila://open?path=…&tab=new`;
-iGhostVT 1.6.19 or later opens `ighostvt://new?directory=…`, a directory-only URL
-that cannot carry a shell command. Both apps are package dependencies. Project
+Open Terminal and Browse Files are Apelin's own pages, `TerminalPresenter` and
+`FileBrowserPresenter`, which the app shows in place of the page it came from;
+neither needs another app installed. A project's chat hands over its canonical
+folder as both the directory and the project root; a General Chat hands over its
+temporary folder and no project root, so nothing is opened at the user's home.
+The sidebar's file rows offer Open Terminal in their long-press menu — the
+folder a file sits in, or a folder row, itself — with the root the browser
+already holds, while a tap still opens the file, or toggles the folder, as
+before. Settings ▸ SDKs and
+Toolchains reach the same browser on their own folders (`browseFiles`, the old
+`revealInFila` replaced); those folders are a browser's to look at, not to edit,
+and each of those pages still removes an SDK or a toolchain with its own Remove,
+which takes the record with the files. Neither Fila nor iGhostVT is a package
+dependency any more, and `Scripts/check-retired-apps.py`, which `make check`
+runs, keeps it that way: it refuses a `fila://` or `ighostvt://` URL, a `scheme`
+assigned either name, either bundle identifier written into a source file, a
+`LSApplicationQueriesSchemes` entry for either, and either package in `control`'s
+Depends — attribution in a comment names none of those and passes. Project
 export reuses `transferExport` and the real `.apeproj` transfer format; no new
 archive format or exporter is introduced. Distribution sends `buildStart` with
 its optional `bootstrap` (`roothide` or `rootless`); omission retains the current
@@ -3902,9 +4417,33 @@ requires going back and a new run. The table uses stable diffable identities and
 reconfigures progress rows in place. Each release build produces its own package
 and dSYM through the existing complete build pipeline (see `Documents/Distribution.md`).
 
+Terminal and Browse Files are read as a list and a path. A terminal page opens
+its sessions as the system's own session list — a sheet on a narrow screen, a
+popover where there is room — each row naming its project or folder and saying
+that it runs, connects or has ended, with New Terminal among them. A session
+that has ended leaves the list by a long press on its row or a swipe across
+it, and leaving takes only the record: the folder the session ran in and its
+saved output stay. Removing the session on screen selects the one beside it;
+removing the last leaves the empty page and New Terminal, and starts no shell
+on its own. The file browser's path is its breadcrumb: every folder on it is
+a tap that opens that folder, the strip scrolls sideways when the path is
+wider than the screen, and looking at the folder already open keeps the list
+where the reader left it. Neither the breadcrumb nor a deletion changes which
+project or conversation the files belong to. These pages have model and unit
+checks only — none of their screens has run on a device — so this paragraph
+describes intent, not verified behaviour (Device-Validation ▸ Still to run).
 
 The agent's system prompt (`ApelinAgent/Session/SystemPrompt.swift`) is kept
-short, after pi's: the language the user writes in, for the reply, every
+short, after pi's. Its text is `Packages/ApelinAgent/Prompts/*.md`, one file
+per section, compiled in as `SystemPromptText.swift` by
+`Packages/ApelinAgent/Scripts/embed-prompts.py` (never a resource bundle,
+whose accessor carries the build path); edit the Markdown and push: the Debug
+build runs `Scripts/sync-prompts.sh` before building, which regenerates the
+Swift, builds with it, and on a push to main commits it as github-actions[bot]
+and pushes it back (not when main has moved on meanwhile); CI's jobs
+regenerate without committing, and `make check` fails when the two differ. `SystemPrompt.make`
+picks the sections and their order; `# Environment`, the MCP servers and the
+skills list stay Swift, made from facts. What it says: the language the user writes in, for the reply, every
 progress note between tool calls and every question, even after English
 tool results (when that is unclear — code, a log, one word, a pasted
 file — the system language `<system-state>` names; code, identifiers, paths
@@ -4270,11 +4809,16 @@ one are out of reach without wrapping `AgentOptions.streamFn`, an owner
 decision): a tool call or an approval that outlasts it costs one such write
 too, which is why `apelin_conversation_read` waits at most 180 s and is
 called again rather than waiting ten minutes. Extra requests: a title
-completion (no tools, at most 3000 characters in and 160 tokens out) for the
-first message, for later ones until it names the chat (three that name
-nothing at most), and on every message while the project still has its
-generated name; compaction, automatic at 75 % of the window or
-`agentCompact`; nothing at reopen, where the transcript is read back (the
+completion (no tools, at most 3000 characters in; 512 output tokens, or
+4096 when the model reasons) for the first message. An empty, malformed or
+failed answer retries within the same task, after one second, up to three
+attempts of twenty seconds each; Stop cancels the attempt and the retry wait.
+The source is fixed when the first nonempty input is accepted, and recovered
+from the existing event log on reopen, never replaced by a follow-up. Once
+the chat has a title, later messages may still propose a name while the project
+has its generated name; they never replace the chat title. Compaction runs
+automatically at 75 % of the window or through `agentCompact`; nothing is
+requested at reopen, where the transcript is read back (the
 tool-name migration is idempotent) and the next request finds the prefix the
 last one cached. Known in kwwk, not worked around:
 `ProviderImageBudget.clamp` drops the oldest image one at a time past a
@@ -4474,3 +5018,99 @@ fragment. The chat's ListViewKit keeps its own update mechanism.
   signs it with `Packaging/ApelinWidgets.entitlements` and reads them back;
   `install-device.sh --app` signs it too, and the rpath check takes an
   `.appex` as its own `@executable_path`.
+
+## Conversation tree
+
+`ChatSummary` keeps optional `parentChatID`, `relationship` (`branch` or
+`derived`), `branchNumber` and `lastBranchNumber`. These are sidebar relationships,
+never the host's authorization lineage or permission to open more agents. A fork
+reserves its parent's next number on disk before asking the host; deleted or
+failed branches do not release numbers. `ChatLineage.projected` follows direct
+parents for branch titles, without appending ancestor numbers. Attached branches
+cannot be renamed separately; derived chats keep their task titles. A missing
+parent leaves the saved title and promotes the subtree rather than deleting it.
+
+`ChatAdoption.restoreLineage` repairs existing derived chats only from unambiguous
+saved, non-historical `conversationOpened` events or host `parentSessionID`.
+Cross-project edges, duplicate session IDs, conflicting evidence and cycles are
+not adopted. Old forks did not record a parent and remain roots; a title is never
+used to guess one. Host results are adopted to a fixed point so nested children
+are not lost just because they were listed before their parents.
+
+`SidebarTree` projects each root into chat rows and nonempty Branches / Delegated
+Chats categories, recursively. `SidebarTreeCell` draws indentation, continuing
+ancestor guides, a superscript branch number, and a disclosure with a VoiceOver
+custom action. Conversation taps open; category taps and disclosure taps toggle.
+Expansion keys are saved in `sidebar.expandedConversations.v1` in preferences.
+Search reveals matches and their ancestors without overwriting those preferences;
+a conversation link clears search and reveals only the selected path. Collapsed
+ancestors keep descendants' working/unread indicators. Pinning a descendant
+promotes the root to Pinned without duplicating the descendant. Deleting one
+conversation still deletes only that conversation, never its whole subtree.
+
+`Scripts/test-chat-transcript.sh` includes `SidebarTreeCheck` and
+`ChatLineageCheck`. The smaller `bash Scripts/test-sidebar-tree.sh` runs the pure
+production tree/title rules on a Mac. On a prepared device use
+`bash Scripts/test-sidebar-tree.sh --device Extensions/Development/wiki.qaq.apelin.dev.cli/templates/objc/Packaging/Tool.entitlements`;
+it compiles and signs its project-local harness, also type-checks the UIKit tree
+cell, and installs nothing. It does not replace the full app build, controller
+integration tests, or device UI testing (expansion, guides, Dynamic Type, RTL and
+VoiceOver).
+
+The terminal and the file browser have the same two-sided arrangement, and the
+same limits. `Scripts/test-file-browser.sh`, `Tests/TerminalUI/run.sh` and
+`Scripts/test-terminal.sh` each take `--device <tool.entitlements>` and run their
+model checks on a device; each points `TMPDIR` at a folder of its own under
+`build/`, made through the path the bootstrap's shell sees and handed on as the
+run-time real path, so a fixture never lands outside the project. `make harness`
+runs the terminal page's through `Tests/TerminalUI/run.sh` on the Mac and the
+backend's through `test-session-host.sh`, against the modules `swift build`
+leaves; `Scripts/test-terminal.sh` exists for the device, where `swift build`
+does not run, and copies the sources into one scratch module with the package
+imports, Swift 6's trailing commas and a `\.self` key path rewritten. None of
+them builds the whole app, links Ghostty, or presses anything on screen: the
+page and the session are type-checked against stubs or parsed only, and the
+backend's checks compile `SpawnIdentity`/`ProcessCredentials`/`verifyDropped`
+stand-ins, so a real root host starting a mobile shell is still not run.
+
+## Building without a Mac
+
+The app cannot be built on the device. `make build` needs `xcodebuild`, the
+iPhoneOS SDK in `IOS_SDK_TIER` and SwiftPM 6.1, and a jailbroken iPhone has
+none of them: its own toolchain reads an older SDK, and `sdk-tier` stops the
+build before anything is compiled. CI is the build. `.github/workflows/ci.yml`
+runs on every push to `main` — `make harness` in one job, and in the other
+`make deb-all CONFIGURATION=Release SKIP_HARNESS=1`, which compiles the app,
+packages both flavours and every extension, reads each package back, and keeps
+`build/Packages/` as the artifact `apelin-<sha>` for thirty days. Take the
+`.deb` from that run and install it with the device's package manager; `make
+install`, `make vphone` and `make device-*` need a host reaching the device
+over ssh.
+
+## The in-app Git screen (`Apelin/Interface/Git/`)
+
+The screen draws with `GitTheme` and the app's own tokens rather than a palette
+of its own: the grounds, cards, separators and text are `UIColor.pageBackground`
+/ `.secondarySystemGroupedBackground` / `.separator` / `.label`'s, the accent —
+primary buttons, links, the selected segment — is `AppAccent`, and type is
+`GitTheme.font`/`mono`, which are `UIFontMetrics` on `.body` and so follow the
+reader's text size. Only what carries meaning keeps a colour of its own, and
+that is the page's one exception: a diff's added and removed lines, the graph's
+lanes (`GitTheme.lanes`, which `GitGraphView` reads instead of keeping a copy)
+and a path's status badge. A new raw `UIColor(rgb:)` in this folder is a meaning
+colour or a bug.
+
+- A question with nothing to fill in is `presentGitDialog`'s no-content branch:
+  the app's `AlertViewController`, the page's buttons in their order with the
+  last one filled, in the delete colour when one is marked destructive. Never a
+  `UIAlertController`, and never a button matched by comparing its title.
+- A result is announced through `GitPageHost.gitShowToast(_:succeeded:)` and its
+  `gitShowSuccess`/failure defaults; a page does not draw a toast itself.
+- A list with nothing to show uses `EmptyStateView`, not a hand-built label.
+- A diff is source code: its gutters, marker and text are
+  `semanticContentAttribute = .forceLeftToRight` whatever the page's direction.
+  The commit graph instead grows away from the page's leading edge, so on a
+  right-to-left page its first lane starts at the right (`GitGraphView.centreX`).
+- The page's segment control sets no title fonts: the platform draws them, and
+  scales them with the reader's text size, which a font set here would freeze.
+

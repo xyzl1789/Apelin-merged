@@ -6,6 +6,22 @@ import Testing
 
 @Suite("The relay coalesces what streams")
 struct EventRelayTests {
+    @Test
+    func `pending snapshot is distinct from model queued events`() async throws {
+        let emitted = Emitted()
+        let relay = EventRelay { emitted.append($0, $1) }
+        let id = UUID()
+        let message = PendingMessage(id: id, text: "Later", attachments: [], editing: true)
+        await relay.relay(.pendingQueue(messages: [message], paused: true))
+        #expect(emitted.kinds == ["pendingQueue"])
+        let value = try #require(emitted.payloads(of: "pendingQueue").first ?? nil)
+        #expect(value["paused"]?.boolValue == true)
+        #expect(value["messages"] == .array([.object([
+            "id": .string(id.uuidString), "text": .string("Later"),
+            "attachments": .array([]), "editing": .bool(true),
+        ])]))
+    }
+
     /// What a relay emitted, in order.
     final class Emitted: @unchecked Sendable {
         private let lock = NSLock()
@@ -43,21 +59,70 @@ struct EventRelayTests {
         #expect(emitted.payloads(of: "messageDiscarded") == [nil] && emitted.payloads(of: "reconnecting") == [nil])
     }
 
-    /// A request with no route says so in a kind of its own, and an error
-    /// carries its reason only when the agent named one.
     @Test
-    func `a wait for the network and an error's reason go out as the app reads them`() async {
+    func `historical and realtime streaming never share a coalesced event`() async throws {
         let emitted = Emitted()
         let relay = EventRelay { emitted.append($0, $1) }
-        await relay.relay(.waitingForNetwork)
-        await relay.relay(.error(message: "The Internet connection appears to be offline.", reason: .offline))
-        await relay.relay(.error(message: "A skill has a problem."))
-        #expect(emitted.kinds == ["waitingForNetwork", "error", "error"])
-        #expect(emitted.payloads(of: "waitingForNetwork") == [nil])
-        #expect(emitted.payloads(of: "error") == [
-            .object(["message": .string("The Internet connection appears to be offline."), "reason": .string("offline")]),
-            .object(["message": .string("A skill has a problem.")]),
-        ])
+        await relay.relay(.textDelta("from snapshot"), historical: true)
+        await relay.relay(.textDelta("from live"), historical: false)
+        await relay.flush()
+
+        let payloads = emitted.payloads(of: "text")
+        let texts = payloads.compactMap { $0?["text"]?.stringValue }
+        #expect(texts == ["from snapshot", "from live"])
+        try #require(payloads.count == 2)
+        #expect(payloads[0]?["historical"]?.boolValue == true)
+        #expect(payloads[1]?["historical"] == nil)
+    }
+
+    @Test
+    func `conversation queue and acceptance keep the same source and identity`() async {
+        let emitted = Emitted()
+        let relay = EventRelay { emitted.append($0, $1) }
+        let id = UUID()
+        await relay.relay(.conversationMessageQueued(id: id, text: "Review", from: "reviewer"), historical: true)
+        await relay.relay(.conversationMessageTaken(id: id, text: "Review", from: "reviewer"), historical: true)
+        await relay.relay(.conversationMessagesDropped(ids: [id]), historical: false)
+        #expect(emitted.kinds == ["queued", "prompt", "queueDropped"])
+        for kind in ["queued", "prompt"] {
+            let payload = emitted.payloads(of: kind).compactMap { $0 }.first
+            #expect(payload?["id"]?.stringValue == id.uuidString)
+            #expect(payload?["from"]?.stringValue == "reviewer")
+            #expect(payload?["text"]?.stringValue == "Review")
+            #expect(payload?["historical"]?.boolValue == true)
+        }
+        let dropped = emitted.payloads(of: "queueDropped").compactMap { $0 }.first
+        #expect(dropped?["ids"] == .array([.string(id.uuidString)]))
+        #expect(dropped?["historical"] == nil)
+    }
+
+    @Test
+    func `historical events with no payload still carry the marker`() async {
+        let emitted = Emitted()
+        let relay = EventRelay { emitted.append($0, $1) }
+        await relay.relay(.messageStarted, historical: true)
+        #expect(emitted.payloads(of: "messageStarted").compactMap { $0 }.first?["historical"]?.boolValue == true)
+    }
+
+    /// The host stamps an event with the moment it relayed it, so a
+    /// conversation read back — a fork's whole history — says `at` beside
+    /// `historical`, and the turns in it keep the time they took.
+    @Test
+    func `a replayed record says when it happened, and a live one says nothing`() async {
+        let emitted = Emitted()
+        let relay = EventRelay { emitted.append($0, $1) }
+        let wrote = Date(timeIntervalSince1970: 1_700_000_000)
+        await relay.relay(.messageStarted, historical: true, at: wrote)
+        await relay.relay(.thinkingDelta("from snapshot"), historical: true, at: wrote.addingTimeInterval(2))
+        await relay.relay(.reconnecting)
+        await relay.flush()
+
+        let started = emitted.payloads(of: "messageStarted").compactMap { $0 }.first
+        #expect(started?["at"]?.doubleValue == wrote.timeIntervalSince1970)
+        // Coalesced streaming says when its last record was written.
+        let thinking = emitted.payloads(of: "thinking").compactMap { $0 }.first
+        #expect(thinking?["at"]?.doubleValue == wrote.addingTimeInterval(2).timeIntervalSince1970)
+        #expect(emitted.payloads(of: "reconnecting") == [nil])
     }
 
     @Test

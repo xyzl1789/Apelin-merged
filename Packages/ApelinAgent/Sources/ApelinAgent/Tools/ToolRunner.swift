@@ -1,10 +1,14 @@
 import struct ApelinCore.MemorySnapshot
 import struct ApelinCore.MemoryStore
 import enum ApelinCore.MemoryStoreError
+import struct ApelinCore.TodoStore
+import enum ApelinProtocol.AgentMessageDelivery
 import enum ApelinProtocol.AgentToolName
 import struct ApelinProtocol.ApelinError
 import enum ApelinProtocol.BuildBootstrap
 import struct ApelinProtocol.GitPushLease
+import struct ApelinProtocol.GitRestoreRequest
+import enum ApelinProtocol.AgentRunMode
 import Foundation
 import KWWKAgent
 import KWWKAI
@@ -13,17 +17,6 @@ public struct ToolDeniedError: Error, LocalizedError {
     public var message: String
     public var errorDescription: String? {
         message
-    }
-}
-
-/// A call the user's Stop ended before it answered. The run no longer waits
-/// for it, but what it had asked the device to do (a build, an install, a
-/// download, a git transfer) may go on, which the model reads as the call's
-/// result.
-public struct ToolStoppedError: Error, LocalizedError {
-    public var errorDescription: String? {
-        "Stopped by the user before this call answered. If it started work on the device, "
-            + "that work may still finish: check its state before starting it again."
     }
 }
 
@@ -38,6 +31,9 @@ actor ToolRunner {
     let digests: any ApprovalDigestStore
     let gate: ApprovalGate
     let memory: MemoryStore?
+    /// The conversation's todo list, beside the memory in the same folder: the
+    /// app draws it, the agent writes it.
+    let todos: TodoStore?
     let skills: URL?
     /// Where the read tools reach besides the project.
     let readOnlyRoots: ReadOnlyRoots
@@ -60,6 +56,7 @@ actor ToolRunner {
         digests: any ApprovalDigestStore,
         gate: ApprovalGate,
         memory: MemoryStore? = nil,
+        todos: TodoStore? = nil,
         skills: URL? = nil,
         readOnlyRoots: ReadOnlyRoots = .none,
         record: (@Sendable (AgentSessionEvent) async throws -> Void)? = nil,
@@ -74,6 +71,7 @@ actor ToolRunner {
         self.digests = digests
         self.gate = gate
         self.memory = memory
+        self.todos = todos
         self.skills = skills
         self.readOnlyRoots = readOnlyRoots
         self.record = record
@@ -99,6 +97,82 @@ actor ToolRunner {
 
     var asksBeforeScreen: Bool {
         policy.asksBeforeScreen
+    }
+
+    /// The composer's pill, sent with each prompt: a plan run is a hard
+    /// sandbox, not a request of the model's. Write and system tools are
+    /// denied here whatever the approval mode allows, so a plan answers
+    /// from reads alone even when the model tries to act.
+    func setRunMode(_ mode: ApelinProtocol.AgentRunMode?) {
+        runMode = mode
+    }
+
+    private var runMode: ApelinProtocol.AgentRunMode?
+
+    /// The mode this run is in now, as the agent may have changed it itself
+    /// (`apelin_run_mode`): what `<system-state>` says of the steps after it.
+    var currentRunMode: ApelinProtocol.AgentRunMode? {
+        runMode
+    }
+
+    /// Why a tool is wrong in a plan run, or nil when the tool may run. Reads
+    /// pass, and so do the two things a plan is made of: its own todo list,
+    /// which the composer shows above the message box as the plan, and the
+    /// shell_run presets that only read (`ls`, `cat`, `git log`, …). MCP and
+    /// extension tools have no risk of their own, so they are refused as a
+    /// whole — a plan reads what Apelin itself keeps.
+    private func planVerdict(for tool: InvocationFacts.Tool, arguments: JSONValue) -> String? {
+        switch tool {
+        case let .mcp(name):
+            return "\(name) is not a read tool"
+        case let .toolExtension(tool):
+            return "\(tool.name) is not a read tool"
+        case let .local(name):
+            switch name {
+            case .todoList, .todoWrite:
+                // The plan itself, not a change to the project.
+                return nil
+            case .shellRun:
+                return readOnlyCommandVerdict(arguments)
+            default:
+                break
+            }
+            switch name.risk {
+            case .readOnly:
+                return nil
+            case .writeProject:
+                return "\(name.rawValue) writes; a plan answers with what it would change"
+            case .system:
+                return "\(name.rawValue) changes the device; a plan answers with what it would change"
+            }
+        }
+    }
+
+    /// Why a shell_run is more than reading, or nil when it is one of the
+    /// presets that read: a plain argv, matched as the approval policy
+    /// matches one, inside the project and as mobile. Shell text, pipes, a
+    /// script and root are never reads.
+    private func readOnlyCommandVerdict(_ arguments: JSONValue) -> String? {
+        if arguments.argBool("root") == true {
+            return "a plan runs nothing as root"
+        }
+        guard let command = try? CommandClassifier.classify(arguments) else {
+            return "the command could not be read; give a plain argv that reads"
+        }
+        guard case let .argv(argv) = command else {
+            return "shell text, pipes and scripts are not reads; give a plain argv"
+        }
+        let cwd = arguments.argString("cwd") ?? "."
+        guard root.mayReach(cwd) else {
+            return "\(cwd) is outside the project"
+        }
+        guard ApprovalPresets.default.commands.contains(where: {
+            $0.matches(argv, root: root, workingDirectory: cwd)
+        }) else {
+            let names = ApprovalPresets.default.commands.map(\.name).joined(separator: ", ")
+            return "a plan runs what reads and nothing else: one of \(names)"
+        }
+        return nil
     }
 
     /// A run ended: the next one may send its own notices.
@@ -178,13 +252,7 @@ actor ToolRunner {
 
     /// Runs one call; one that throws is noted in the journal for what it
     /// came to (`ToolCallOutcome`), unless where it was decided noted it.
-    ///
-    /// A stop ends the call within `stopGrace`, whatever it waits on: a
-    /// build, a git transfer or a download that would not answer held the
-    /// run, and with it Stop and every later message, until it did (#59).
-    /// Off the actor, so a call that holds the actor cannot hold the stop
-    /// either.
-    nonisolated func run(
+    func run(
         _ tool: InvocationFacts.Tool,
         toolCallID: String,
         arguments: JSONValue,
@@ -192,21 +260,10 @@ actor ToolRunner {
         mcp: (@Sendable (JSONValue) async throws -> AgentToolResult)?,
     ) async throws -> AgentToolResult {
         do {
-            return try await Self.untilCancelled(cancellation) {
-                try await self.gated(
-                    tool,
-                    toolCallID: toolCallID,
-                    arguments: arguments,
-                    cancellation: cancellation,
-                    mcp: mcp,
-                )
-            }
+            return try await gated(tool, toolCallID: toolCallID, arguments: arguments, cancellation: cancellation, mcp: mcp)
         } catch {
             let stopped = cancellation?.isCancelled == true || Task.isCancelled
             journal?.note(ToolCallOutcome.of(error, stopped: stopped), for: toolCallID)
-            if stopped, error is CancellationError {
-                throw ToolStoppedError()
-            }
             throw error
         }
     }
@@ -230,6 +287,14 @@ actor ToolRunner {
            ProjectBuildSystem.externalScript(in: root) == nil
         {
             throw ToolDeniedError(message: ProjectBuildSystem.externalBuildRefusal)
+        }
+        // Before the gate: a plan run is read-only by force. The model is
+        // told so in `<system-state>`, and this is the wall behind the words:
+        // what writes or runs is refused without asking, whatever the
+        // approval mode says, because a plan is not the approval mode.
+        if runMode == .plan, let verdict = planVerdict(for: tool, arguments: arguments) {
+            journal?.note(ToolCallOutcome(.denied, "a plan run refused it: \(verdict)"), for: toolCallID)
+            throw ToolDeniedError(message: "refused: this run is a plan — \(verdict)")
         }
         let facts = try await gatherFacts(tool, arguments: arguments)
         let workingDirectory = arguments.argString("cwd") ?? "."
@@ -381,7 +446,10 @@ actor ToolRunner {
         case .local(.packageRemove), .local(.gitPush), .local(.toolchainSetup), .local(.sdkImport),
              .local(.skillSave), .local(.skillRemove), .local(.feedbackSend), .local(.gitCreateRepository),
              .local(.projectDelete), .local(.packagePublish), .local(.feedbackEdit), .local(.gitCreateIssue),
-             .local(.gitSquash), .local(.gitResetToRemote):
+             .local(.gitSquash), .local(.gitResetToRemote), .local(.gitBranchDelete),
+             .local(.gitTag), .local(.gitRestore), .local(.gitClean),
+             .local(.gitBranchCreate), .local(.gitBranchCheckout), .local(.gitBranchRename),
+             .local(.gitMerge), .local(.gitMergeAbort):
             return false
         default:
             break
@@ -389,7 +457,7 @@ actor ToolRunner {
         switch detail {
         case .gitSettings, .descriptionChanged, .toolchainSetup, .sdkImport, .otherProject, .externalBuild, .skillChange,
              .projectRename, .rootCommand, .feedback, .feedbackEdit, .repositoryCreate, .issueCreate, .projectDelete,
-             .packagePublish, .screenControl, .forcePush, .squash, .resetToRemote:
+             .packagePublish, .screenControl, .forcePush, .squash, .resetToRemote, .question, .runMode:
             return false
         case .none, .command, .packageRemoval, .gitPush:
             return true
@@ -407,6 +475,14 @@ actor ToolRunner {
     ) async throws -> AgentToolResult {
         let files = ProjectFileTools(root: root)
         switch name {
+        case .todoList, .todoWrite:
+            guard let todos else { throw ToolDeniedError(message: "Todo storage is unavailable.") }
+            let tools = TodoTools(store: todos, sessionID: sessionID)
+            switch name {
+            case .todoList: return try json(tools.list())
+            case .todoWrite: return try json(tools.write(arguments))
+            default: throw ToolDeniedError(message: "unknown tool")
+            }
         case .memoryList, .memorySave, .memoryDelete:
             guard let memory else { throw ToolDeniedError(message: "Memory storage is unavailable.") }
             do {
@@ -454,6 +530,15 @@ actor ToolRunner {
             try await record(.notice(title: notice.title, body: notice.body))
             return text(notices.sentMessage)
 
+        case .questionAsk:
+            return try await askQuestion(arguments, toolCallID: context.toolCallID, cancellation: cancellation)
+
+        case .runMode:
+            return try await changeRunMode(arguments, toolCallID: context.toolCallID, cancellation: cancellation)
+
+        case .webSearch:
+            let result = try await WebSearch.shared.search(arguments)
+            return text(result.answer)
         case .webFetch:
             // No host request either: the worker fetches the page itself,
             // as mobile, and answers its text.
@@ -536,6 +621,7 @@ actor ToolRunner {
                 templateID: arguments.requireString("template"),
                 name: arguments.requireString("name"),
                 values: Self.templateValues(arguments),
+                outputFormat: arguments.argString("output_format"),
             )))
 
         case .sdkAnalyzeFramework, .sdkReadHeader:
@@ -768,6 +854,107 @@ actor ToolRunner {
                 branch: arguments.argNonEmptyString("branch"),
             )))
 
+        case .gitBranches:
+            return try await json(backend.gitBranches(GitBranchesToolRequest(context: context)))
+
+        case .gitBranchCreate:
+            return try await json(backend.gitBranchCreate(GitBranchCreateToolRequest(
+                context: context,
+                name: try arguments.requireString("name"),
+                startPoint: arguments.argNonEmptyString("start_point"),
+                checkout: arguments.argBool("checkout") ?? false,
+            )))
+
+        case .gitBranchCheckout:
+            return try await json(backend.gitBranchCheckout(GitBranchCheckoutToolRequest(
+                context: context,
+                name: try arguments.requireString("name"),
+                remote: arguments.argNonEmptyString("remote"),
+            )))
+
+        case .gitBranchDelete:
+            return try await json(backend.gitBranchDelete(GitBranchDeleteToolRequest(
+                context: context,
+                name: try arguments.requireString("name"),
+                remote: arguments.argNonEmptyString("remote"),
+                force: arguments.argBool("force") ?? false,
+            )))
+
+        case .gitTag:
+            let tagAction = try arguments.requireString("action")
+            guard let action = GitTagToolRequest.Action(rawValue: tagAction) else {
+                throw ToolArgumentError("git_tag needs action create or delete.")
+            }
+            return try await json(backend.gitTag(GitTagToolRequest(
+                context: context,
+                action: action,
+                name: try arguments.requireString("name"),
+                commit: arguments.argNonEmptyString("commit"),
+                message: arguments.argNonEmptyString("message"),
+                remote: arguments.argNonEmptyString("remote"),
+            )))
+
+        case .gitStash:
+            let stashAction = try arguments.requireString("action")
+            guard let action = GitStashToolRequest.Action(rawValue: stashAction) else {
+                throw ToolArgumentError("git_stash needs action list, save, apply, drop or clear.")
+            }
+            return try await json(backend.gitStash(GitStashToolRequest(
+                context: context,
+                action: action,
+                message: arguments.argNonEmptyString("message"),
+                includeUntracked: arguments.argBool("include_untracked") ?? false,
+                index: arguments.argInt("index") ?? 0,
+                pop: arguments.argBool("pop") ?? false,
+            )))
+
+        case .gitRestore, .gitClean:
+            guard let paths = arguments.argStrings("paths"), !paths.isEmpty else {
+                throw ToolArgumentError("paths must be a non-empty list of project-relative paths")
+            }
+            if name == .gitClean {
+                return try await json(backend.gitClean(GitCleanToolRequest(context: context, paths: paths)))
+            }
+            let source = arguments.argString("source") ?? "head"
+            guard let restoreSource = GitRestoreRequest.Source(rawValue: source) else {
+                throw ToolArgumentError("git_restore needs source head or index.")
+            }
+            return try await json(backend.gitRestore(GitRestoreToolRequest(
+                context: context,
+                source: restoreSource,
+                paths: paths,
+            )))
+
+        case .gitBranchRename:
+            return try await json(backend.gitBranchRename(GitBranchRenameToolRequest(
+                context: context,
+                from: try arguments.requireString("from"),
+                to: try arguments.requireString("to"),
+            )))
+
+        case .gitMerge:
+            return try await json(backend.gitMerge(GitMergeToolRequest(
+                context: context,
+                branch: try arguments.requireString("branch"),
+                noFastForward: arguments.argBool("no_fast_forward") ?? false,
+            )))
+
+        case .gitMergeAbort:
+            return try await json(backend.gitMergeAbort(GitMergeAbortToolRequest(context: context)))
+
+        case .gitLog:
+            return try await json(backend.gitLog(GitLogToolRequest(
+                context: context,
+                limit: arguments.argInt("limit") ?? 50,
+                skip: arguments.argInt("skip") ?? 0,
+            )))
+
+        case .gitCommitDetail:
+            return try await json(backend.gitCommitDetail(GitCommitDetailToolRequest(
+                context: context,
+                commit: try arguments.requireString("commit"),
+            )))
+
         case .gitRemoteList:
             return try await json(backend.gitRemoteList(GitRemoteListToolRequest(context: context)))
 
@@ -861,11 +1048,16 @@ actor ToolRunner {
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw ToolArgumentError("the message is empty")
             }
+            let deliveryValue = arguments.argString("delivery") ?? "queue"
+            guard let delivery = AgentMessageDelivery(rawValue: deliveryValue) else {
+                throw ToolArgumentError("delivery must be queue or steer")
+            }
             return try await json(backend.conversationSend(ConversationSendToolRequest(
                 context: context,
                 sessionID: target,
                 text: text,
                 target: facts.targetProject,
+                delivery: delivery,
             )))
 
         case .conversationList:
@@ -1083,44 +1275,19 @@ actor ToolRunner {
         return "; " + note
     }
 
-    /// How long a cancelled call has to end in its own words (an approval
-    /// denied, a command's output up to where it was stopped) before the
-    /// run stops waiting for it.
-    static let stopGrace: Duration = .seconds(2)
-
-    /// Runs `body` until it answers or the call is cancelled. Cancelled, the
-    /// body is cancelled too, and `grace` later its answer is no longer
-    /// waited for: what it waits on (a request to the session host, a task
-    /// read to its end) need not answer its cancellation for the stop to
-    /// take effect.
+    /// Runs `body` until it answers or the call is cancelled: a stop does
+    /// not wait for a long wait on another conversation to run out.
     static func untilCancelled<T: Sendable>(
         _ cancellation: CancellationHandle?,
-        grace: Duration = stopGrace,
         _ body: @escaping @Sendable () async throws -> T,
     ) async throws -> T {
-        let race = Deadline.Race<T>()
-        let work = Task {
-            do {
-                try await race.finish(.success(body()))
-            } catch {
-                race.finish(.failure(error))
-            }
-        }
-        let stop: @Sendable () -> Void = {
-            work.cancel()
-            Task {
-                try? await Task.sleep(for: grace)
-                race.finish(.failure(CancellationError()))
-            }
-        }
-        let registration = cancellation?.onCancel { _ in stop() }
+        let task = Task { try await body() }
+        let registration = cancellation?.onCancel { _ in task.cancel() }
         defer { registration?.cancel() }
         return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                race.start(continuation, contenders: [work])
-            }
+            try await task.value
         } onCancel: {
-            stop()
+            task.cancel()
         }
     }
 

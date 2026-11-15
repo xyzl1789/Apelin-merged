@@ -17,7 +17,20 @@ public final class BuildPipeline: @unchecked Sendable {
     private let cancellation: BuildCancellation
 
     private var objects: [String: [Architecture: [String]]] = [:]
+    private var sourcePlans: [String: ProductSourcePlan] = [:]
     private var slices: [String: [Architecture: String]] = [:]
+    /// The project's own Swift modules, built once per architecture.
+    private var moduleCache: [Architecture: [String: BuiltModule]] = [:]
+    /// The cache key each module of an architecture was built with, so a
+    /// product that imports it is invalidated with it.
+    private var moduleKeys: [Architecture: [String: String]] = [:]
+    /// Compiled code kept for the next build of this project (`BuildCache`):
+    /// a unit is compiled again only when what it was given changed.
+    private lazy var cache = BuildCache(
+        root: BuildLayout.buildCache(inBuilds: buildsRoot, projectID: project.projectID),
+        projectRoot: root,
+        installRoot: inputs.installRoot
+    )
     @objc private dynamic var bundles: [String: String] = [:]
     @objc private dynamic var merged: [String: String] = [:]
     private var dsyms: [BuildProducts.DSYM] = []
@@ -45,6 +58,12 @@ public final class BuildPipeline: @unchecked Sendable {
         inputs.workDirectory
     }
 
+    /// `Builds/`: this build's work directory, the SDK module cache and the
+    /// compile cache are siblings there, outside every project.
+    private var buildsRoot: URL {
+        work.deletingLastPathComponent().deletingLastPathComponent()
+    }
+
     @objc private dynamic var root: String {
         inputs.projectRoot.path
     }
@@ -61,6 +80,7 @@ public final class BuildPipeline: @unchecked Sendable {
         FileManager.default.createFile(atPath: logURL.path, contents: nil)
         logHandle = try FileHandle(forWritingTo: logURL)
         defer { try? logHandle?.close() }
+        cache.log = { [weak self] line in self?.log(line) }
         log("apelin-build \(inputs.buildID): \(project.package.id) \(project.package.version), \(inputs.configuration.rawValue), \(inputs.bootstrap.rawValue) [\(architectures.map(\.rawValue).joined(separator: " "))]")
         log("toolchain \(inputs.toolchain.id), SDK \(inputs.sdk.id) at \(inputs.sdk.path)")
         if let line = ManifestFormatting.run(projectRoot: inputs.projectRoot, checkedFiles: inputs.checkedFiles) {
@@ -84,7 +104,10 @@ public final class BuildPipeline: @unchecked Sendable {
                 try script(id: id, interpreter: interpreter, file: file, arguments: arguments)
             }
         }
-        return try collect()
+        let products = try collect()
+        log("compile cache: \(cache.hits) unit(s) reused, \(cache.misses) compiled")
+        cache.prune()
+        return products
     }
 
     private func product(_ id: String) throws -> ProjectDocument.Product {
@@ -205,7 +228,8 @@ public final class BuildPipeline: @unchecked Sendable {
     }
 
     private func targetFlags(_ arch: Architecture) -> [String] {
-        ["-isysroot", inputs.sdk.path, "-arch", arch.rawValue, "-mios-version-min=\(project.deploymentTarget)"]
+        ["-target", swiftTarget(arch), "-isysroot", inputs.sdk.path, "-arch", arch.rawValue,
+         "-mios-version-min=\(project.deploymentTarget)"]
     }
 
     /// The SDK's Swift interfaces are built once per toolchain and SDK, into a
@@ -213,9 +237,9 @@ public final class BuildPipeline: @unchecked Sendable {
     /// every build. A retargeted toolchain has no libSwiftScan: the driver is
     /// told so rather than warning on every run before it falls back the same.
     @objc private dynamic var swiftToolFlags: [String] {
-        let cache = work.deletingLastPathComponent().deletingLastPathComponent()
+        let modules = buildsRoot
             .appendingPathComponent(".swift-module-cache/\(inputs.toolchain.id)-\(inputs.sdk.id)")
-        var flags = ["-module-cache-path", cache.path]
+        var flags = ["-module-cache-path", modules.path]
         if inputs.toolchain.version.compare("15.0", options: .numeric) != .orderedAscending {
             flags.append("-nonlib-dependency-scanner")
         }
@@ -224,6 +248,357 @@ public final class BuildPipeline: @unchecked Sendable {
 
     private func swiftTarget(_ arch: Architecture) -> String {
         "\(arch.rawValue)-apple-ios\(project.deploymentTarget)"
+    }
+
+    /// The defines Swift's C++ importer may see: the platform and the
+    /// project's own, never the identity strings. Clang keys its module cache
+    /// on the preprocessor state it was given, so a macro that changes makes
+    /// every imported header compile again, the C++ standard library's
+    /// included: measured on device, a warm import of `<vector>` and
+    /// `<string>` takes 4 s, the same import with one more `-D` takes 183 s
+    /// and leaves a fresh copy of every module in the cache. `APELIN_BUILD_ID`
+    /// changes with every build and `APELIN_VERSION` with every release, and
+    /// no header's interface may depend on either; `APELIN_BOOTSTRAP_*` and
+    /// `APELIN_CONFIGURATION_*` stay, since a header may legitimately select
+    /// declarations by them.
+    private var importerDefines: [(String, String)] {
+        let identity: Set<String> = ["APELIN_BUILD_ID", "APELIN_PACKAGE_ID", "APELIN_VERSION"]
+        return defines.filter { !identity.contains($0.0) }
+    }
+
+    /// The C++ importer sees the same declared standard and preprocessor flags
+    /// as native C++ compilation. Settings include transitive Swift modules.
+    private func cxxImportFlags(_ settings: CXXInteropSettings) throws -> [String] {
+        guard settings.enabled else { return [] }
+        var flags = ["-cxx-interoperability-mode=default"]
+        flags += (configuration.cFlags ?? []).flatMap { ["-Xcc", $0] }
+        flags += ["-Xcc", "-std=" + (settings.standard ?? "c++17")]
+        for path in settings.headerSearchPaths {
+            let resolved = try ProjectFiles.resolve(path, in: inputs.projectRoot)
+            flags += ["-I", resolved, "-Xcc", "-I" + resolved]
+        }
+        flags += (configuration.cxxFlags ?? []).flatMap { ["-Xcc", $0] }
+        return flags
+    }
+
+    // MARK: Swift modules a project carries
+
+    /// A module the project's sources make, built for one architecture: the
+    /// folder its `.swiftmodule` sits in, which a product imports it with
+    /// (`-I`), and the object the product links.
+    private struct BuiltModule {
+        var include: String
+        var object: String
+    }
+
+    /// Every declared module, each after the modules it depends on and in the
+    /// project's order otherwise. A cycle is refused here too, so a project
+    /// that reached a build without a check still stops with a reason.
+    private func orderedModules() throws -> [ProjectDocument.SwiftModule] {
+        let declared = project.swiftModules ?? []
+        var byName: [String: ProjectDocument.SwiftModule] = [:]
+        for module in declared where byName[module.name] == nil {
+            byName[module.name] = module
+        }
+        var ordered: [ProjectDocument.SwiftModule] = []
+        var done: Set<String> = []
+        var visiting: Set<String> = []
+        func add(_ module: ProjectDocument.SwiftModule, after dependents: [String]) throws {
+            if done.contains(module.name) {
+                return
+            }
+            guard visiting.insert(module.name).inserted else {
+                let cycle = (dependents + [module.name]).joined(separator: " → ")
+                throw BuildFailure("swift modules depend on each other in a cycle: \(cycle)")
+            }
+            for dependency in module.dependencies ?? [] {
+                guard let found = byName[dependency] else {
+                    throw BuildFailure("swift module \(module.name) depends on \(dependency), which the project does not declare")
+                }
+                try add(found, after: dependents + [module.name])
+            }
+            visiting.remove(module.name)
+            done.insert(module.name)
+            ordered.append(module)
+        }
+        for module in declared {
+            try add(module, after: [])
+        }
+        return ordered
+    }
+
+    /// The modules a product compiles against and links, in the order they are
+    /// built, built for `arch` the first time one asks: each is compiled from
+    /// the project's own files with `swiftc`, into one `.swiftmodule` and one
+    /// object. Nothing is resolved, fetched or downloaded — a vendored package
+    /// is a folder of the project like any other, and its own `Package.swift`
+    /// is never read.
+    private func builtModules(of product: ProjectDocument.Product, for arch: Architecture) throws -> [BuiltModule] {
+        guard !(product.swiftModules ?? []).isEmpty else { return [] }
+        let built = try buildModules(for: arch)
+        return try moduleClosure(of: product).map { name in
+            guard let module = built[name] else {
+                throw BuildFailure("\(product.id): swift module \(name) was not built")
+            }
+            return module
+        }
+    }
+
+    /// The names a product links, each once and a module before the modules
+    /// that depend on it: a module a module imports is linked although the
+    /// product never names it.
+    private func moduleClosure(of product: ProjectDocument.Product) throws -> [String] {
+        var byName: [String: ProjectDocument.SwiftModule] = [:]
+        for module in project.swiftModules ?? [] where byName[module.name] == nil {
+            byName[module.name] = module
+        }
+        var reached: Set<String> = []
+        var order: [String] = []
+        func add(_ name: String) throws {
+            guard reached.insert(name).inserted else { return }
+            guard let module = byName[name] else {
+                throw BuildFailure("\(product.id): the project declares no swift module \(name)")
+            }
+            for dependency in module.dependencies ?? [] {
+                try add(dependency)
+            }
+            order.append(name)
+        }
+        for name in product.swiftModules ?? [] {
+            try add(name)
+        }
+        return order
+    }
+
+    /// Builds each declared module for `arch`, once per build. Plain Swift
+    /// modules keep their own configuration. A C++ interop module also imports
+    /// the project's native defines so macro-selected C++ layouts agree.
+    private func buildModules(for arch: Architecture) throws -> [String: BuiltModule] {
+        if let built = moduleCache[arch] {
+            return built
+        }
+        var built: [String: BuiltModule] = [:]
+        var keys: [String: String] = [:]
+        for module in try orderedModules() {
+            let directory = work.appendingPathComponent("modules/\(arch.rawValue)/\(module.name)").path
+            try makeDirectory(directory)
+            let sources = try ProjectGlob.expand(module.sources, in: inputs.projectRoot)
+            guard !sources.isEmpty else {
+                throw BuildFailure("swift module \(module.name): the sources match no file")
+            }
+            let object = directory + "/\(module.name).o"
+            let moduleFile = directory + "/\(module.name).swiftmodule"
+            var argv = [
+                "-sdk", inputs.sdk.path, "-target", swiftTarget(arch), "-wmo", "-c", "-parse-as-library",
+                "-module-name", module.name,
+            ] + swiftToolFlags
+            argv.append(configuration.optimization == "0" ? "-Onone" : "-O")
+            argv += ["-debug-prefix-map", "\(root)=."]
+            if configuration.debugInfo {
+                argv.append("-g")
+            }
+            for dependency in module.dependencies ?? [] {
+                guard let found = built[dependency] else {
+                    throw BuildFailure("swift module \(module.name) is built before \(dependency)")
+                }
+                argv += ["-I", found.include]
+            }
+            let interop = try project.cxxInteropSettings(for: module)
+            argv += try cxxImportFlags(interop)
+            if interop.enabled {
+                // A C++ declaration must have the same macro-selected layout
+                // when imported here and when compiled in a native product.
+                argv += importerDefines.flatMap { ["-Xcc", "-D\($0.0)=\($0.1)"] }
+            }
+            argv += ["-emit-module", "-emit-module-path", moduleFile]
+            argv += sources.map(\.relative)
+            argv += ["-o", object]
+
+            let unit = BuildCache.Unit(kind: .swiftModule, name: module.name, arch: arch.rawValue)
+            let outputs = [
+                BuildCache.Output(name: "\(module.name).o", destination: object),
+                BuildCache.Output(name: "\(module.name).swiftmodule", destination: moduleFile),
+            ]
+            let members = try keyMembers(
+                module,
+                arch: arch,
+                sources: sources,
+                interop: interop,
+                dependencies: keys
+            )
+            let key = cache.key(unit, members)
+            if cache.restore(unit, key: key, outputs: outputs) {
+                log("swift module \(module.name): \(sources.count) source(s), \(arch.rawValue) — reused")
+            } else {
+                let started = Date()
+                try execute(tool("swiftc"), argv, label: "swiftc")
+                log("swift module \(module.name): \(sources.count) source(s), \(arch.rawValue) in \(seconds(started))")
+                cache.store(unit, key: key, outputs: outputs, members: members)
+            }
+            keys[module.name] = key
+            built[module.name] = BuiltModule(include: directory, object: object)
+        }
+        moduleKeys[arch] = keys
+        moduleCache[arch] = built
+        return built
+    }
+
+    // MARK: What a compile is a function of
+
+    /// The members every compile's key shares: the tools, the platform and
+    /// the optimisation, all of which change the bytes an object holds.
+    private func commonKeyMembers(arch: Architecture) -> [(String, JSONDocument)] {
+        [
+            ("toolchain", .string(inputs.toolchain.digest)),
+            ("sdk", .string(inputs.sdk.digest)),
+            ("target", .string(swiftTarget(arch))),
+            ("optimization", .string(configuration.optimization)),
+            ("debugInfo", .bool(configuration.debugInfo)),
+        ]
+    }
+
+    /// What Swift's C++ importer is given: the standard, the headers it
+    /// imports (their bytes, which no member of the project names one by
+    /// one) and the flags both sides see.
+    private func interopKeyMembers(_ interop: CXXInteropSettings) throws -> [(String, JSONDocument)] {
+        guard interop.enabled else { return [("interop", .bool(false))] }
+        let directories = try interop.headerSearchPaths.map {
+            try ProjectFiles.resolve($0, in: inputs.projectRoot)
+        }
+        return [
+            ("interop", .bool(true)),
+            ("interop.standard", .string(interop.standard ?? CXXInteropSettings.defaultStandard)),
+            ("interop.headers", try cache.headerDigests(directories)),
+            ("cFlags", .array((configuration.cFlags ?? []).map { .string($0) })),
+            ("cxxFlags", .array((configuration.cxxFlags ?? []).map { .string($0) })),
+        ]
+    }
+
+    /// A Swift module: its own sources, the modules it imports (by the key
+    /// they were built with, so a change to one rebuilds what depends on it)
+    /// and the interop flags the import sees.
+    private func keyMembers(
+        _ module: ProjectDocument.SwiftModule,
+        arch: Architecture,
+        sources: [ProjectGlob.Match],
+        interop: CXXInteropSettings,
+        dependencies: [String: String]
+    ) throws -> [(String, JSONDocument)] {
+        var members = commonKeyMembers(arch: arch)
+        members.append(("module", .string(module.name)))
+        let digests = try cache.sourceDigests(sources)
+        members.append(("sources", digests))
+        members.append((
+            "dependencies",
+            .array((module.dependencies ?? []).map { .string(dependencies[$0] ?? "") })
+        ))
+        if interop.enabled {
+            members += try interopKeyMembers(interop)
+            // The module gets these as -Xcc only; the identity macros are not
+            // among them, which is what keeps a module reusable between builds.
+            members.append(("importerDefines", .array(importerDefines.map { .string("\($0.0)=\($0.1)") })))
+        }
+        return members
+    }
+
+    /// A product's own Swift sources: what `compile` passes swiftc, plus the
+    /// keys of every module it imports and the Swift header its ObjC sources
+    /// will read.
+    private func productKeyMembers(
+        _ product: ProjectDocument.Product,
+        arch: Architecture,
+        plan: ProductSourcePlan,
+        includes: [String],
+        frameworks: [String],
+        interop: CXXInteropSettings,
+        bridge: String?,
+        flags: [String]
+    ) throws -> [(String, JSONDocument)] {
+        var members = commonKeyMembers(arch: arch)
+        let closure = try moduleClosureKeys(of: product, arch: arch)
+        members += [
+            ("product", .string(product.id)),
+            ("name", .string(product.name)),
+            ("type", .string(product.type.rawValue)),
+            ("parseAsLibrary", .bool(plan.parsesSwiftAsLibrary(type: product.type))),
+            ("objc", .bool(plan.usesObjC)),
+            ("bootstrap", .string(bootstrapDefine)),
+            ("configuration", .string(configurationDefine)),
+            ("swiftFlags", .array((configuration.swiftFlags ?? []).map { .string($0) })),
+            ("includes", .array(includes.map { .string(cache.stablePath($0)) })),
+            ("frameworks", .array(frameworks.map { .string(cache.stablePath($0)) })),
+            ("modules", .array(closure.map { .string($0) })),
+            ("flags", .array(flags.map { .string($0) })),
+        ]
+        if let bridge {
+            let digest = try BuildCache.fileDigest(bridge)
+            members.append(("bridge", .string(digest)))
+            // Without interop the importer is handed the whole define list,
+            // the build ID among it, so this product is compiled every build.
+            members.append(("defines", .array(defines.map { .string("\($0.0)=\($0.1)") })))
+        }
+        if interop.enabled {
+            members += try interopKeyMembers(interop)
+            members.append(("importerDefines", .array(importerDefines.map { .string("\($0.0)=\($0.1)") })))
+        }
+        return members
+    }
+
+    /// One C-family source file, compiled on its own: the bytes of the file,
+    /// the language and every flag, define and header clang reads — the build
+    /// ID included, which is a documented define and so makes these objects
+    /// miss on every build.
+    private func clangKeyMembers(
+        _ product: ProjectDocument.Product,
+        source: ProductSourcePlan.Source,
+        arch: Architecture,
+        interop: CXXInteropSettings,
+        includes: [String],
+        frameworks: [String],
+        swiftHeader: String?,
+        flags: [String]
+    ) throws -> [(String, JSONDocument)] {
+        var members = commonKeyMembers(arch: arch)
+        let file = try ProjectFiles.resolve(source.path, in: inputs.projectRoot)
+        let bytes = try BuildCache.fileDigest(file)
+        members += [
+            ("product", .string(product.id)),
+            ("name", .string(product.name)),
+            ("source", .string(source.path)),
+            ("bytes", .string(bytes)),
+            ("language", .string(ProductSourcePlan.clangLanguage(source.language))),
+            ("defines", .array(defines.map { .string("\($0.0)=\($0.1)") })),
+            ("cFlags", .array((configuration.cFlags ?? []).map { .string($0) })),
+            ("arc", .bool(product.objcARC == true && source.language.isObjC)),
+            ("includes", .array(includes.map { .string(cache.stablePath($0)) })),
+            ("frameworks", .array(frameworks.map { .string(cache.stablePath($0)) })),
+            ("flags", .array(flags.map { .string($0) })),
+        ]
+        if source.language.isCXX {
+            members.append(("cxxFlags", .array((configuration.cxxFlags ?? []).map { .string($0) })))
+            if let standard = interop.enabled ? interop.standard : product.cxxStandard {
+                members.append(("standard", .string(standard)))
+            }
+            if interop.enabled {
+                members += try interopKeyMembers(interop)
+            }
+        }
+        if let swiftHeader {
+            let header = try BuildCache.fileDigest(swiftHeader)
+            members.append(("swiftHeader", .string(header)))
+        }
+        return members
+    }
+
+    /// The key of each module a product imports, in the order they are built:
+    /// what makes a product that links them miss when one of them changed.
+    private func moduleClosureKeys(of product: ProjectDocument.Product, arch: Architecture) throws -> [String] {
+        let keys = moduleKeys[arch] ?? [:]
+        return try moduleClosure(of: product).map { keys[$0] ?? "" }
+    }
+
+    private func seconds(_ started: Date) -> String {
+        String(format: "%.1f s", Date().timeIntervalSince(started))
     }
 
     // MARK: Steps
@@ -235,18 +610,52 @@ public final class BuildPipeline: @unchecked Sendable {
     }
 
     private func compile(_ product: ProjectDocument.Product, flags: [String]) throws {
-        let sources = try sources(of: product)
+        let plan = try ProductSourcePlan(paths: sources(of: product).map(\.relative))
+        let interop = try project.cxxInteropSettings(for: product)
         let support = try support(for: product)
+        let includes = try (product.headerSearchPaths ?? [])
+            .map { try ProjectFiles.resolve($0, in: inputs.projectRoot) } + support.includes
+        let frameworks = try (product.frameworkSearchPaths ?? [])
+            .map { try ProjectFiles.resolve($0, in: inputs.projectRoot) }
+        let bridge: String?
+        if let path = product.bridgingHeader {
+            guard plan.usesSwift else {
+                throw BuildFailure("\(product.id): bridgingHeader requires Swift sources in this product")
+            }
+            // Swift's C++ importer and a bridging header do not coexist here:
+            // with -cxx-interoperability-mode on, the bridging header is not
+            // imported at all and every declaration in it disappears silently
+            // (measured on CLT 15.3 / Swift 5.10, with and without -Xcc -std).
+            // Refuse rather than hand back a Swift file that cannot see it.
+            if interop.enabled {
+                throw BuildFailure(
+                    "\(product.id): bridgingHeader cannot be combined with C++ interop: Swift's importer drops the "
+                        + "bridging header when -cxx-interoperability-mode is on, so its declarations would vanish. "
+                        + "Declare those C declarations in a module of a module.modulemap under headerSearchPaths "
+                        + "and import that module instead",
+                )
+            }
+            _ = try ProjectFiles.read(path, in: inputs.projectRoot)
+            bridge = try ProjectFiles.resolve(path, in: inputs.projectRoot)
+        } else {
+            bridge = nil
+        }
         var produced: [Architecture: [String]] = [:]
         for arch in architectures {
             let directory = work.appendingPathComponent("obj/\(product.id)/\(arch.rawValue)").path
+            let swiftDirectory = directory + "/swift"
             try makeDirectory(directory)
-            if project.language == .swift {
-                let object = directory + "/\(product.name).o"
+            var list: [String] = []
+            // Swift emits its Objective-C interface before native compilation,
+            // so .m/.mm may import <ProductName-Swift.h> without a script step.
+            if plan.usesSwift {
+                try makeDirectory(swiftDirectory)
+                let object = swiftDirectory + "/\(product.name).o"
+                let swiftHeader = swiftDirectory + "/\(product.name)-Swift.h"
                 var argv = [
                     "-sdk", inputs.sdk.path, "-target", swiftTarget(arch), "-wmo", "-c", "-module-name", product.name,
                 ] + swiftToolFlags
-                if product.type == .dylib || product.type == .bundle {
+                if plan.parsesSwiftAsLibrary(type: product.type) {
                     argv.append("-parse-as-library")
                 }
                 argv.append(configuration.optimization == "0" ? "-Onone" : "-O")
@@ -255,50 +664,140 @@ public final class BuildPipeline: @unchecked Sendable {
                     argv.append("-g")
                 }
                 argv += ["-D", bootstrapDefine, "-D", configurationDefine]
-                argv += support.includes.flatMap { ["-I", $0] }
+                argv += includes.flatMap { ["-I", $0, "-Xcc", "-I" + $0] }
+                argv += frameworks.flatMap { ["-F", $0] }
+                argv += try cxxImportFlags(interop)
+                if let bridge {
+                    argv += ["-import-objc-header", bridge]
+                }
+                if bridge != nil || interop.enabled {
+                    let seen = interop.enabled ? importerDefines : defines
+                    argv += seen.flatMap { ["-Xcc", "-D\($0.0)=\($0.1)"] }
+                    argv += ["-Xcc", "-DAPELIN_PRODUCT_NAME=\"\(product.name)\""]
+                }
+                if plan.usesObjC {
+                    argv += ["-emit-objc-header", "-emit-objc-header-path", swiftHeader]
+                }
+                argv += try builtModules(of: product, for: arch).flatMap { ["-I", $0.include] }
                 argv += configuration.swiftFlags ?? []
                 argv += flags
-                argv += sources.map(\.relative)
+                argv += plan.swift.map(\.path)
                 argv += ["-o", object]
-                try execute(tool("swiftc"), argv, label: "swiftc")
-                produced[arch] = [object]
-            } else {
-                var list: [String] = []
-                for source in sources {
-                    let object = directory + "/" + source.relative.replacingOccurrences(of: "/", with: "__") + ".o"
-                    var argv = targetFlags(arch)
-                    argv += [
-                        "-O\(configuration.optimization)", "-Wall", "-Wextra", "-Werror=unguarded-availability-new",
-                        "-fvisibility=hidden", "-ffile-prefix-map=\(root)=.", "-fno-color-diagnostics",
-                    ]
-                    if configuration.debugInfo {
-                        argv.append("-g")
-                    }
-                    if product.objcARC == true {
-                        argv.append("-fobjc-arc")
-                    }
-                    argv += defines.map { "-D\($0.0)=\($0.1)" }
-                    argv.append("-DAPELIN_PRODUCT_NAME=\"\(product.name)\"")
-                    argv += try (product.headerSearchPaths ?? [])
-                        .map { try "-I" + (ProjectFiles.resolve($0, in: inputs.projectRoot)) }
-                    argv += support.includes.map { "-I" + $0 }
-                    argv += configuration.cFlags ?? []
-                    argv += flags
-                    argv += ["-c", source.relative, "-o", object]
-                    try execute(tool("clang"), argv, label: "clang")
-                    list.append(object)
+
+                let unit = BuildCache.Unit(kind: .swiftProduct, name: product.id, arch: arch.rawValue)
+                var outputs = [BuildCache.Output(name: "\(product.name).o", destination: object)]
+                if plan.usesObjC {
+                    outputs.append(BuildCache.Output(name: "\(product.name)-Swift.h", destination: swiftHeader))
                 }
-                produced[arch] = list
+                let members = try productKeyMembers(
+                    product,
+                    arch: arch,
+                    plan: plan,
+                    includes: includes,
+                    frameworks: frameworks,
+                    interop: interop,
+                    bridge: bridge,
+                    flags: flags
+                )
+                let key = cache.key(unit, members)
+                if cache.restore(unit, key: key, outputs: outputs) {
+                    log("swift \(product.name): \(plan.swift.count) source(s), \(arch.rawValue) — reused")
+                } else {
+                    let started = Date()
+                    try execute(tool("swiftc"), argv, label: "swiftc")
+                    log("swift \(product.name): \(plan.swift.count) source(s), \(arch.rawValue) in \(seconds(started))")
+                    cache.store(unit, key: key, outputs: outputs, members: members)
+                }
+                list.append(object)
             }
+            for source in plan.clang {
+                // Preserve the relative directory: a/b.c and a__b.c must not
+                // overwrite each other, nor collide with the Swift object.
+                let object = directory + "/clang/" + source.path + ".o"
+                try makeDirectory(URL(fileURLWithPath: object).deletingLastPathComponent().path)
+                var argv = targetFlags(arch)
+                argv += [
+                    "-O\(configuration.optimization)", "-Wall", "-Wextra", "-Werror=unguarded-availability-new",
+                    "-fvisibility=hidden", "-ffile-prefix-map=\(root)=.", "-fno-color-diagnostics",
+                ]
+                if configuration.debugInfo {
+                    argv.append("-g")
+                }
+                if product.objcARC == true, source.language.isObjC {
+                    argv.append("-fobjc-arc")
+                }
+                argv += defines.map { "-D\($0.0)=\($0.1)" }
+                argv.append("-DAPELIN_PRODUCT_NAME=\"\(product.name)\"")
+                argv += includes.map { "-I" + $0 }
+                argv += frameworks.map { "-F" + $0 }
+                if plan.usesSwift, source.language.isObjC {
+                    argv += ["-I" + swiftDirectory]
+                }
+                argv += configuration.cFlags ?? []
+                if source.language.isCXX {
+                    if let standard = interop.enabled ? interop.standard : product.cxxStandard {
+                        argv.append("-std=" + standard)
+                    }
+                    if interop.enabled {
+                        argv += try interop.headerSearchPaths.map {
+                            "-I" + (try ProjectFiles.resolve($0, in: inputs.projectRoot))
+                        }
+                    }
+                    argv += configuration.cxxFlags ?? []
+                }
+                argv += flags
+                argv += ["-x", ProductSourcePlan.clangLanguage(source.language), "-c", source.path, "-o", object]
+
+                let unit = BuildCache.Unit(
+                    kind: .clangObject,
+                    name: "\(product.id):\(source.path)",
+                    arch: arch.rawValue
+                )
+                let outputs = [BuildCache.Output(name: "object.o", destination: object)]
+                let swiftHeader: String?
+                if plan.usesSwift, source.language.isObjC {
+                    swiftHeader = swiftDirectory + "/\(product.name)-Swift.h"
+                } else {
+                    swiftHeader = nil
+                }
+                let members = try clangKeyMembers(
+                    product,
+                    source: source,
+                    arch: arch,
+                    interop: interop,
+                    includes: includes,
+                    frameworks: frameworks,
+                    swiftHeader: swiftHeader,
+                    flags: flags
+                )
+                let key = cache.key(unit, members)
+                if cache.restore(unit, key: key, outputs: outputs) {
+                    log("clang \(source.path): \(arch.rawValue) — reused")
+                } else {
+                    let started = Date()
+                    try execute(tool("clang"), argv, label: "clang")
+                    log("clang \(source.path): \(arch.rawValue) in \(seconds(started))")
+                    cache.store(unit, key: key, outputs: outputs, members: members)
+                }
+                list.append(object)
+            }
+            produced[arch] = list
         }
+        sourcePlans[product.id] = plan
         objects[product.id] = produced
     }
 
     private func link(_ product: ProjectDocument.Product, flags: [String]) throws {
-        guard let produced = objects[product.id] else {
+        guard let produced = objects[product.id], let plan = sourcePlans[product.id] else {
             throw BuildFailure("\(product.id): link before compile")
         }
         let support = try support(for: product)
+        let interop = try project.cxxInteropSettings(for: product)
+        let usesSwift = plan.usesSwift || !(product.swiftModules ?? []).isEmpty
+        let libraries = try (product.librarySearchPaths ?? [])
+            .map { try ProjectFiles.resolve($0, in: inputs.projectRoot) } + support.libraryDirectories
+        let frameworks = try (product.frameworkSearchPaths ?? [])
+            .map { try ProjectFiles.resolve($0, in: inputs.projectRoot) } + support.libraryDirectories
         var out: [Architecture: String] = [:]
         for arch in architectures {
             let directory = work.appendingPathComponent("link/\(product.id)/\(arch.rawValue)").path
@@ -306,43 +805,43 @@ public final class BuildPipeline: @unchecked Sendable {
             let binary = directory + "/" + fileName(of: product)
             var argv: [String]
             let executable: String
-            if project.language == .swift {
+            if usesSwift {
                 executable = try tool("swiftc")
                 argv = ["-sdk", inputs.sdk.path, "-target", swiftTarget(arch)] + swiftToolFlags
                 switch product.type {
                 case .dylib:
                     argv += ["-emit-library", "-Xlinker", "-install_name", "-Xlinker", product.effectiveInstallName]
                 case .bundle: argv += ["-Xlinker", "-bundle"]
+                case .appex: argv += extensionEntryPoint
                 case .app, .executable: break
                 }
-                argv += support.libraryDirectories.flatMap { ["-L", $0, "-F", $0] }
-                argv += support.rpaths.flatMap { ["-Xlinker", "-rpath", "-Xlinker", $0] }
-                argv += (product.frameworks ?? []).flatMap { ["-framework", $0] }
-                argv += (product.libraries ?? []).map { "-l" + $0 }
             } else {
                 executable = try tool("clang")
                 argv = targetFlags(arch)
                 switch product.type {
                 case .dylib: argv += ["-dynamiclib", "-install_name", product.effectiveInstallName]
                 case .bundle: argv += ["-bundle"]
+                case .appex: argv += extensionEntryPoint
                 case .app, .executable: break
                 }
-                if product.objcARC == true {
+                if product.objcARC == true, plan.usesObjC {
                     argv.append("-fobjc-arc")
                 }
-                argv += support.libraryDirectories.flatMap { ["-L" + $0, "-F" + $0] }
-                argv += try (product.librarySearchPaths ?? [])
-                    .map { try "-L" + (ProjectFiles.resolve($0, in: inputs.projectRoot)) }
-                argv += try (product.frameworkSearchPaths ?? [])
-                    .map { try "-F" + (ProjectFiles.resolve($0, in: inputs.projectRoot)) }
-                argv += support.rpaths.map { "-Wl,-rpath," + $0 }
-                argv += (product.frameworks ?? []).flatMap { ["-framework", $0] }
-                argv += (product.weakFrameworks ?? []).flatMap { ["-weak_framework", $0] }
-                argv += (product.libraries ?? []).map { "-l" + $0 }
+            }
+            // Both drivers receive the same search paths and link inputs.
+            argv += libraries.flatMap { ["-L", $0] }
+            argv += frameworks.flatMap { ["-F", $0] }
+            argv += support.rpaths.flatMap { ["-Xlinker", "-rpath", "-Xlinker", $0] }
+            argv += (product.frameworks ?? []).flatMap { ["-framework", $0] }
+            argv += (product.weakFrameworks ?? []).flatMap { ["-Xlinker", "-weak_framework", "-Xlinker", $0] }
+            argv += (product.libraries ?? []).map { "-l" + $0 }
+            if plan.usesCXX || interop.enabled, !(product.libraries ?? []).contains("c++") {
+                argv.append("-lc++")
             }
             argv += configuration.linkFlags ?? []
             argv += flags
             argv += produced[arch] ?? []
+            argv += try builtModules(of: product, for: arch).map(\.object)
             argv += ["-o", binary]
             try execute(executable, argv, label: "ld")
             if arch == .arm64e {
@@ -371,6 +870,25 @@ public final class BuildPipeline: @unchecked Sendable {
         }
     }
 
+    /// What an `.appex` is linked with: an extension is MH_EXECUTE whose entry
+    /// point is Foundation's `NSExtensionMain` — the host's own way in, which
+    /// is what Xcode's `LD_ENTRY_POINT` sets — with Foundation linked so the
+    /// entry has somewhere to resolve from. The product's own `main` stays in
+    /// the image; `NSExtensionMain` is what starts it.
+    private var extensionEntryPoint: [String] {
+        ["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain", "-framework", "Foundation"]
+    }
+
+    /// The directory a product's resources are assembled in: `<name>.app`,
+    /// `<name>.appex` or `<name>.bundle`.
+    private func bundleSuffix(of product: ProjectDocument.Product) -> String {
+        switch product.type {
+        case .app: ".app"
+        case .appex: ".appex"
+        default: ".bundle"
+        }
+    }
+
     /// The product's file: `<name>.dylib` for a library, `<name>` otherwise.
     private func fileName(of product: ProjectDocument.Product) -> String {
         product.type == .dylib && !product.name.hasSuffix(".dylib") ? product.name + ".dylib" : product.name
@@ -378,13 +896,27 @@ public final class BuildPipeline: @unchecked Sendable {
 
     private func bundleResources(_ product: ProjectDocument.Product) throws {
         guard let infoPlist = product.infoPlist else { throw BuildFailure("\(product.id) has no infoPlist") }
-        let suffix = product.type == .app ? ".app" : ".bundle"
+        let suffix = bundleSuffix(of: product)
         let bundle = work.appendingPathComponent("products/\(product.name)\(suffix)").path
         try? FileManager.default.removeItem(atPath: bundle)
         try makeDirectory(bundle)
         let source = try ProjectFiles.read(infoPlist, in: inputs.projectRoot)
         guard var info = try PropertyListSerialization.propertyList(from: source, format: nil) as? [String: Any] else {
             throw BuildFailure("\(infoPlist) is not a dictionary property list")
+        }
+        if product.type == .appex {
+            // What makes the directory an extension and not a bundle: the
+            // point it plugs into, and an identifier an app can host.
+            guard let identifier = info["CFBundleIdentifier"] as? String, !identifier.isEmpty else {
+                throw BuildFailure("\(infoPlist) has no CFBundleIdentifier, which an .appex needs")
+            }
+            guard let point = (info["NSExtension"] as? [String: Any])?["NSExtensionPointIdentifier"] as? String,
+                  !point.isEmpty
+            else {
+                throw BuildFailure("\(infoPlist) has no NSExtension.NSExtensionPointIdentifier, which an .appex needs")
+            }
+            info["CFBundlePackageType"] = info["CFBundlePackageType"] ?? "XPC!"
+            info["CFBundleSupportedPlatforms"] = info["CFBundleSupportedPlatforms"] ?? ["iPhoneOS"]
         }
         info["CFBundleExecutable"] = product.name
         info["CFBundleShortVersionString"] = project.package.version

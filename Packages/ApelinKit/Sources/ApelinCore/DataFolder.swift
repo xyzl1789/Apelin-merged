@@ -95,6 +95,22 @@ public struct DataFolder: Sendable, Equatable {
         console.appendingPathComponent("out", isDirectory: true)
     }
 
+    /// `ModelData/models.json`: models.dev's catalog, trimmed and kept on the
+    /// device for the agent to read a model it has never heard of against.
+    public var modelData: URL {
+        folder(ModelDataSnapshot.folderName)
+    }
+
+    public var modelDataFile: URL {
+        ModelDataSnapshot.url(in: root)
+    }
+
+    /// `WeChatChannel/`: the WeChat ClawBot channel's sign-in, its settings
+    /// and the phones it talks to (`Apelind/Session/Channel`).
+    public var weChatChannel: URL {
+        folder("WeChatChannel")
+    }
+
     /// The directory of the project named `name`, or nil when the name breaks
     /// `ProjectName`'s rules.
     public func project(named name: String) -> URL? {

@@ -7,6 +7,31 @@ import Foundation
 // is in AGENTS.md ▸ Decisions ▸ Agent sessions.
 // Served by apelin-agent (Workers/Agent; Packages/ApelinAgent) through the host.
 
+/// What a run is allowed to do, as the composer's pill sets it. Sent with
+/// every prompt, because it can change between messages; the approval mode
+/// answers when the user is asked, this one answers whether the work happens.
+public enum AgentRunMode: String, Codable, Sendable, CaseIterable {
+    /// Read and answer: no edit, no build, no install.
+    case plan
+    /// Work as the approval mode allows.
+    case build
+    /// A build run that stops asking.
+    case auto
+
+    /// What the agent is told this run may do, written into the message's
+    /// `<system-state>`.
+    public var instruction: String {
+        switch self {
+        case .plan:
+            "This run is a plan: read what you need — the files, the log, the read-only commands of shell_run's presets (ls, cat, head, tail, wc, file, stat, plutil -p, and git status, git diff, git log) — write the steps with apelin_todo_write, and answer with what you would change and why. Do not edit, create or delete a file, and do not build, install or run anything that changes the device."
+        case .build:
+            "This run is a build: make the change the user asked for, as the approval mode allows."
+        case .auto:
+            "This run is automatic: make the change the user asked for without stopping to ask, except where a rule below still asks."
+        }
+    }
+}
+
 public enum ApprovalMode: String, Codable, Sendable {
     /// Everything runs, except a shell_run as root, which asks every time.
     case relaxed
@@ -49,6 +74,11 @@ public struct AgentSessionSummary: Codable, Sendable, Equatable {
     /// The session whose agent opened this one (`agentOpen` from an agent);
     /// nil for one the app opened.
     public var parentSessionID: String?
+    /// What opened it besides the app or an agent: `wechat` for a
+    /// conversation a chat channel opened (`AgentOpenRequest.origin`). The
+    /// app takes one of these in even though no chat of its own opened it,
+    /// so a conversation held from a phone can be read here too.
+    public var origin: String?
 
     public init(
         sessionID: String,
@@ -59,6 +89,7 @@ public struct AgentSessionSummary: Codable, Sendable, Equatable {
         state: TaskState,
         updatedAt: Date,
         parentSessionID: String? = nil,
+        origin: String? = nil,
     ) {
         self.sessionID = sessionID
         self.task = task
@@ -68,6 +99,7 @@ public struct AgentSessionSummary: Codable, Sendable, Equatable {
         self.state = state
         self.updatedAt = updatedAt
         self.parentSessionID = parentSessionID
+        self.origin = origin
     }
 }
 
@@ -120,12 +152,7 @@ public enum ApelinLink {
 /// (in brackets). Credentials are never part of a request: the agent reads
 /// them from the keychain by that id. The first four are the original
 /// names; a case is never renamed on the wire.
-///
-/// On the wire a provider is one string, its case's name. A further
-/// OpenAI-compatible endpoint is `openAICompatible.<number>`, so whatever
-/// is kept by provider (a sign-in, its enabled models, the composer's
-/// model) is kept for each endpoint by itself.
-public enum AgentProvider: Hashable, Sendable {
+public enum AgentProvider: String, Codable, Sendable {
     /// GitHub Copilot (kwwk's `github-copilot` credential).
     case githubCopilot
     /// Anthropic's Messages API with an API key (`anthropic-api-key`).
@@ -191,127 +218,47 @@ public enum AgentProvider: Hashable, Sendable {
     /// OpenCode Zen, opencode.ai's pay-as-you-go gateway, with an OpenCode
     /// Console key (`opencode`).
     case openCodeZen
-
-    /// One more OpenAI-compatible endpoint beside the first, with a key,
-    /// base URL and models of its own (`openai-compatible.<number>`). They
-    /// are numbered from 2 as the user adds them (#60: there was one
-    /// endpoint, and adding another replaced it).
-    case openAICompatibleEndpoint(Int)
 }
 
-extension AgentProvider: RawRepresentable, Codable {
-    /// The numbers a further endpoint takes: the first is `openAICompatible`.
-    public static let endpointNumbers = 2 ... 99
+extension AgentProvider: CaseIterable {}
 
-    private static let endpointPrefix = "openAICompatible."
+/// A provider/model pair used by an auxiliary agent operation.
+public struct AgentModelSelection: Codable, Sendable, Equatable, Hashable {
+    public var provider: AgentProvider
+    public var model: String
 
-    public var rawValue: String {
-        switch self {
-        case .githubCopilot: "githubCopilot"
-        case .anthropic: "anthropic"
-        case .anthropicOAuth: "anthropicOAuth"
-        case .openAICompatible: "openAICompatible"
-        case .openAICodex: "openAICodex"
-        case .cursor: "cursor"
-        case .devin: "devin"
-        case .kiro: "kiro"
-        case .antigravity: "antigravity"
-        case .qoder: "qoder"
-        case .qoderCN: "qoderCN"
-        case .workBuddy: "workBuddy"
-        case .workBuddyAI: "workBuddyAI"
-        case .trae: "trae"
-        case .traeIntl: "traeIntl"
-        case .raccoon: "raccoon"
-        case .kimiCoding: "kimiCoding"
-        case .kimiCodingGlobal: "kimiCodingGlobal"
-        case .xai: "xai"
-        case .zai: "zai"
-        case .zaiCodingCN: "zaiCodingCN"
-        case .openRouter: "openRouter"
-        case .openAI: "openAI"
-        case .google: "google"
-        case .deepSeek: "deepSeek"
-        case .openCodeGo: "openCodeGo"
-        case .openCodeZen: "openCodeZen"
-        case let .openAICompatibleEndpoint(number): Self.endpointPrefix + String(number)
-        }
-    }
-
-    public init?(rawValue: String) {
-        if let fixed = Self.byName[rawValue] {
-            self = fixed
-            return
-        }
-        // Digits alone, with no sign, space or leading zero: one spelling a number.
-        guard rawValue.hasPrefix(Self.endpointPrefix),
-              let number = Int(rawValue.dropFirst(Self.endpointPrefix.count)),
-              Self.endpointNumbers.contains(number),
-              Self.endpointPrefix + String(number) == rawValue
-        else { return nil }
-        self = .openAICompatibleEndpoint(number)
-    }
-
-    private static let byName = Dictionary(uniqueKeysWithValues: allCases.map { ($0.rawValue, $0) })
-
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let name = try container.decode(String.self)
-        guard let provider = Self(rawValue: name) else {
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "unknown provider \(name)")
-        }
-        self = provider
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
+    public init(provider: AgentProvider, model: String) {
+        self.provider = provider
+        self.model = model
     }
 }
 
-extension AgentProvider: CaseIterable {
-    /// Every provider there is to sign in to. A further OpenAI-compatible
-    /// endpoint is not one of them: it exists once the user adds it.
-    public static let allCases: [AgentProvider] = [
-        .githubCopilot,
-        .anthropic,
-        .anthropicOAuth,
-        .openAICompatible,
-        .openAICodex,
-        .cursor,
-        .devin,
-        .kiro,
-        .antigravity,
-        .qoder,
-        .qoderCN,
-        .workBuddy,
-        .workBuddyAI,
-        .trae,
-        .traeIntl,
-        .raccoon,
-        .kimiCoding,
-        .kimiCodingGlobal,
-        .xai,
-        .zai,
-        .zaiCodingCN,
-        .openRouter,
-        .openAI,
-        .google,
-        .deepSeek,
-        .openCodeGo,
-        .openCodeZen,
-    ]
-}
+/// App-wide model defaults. Missing entries follow the conversation model.
+public struct AgentModelDefaults: Codable, Sendable, Equatable, Hashable {
+    public var promptRewrite: AgentModelSelection?
+    public var compression: AgentModelSelection?
+    public var title: AgentModelSelection?
+    public var vision: AgentModelSelection?
+    public var imageGeneration: AgentModelSelection?
+    /// The model a conversation an agent opens starts with
+    /// (`apelin_conversation_create`). Absent leaves it on the model of the
+    /// conversation that opened it.
+    public var derivedConversation: AgentModelSelection?
 
-public extension AgentProvider {
-    /// The provider whose sign-in form, transport and name this one has:
-    /// itself, and `openAICompatible` for a further endpoint.
-    var kind: AgentProvider {
-        if case .openAICompatibleEndpoint = self {
-            .openAICompatible
-        } else {
-            self
-        }
+    public init(
+        promptRewrite: AgentModelSelection? = nil,
+        compression: AgentModelSelection? = nil,
+        title: AgentModelSelection? = nil,
+        vision: AgentModelSelection? = nil,
+        imageGeneration: AgentModelSelection? = nil,
+        derivedConversation: AgentModelSelection? = nil,
+    ) {
+        self.promptRewrite = promptRewrite
+        self.compression = compression
+        self.title = title
+        self.vision = vision
+        self.imageGeneration = imageGeneration
+        self.derivedConversation = derivedConversation
     }
 }
 
@@ -325,6 +272,93 @@ public enum AgentReasoningEffort: String, Codable, Sendable, CaseIterable {
 /// for it (`AgentAccount.serviceTiers`); absent is the standard tier.
 public enum AgentServiceTier: String, Codable, Sendable, CaseIterable {
     case priority, ultrafast
+}
+
+/// What the app's model settings say a model's own record does not, or says
+/// better: the two figures a conversation is read against, and what the model
+/// itself takes.
+public struct AgentModelParameters: Codable, Sendable, Equatable, Hashable {
+    /// Tokens the conversation may take before the agent compacts it: the
+    /// window the composer's ring is drawn against.
+    public var contextWindow: Int?
+    /// The most a reply may be.
+    public var maxTokens: Int?
+    /// Whether the model takes images. Absent leaves what the catalog says;
+    /// `false` is a model a relay serves as text only, `true` one whose own
+    /// record does not say so.
+    public var acceptsImages: Bool?
+    /// Whether the model thinks before it answers. Absent leaves what the
+    /// catalog says.
+    public var reasoning: Bool?
+    /// Whether the catalog's figures apply at all. Absent is on; `false` is an
+    /// endpoint that refuses a figure it does not honour, and leaves the model
+    /// with nothing its entry says.
+    public var followsCatalog: Bool?
+
+    public init(
+        contextWindow: Int? = nil,
+        maxTokens: Int? = nil,
+        acceptsImages: Bool? = nil,
+        reasoning: Bool? = nil,
+        followsCatalog: Bool? = nil,
+    ) {
+        self.contextWindow = contextWindow
+        self.maxTokens = maxTokens
+        self.acceptsImages = acceptsImages
+        self.reasoning = reasoning
+        self.followsCatalog = followsCatalog
+    }
+
+    /// Whether anything here overrides the model's own record.
+    public var hasAnythingToSay: Bool {
+        contextWindow != nil || maxTokens != nil || acceptsImages != nil
+            || reasoning != nil || followsCatalog != nil
+    }
+}
+
+/// What a model was read as: the catalog entry a conversation found for it,
+/// and the figures that entry gave, so the settings page can show them beside
+/// the app's own.
+public struct AgentModelCapabilities: Codable, Sendable, Equatable, Hashable {
+    /// The window the entry names.
+    public var contextWindow: Int?
+    /// The reply ceiling the entry names.
+    public var maxTokens: Int?
+    /// Whether it takes images.
+    public var acceptsImages: Bool?
+    /// Whether it thinks before it answers.
+    public var reasoning: Bool?
+    /// The entry's own name, as the catalog spells it: `deepseek-v4.1-flash`.
+    public var catalogName: String?
+    /// What the catalog calls the model in words, where that is not the id
+    /// again: `DeepSeek V4.1 Flash`. The name a list shows; the id stays what a
+    /// conversation sends.
+    public var catalogTitle: String?
+    /// The catalog it came from: a provider key of the one kwwk bundles
+    /// (`deepseek`), or `models.dev`'s (`anthropic`).
+    public var catalogProvider: String?
+    /// `models.dev` or `catalog`: which copy the entry was read from.
+    public var source: String?
+
+    public init(
+        contextWindow: Int? = nil,
+        maxTokens: Int? = nil,
+        acceptsImages: Bool? = nil,
+        reasoning: Bool? = nil,
+        catalogName: String? = nil,
+        catalogTitle: String? = nil,
+        catalogProvider: String? = nil,
+        source: String? = nil,
+    ) {
+        self.contextWindow = contextWindow
+        self.maxTokens = maxTokens
+        self.acceptsImages = acceptsImages
+        self.reasoning = reasoning
+        self.catalogName = catalogName
+        self.catalogTitle = catalogTitle
+        self.catalogProvider = catalogProvider
+        self.source = source
+    }
 }
 
 public struct AgentOpenRequest: OperationRequest {
@@ -342,12 +376,24 @@ public struct AgentOpenRequest: OperationRequest {
     public var provider: AgentProvider?
     /// A model identifier from the app's model settings; nil is the default.
     public var model: String?
+    /// Defaults for auxiliary operations in this session.
+    public var modelDefaults: AgentModelDefaults?
     public var approvalMode: ApprovalMode
     /// Ask Before Using the Screen (`ScreenConsent`): nil is on. An agent's
     /// open takes its opener's, whatever it sends.
     public var asksBeforeScreen: Bool?
     public var reasoningEffort: AgentReasoningEffort?
     public var serviceTier: AgentServiceTier?
+    /// The model's own figures for this choice, as the app's model settings
+    /// have them: nil leaves what the model's record says.
+    public var modelParameters: AgentModelParameters?
+    /// The reader's standing instructions, from Settings ▸ Agent ▸ Prompt
+    /// Injection: the text the system prompt carries before anything else.
+    /// The app sends it; a conversation an agent opens has its opener's. An
+    /// open of a session that is already running answers with its task and
+    /// reaches no worker, so a chat opened before the setting changed hears it
+    /// through every prompt instead (`AgentPromptRequest.promptInjection`).
+    public var promptInjection: String?
     /// A first prompt, submitted as soon as the session is open.
     public var prompt: String?
     /// End the session (its task) when the first run finishes: `succeeded`
@@ -365,6 +411,10 @@ public struct AgentOpenRequest: OperationRequest {
     /// worker says so in the next message's `<system-state>` when the
     /// conversation has history.
     public var hostRestarted: Bool?
+    /// What opened the conversation besides the app: a chat channel names
+    /// itself (`"wechat"`), and the host records it so the app lists the
+    /// conversation and can read it. An agent's open carries none.
+    public var origin: String?
 
     public init(
         projectID: String? = nil,
@@ -373,14 +423,18 @@ public struct AgentOpenRequest: OperationRequest {
         sessionID: String? = nil,
         provider: AgentProvider? = nil,
         model: String? = nil,
+        modelDefaults: AgentModelDefaults? = nil,
         approvalMode: ApprovalMode = .confirm,
         asksBeforeScreen: Bool? = nil,
         reasoningEffort: AgentReasoningEffort? = nil,
         serviceTier: AgentServiceTier? = nil,
+        modelParameters: AgentModelParameters? = nil,
+        promptInjection: String? = nil,
         prompt: String? = nil,
         closeWhenFinished: Bool? = nil,
         title: String? = nil,
         hostRestarted: Bool? = nil,
+        origin: String? = nil,
     ) {
         self.projectID = projectID
         self.projectName = projectName
@@ -388,14 +442,18 @@ public struct AgentOpenRequest: OperationRequest {
         self.sessionID = sessionID
         self.provider = provider
         self.model = model
+        self.modelDefaults = modelDefaults
         self.approvalMode = approvalMode
         self.asksBeforeScreen = asksBeforeScreen
         self.reasoningEffort = reasoningEffort
         self.serviceTier = serviceTier
+        self.modelParameters = modelParameters
+        self.promptInjection = promptInjection
         self.prompt = prompt
         self.closeWhenFinished = closeWhenFinished
         self.title = title
         self.hostRestarted = hostRestarted
+        self.origin = origin
     }
 }
 
@@ -433,6 +491,13 @@ public struct AgentAttachment: Codable, Sendable, Hashable {
     }
 }
 
+public enum AgentMessageDelivery: String, Codable, Sendable, CaseIterable {
+    /// A complete new run after the active run succeeds.
+    case queue
+    /// Guide the active run at its next input boundary; idle falls back to queue.
+    case steer
+}
+
 public struct AgentPromptRequest: OperationRequest {
     public typealias Response = Acknowledged
     public static let operation = AppOperation.agentPrompt
@@ -441,18 +506,46 @@ public struct AgentPromptRequest: OperationRequest {
     public var messageID: UUID?
     public var provider: AgentProvider?
     public var model: String?
+    /// Updated app-wide auxiliary model defaults for this session.
+    public var modelDefaults: AgentModelDefaults?
     public var reasoningEffort: AgentReasoningEffort?
     public var serviceTier: AgentServiceTier?
+    /// The model's own figures for this choice, as the app's model settings
+    /// have them: nil leaves what the model's record says.
+    public var modelParameters: AgentModelParameters?
     public var attachments: [AgentInputAttachment]?
     public var approvalMode: ApprovalMode?
     /// Ask Before Using the Screen (`ScreenConsent`), as the app has it now;
     /// nil leaves the session's as it is, as a nil `approvalMode` does. The
     /// host drops it from an agent's prompt.
     public var asksBeforeScreen: Bool?
+    /// What this run is allowed to do, from the composer's pill: `plan` reads
+    /// and answers without changing anything, `build` works as the approval
+    /// mode allows, `auto` is a build run that stops asking. Not the approval
+    /// mode under another name: that one says when the user is asked, this one
+    /// says whether the work happens at all. The worker writes it into the
+    /// message's `<system-state>`, which is where a setting that can change
+    /// between messages belongs (the system prompt is the session's snapshot).
+    public var runMode: AgentRunMode?
+    /// The reader's standing instructions (Settings ▸ Agent ▸ Prompt
+    /// Injection), as the app has them now, carried by every prompt so a
+    /// conversation that is already open hears the switch too: the text while
+    /// it is on, "" while it is off or nothing is written, which withdraws
+    /// instructions that session opened with. nil leaves the session's as it
+    /// is, as a nil `approvalMode` does; an agent's prompt carries none.
+    public var promptInjection: String?
     /// The session whose agent sent this, written by the host for an
     /// agent's prompt and cleared for the app's; the worker records it on
     /// the `prompt` event as `from`.
     public var fromSessionID: String?
+    /// What sent this prompt besides the app: a chat channel names itself
+    /// (`ChatChannel.weChat`). The worker tells the model in this message's
+    /// `<system-state>`, so it knows the reader is in another app, and
+    /// records it on the `prompt` event as `source`, which the app shows over
+    /// the bubble. A prompt from a conversation's agent carries none.
+    public var source: String?
+    /// Absent on older callers means queue. Only an explicit steer guides a live run.
+    public var delivery: AgentMessageDelivery?
 
     public init(
         sessionID: String,
@@ -461,23 +554,73 @@ public struct AgentPromptRequest: OperationRequest {
         attachments: [AgentInputAttachment]? = nil,
         provider: AgentProvider? = nil,
         model: String? = nil,
+        modelDefaults: AgentModelDefaults? = nil,
         reasoningEffort: AgentReasoningEffort? = nil,
         serviceTier: AgentServiceTier? = nil,
         approvalMode: ApprovalMode? = nil,
         asksBeforeScreen: Bool? = nil,
+        runMode: AgentRunMode? = nil,
+        promptInjection: String? = nil,
         fromSessionID: String? = nil,
+        source: String? = nil,
+        delivery: AgentMessageDelivery? = nil,
+        modelParameters: AgentModelParameters? = nil,
     ) {
         self.sessionID = sessionID
         self.text = text
         self.messageID = messageID
         self.provider = provider
         self.model = model
+        self.modelDefaults = modelDefaults
         self.reasoningEffort = reasoningEffort
         self.serviceTier = serviceTier
+        self.modelParameters = modelParameters
         self.attachments = attachments
         self.approvalMode = approvalMode
         self.asksBeforeScreen = asksBeforeScreen
+        self.runMode = runMode
+        self.promptInjection = promptInjection
         self.fromSessionID = fromSessionID
+        self.source = source
+        self.delivery = delivery
+    }
+}
+
+
+/// Generates one standalone image using the configured auxiliary image model.
+/// Providers with a native image endpoint return real image bytes (PNG/JPEG,
+/// usually as Base64); providers without one retain the session's compatibility
+/// SVG fallback.
+public struct AgentGenerateImageRequest: OperationRequest {
+    public typealias Response = AgentGenerateImageResponse
+    public static let operation = AppOperation.agentGenerateImage
+    public var sessionID: String
+    public var prompt: String
+    public var modelDefaults: AgentModelDefaults?
+
+    public init(sessionID: String, prompt: String, modelDefaults: AgentModelDefaults? = nil) {
+        self.sessionID = sessionID
+        self.prompt = prompt
+        self.modelDefaults = modelDefaults
+    }
+}
+
+public struct AgentGeneratedImage: Codable, Sendable, Equatable, Hashable {
+    /// Base64-encoded image bytes.
+    public var data: String
+    public var mimeType: String
+
+    public init(data: String, mimeType: String) {
+        self.data = data
+        self.mimeType = mimeType
+    }
+}
+
+public struct AgentGenerateImageResponse: Codable, Sendable, Equatable, Hashable {
+    public var image: AgentGeneratedImage
+
+    public init(image: AgentGeneratedImage) {
+        self.image = image
     }
 }
 
@@ -514,8 +657,10 @@ public struct AgentCompactRequest: OperationRequest {
     public typealias Response = Acknowledged
     public static let operation = AppOperation.agentCompact
     public var sessionID: String
-    public init(sessionID: String) {
+    public var modelDefaults: AgentModelDefaults?
+    public init(sessionID: String, modelDefaults: AgentModelDefaults? = nil) {
         self.sessionID = sessionID
+        self.modelDefaults = modelDefaults
     }
 }
 
@@ -549,6 +694,75 @@ public struct AgentCompactionResult: Codable, Sendable, Hashable {
     }
 }
 
+/// Operations on reader input not yet dispatched to a model run.
+public enum AgentQueueAction: String, Codable, Sendable {
+    case steer, edit, delete, reorder, hold, resume
+}
+
+/// App-only management of input waiting for a new complete run.
+public struct AgentQueueRequest: OperationRequest {
+    public typealias Response = Acknowledged
+    public static let operation = AppOperation.agentQueue
+    public var sessionID: String
+    public var action: AgentQueueAction
+    public var messageID: UUID?
+    public var text: String?
+    public var order: [UUID]?
+
+    public init(sessionID: String, action: AgentQueueAction, messageID: UUID? = nil, text: String? = nil, order: [UUID]? = nil) {
+        self.sessionID = sessionID
+        self.action = action
+        self.messageID = messageID
+        self.text = text
+        self.order = order
+    }
+}
+
+/// The model the next message will use, applied to an already-open session.
+/// The next prompt still carries this choice if this update does not arrive.
+public struct AgentConfigureRequest: OperationRequest {
+    public typealias Response = AgentConfigureResponse
+    public static let operation = AppOperation.agentConfigure
+    public var sessionID: String
+    public var provider: AgentProvider
+    public var model: String
+    public var reasoningEffort: AgentReasoningEffort?
+    public var serviceTier: AgentServiceTier?
+    public var modelParameters: AgentModelParameters?
+
+    public init(
+        sessionID: String,
+        provider: AgentProvider,
+        model: String,
+        reasoningEffort: AgentReasoningEffort? = nil,
+        serviceTier: AgentServiceTier? = nil,
+        modelParameters: AgentModelParameters? = nil,
+    ) {
+        self.sessionID = sessionID
+        self.provider = provider
+        self.model = model
+        self.reasoningEffort = reasoningEffort
+        self.serviceTier = serviceTier
+        self.modelParameters = modelParameters
+    }
+}
+
+public struct AgentConfigureResponse: Codable, Sendable, Equatable {
+    /// False when a run was going: nothing changed, and the choice is the
+    /// next prompt's to take.
+    public var applied: Bool
+    /// What the session measured after it applied the model, absent when it
+    /// did not apply it.
+    public var tokens: Int?
+    public var window: Int?
+
+    public init(applied: Bool, tokens: Int? = nil, window: Int? = nil) {
+        self.applied = applied
+        self.tokens = tokens
+        self.window = window
+    }
+}
+
 public struct AgentApproveRequest: OperationRequest {
     public typealias Response = Acknowledged
     public static let operation = AppOperation.agentApprove
@@ -562,6 +776,9 @@ public struct AgentApproveRequest: OperationRequest {
     /// an approval of a shell_run as root only with it; the console never
     /// sends it, so a script file cannot approve one.
     public var ownerVerified: Bool?
+    /// The reader's answer, with `approve`, to a request whose
+    /// `detail.question` asked one (`AgentQuestion`); absent for any other.
+    public var answer: AgentQuestionAnswer?
 
     public init(
         sessionID: String,
@@ -569,12 +786,14 @@ public struct AgentApproveRequest: OperationRequest {
         decision: ApprovalDecision,
         scope: ApprovalScope? = nil,
         ownerVerified: Bool? = nil,
+        answer: AgentQuestionAnswer? = nil,
     ) {
         self.sessionID = sessionID
         self.approvalID = approvalID
         self.decision = decision
         self.scope = scope
         self.ownerVerified = ownerVerified
+        self.answer = answer
     }
 }
 
@@ -638,16 +857,30 @@ public extension ApelinService {
         _ = try await send(AgentPromptRequest(sessionID: sessionID, text: text))
     }
 
+    func agentGenerateImage(sessionID: String, prompt: String, modelDefaults: AgentModelDefaults? = nil) async throws -> AgentGenerateImageResponse {
+        try await send(AgentGenerateImageRequest(sessionID: sessionID, prompt: prompt, modelDefaults: modelDefaults))
+    }
+
     func agentSteer(sessionID: String, text: String) async throws {
         _ = try await send(AgentSteerRequest(sessionID: sessionID, text: text))
+    }
+
+    @discardableResult
+    func agentQueue(_ request: AgentQueueRequest) async throws -> Acknowledged {
+        try await send(request)
     }
 
     func agentAbort(sessionID: String) async throws {
         _ = try await send(AgentAbortRequest(sessionID: sessionID))
     }
 
-    func agentCompact(sessionID: String) async throws {
-        _ = try await send(AgentCompactRequest(sessionID: sessionID))
+    func agentCompact(sessionID: String, modelDefaults: AgentModelDefaults? = nil) async throws {
+        _ = try await send(AgentCompactRequest(sessionID: sessionID, modelDefaults: modelDefaults))
+    }
+
+    @discardableResult
+    func agentConfigure(_ request: AgentConfigureRequest) async throws -> AgentConfigureResponse {
+        try await send(request)
     }
 
     func agentApprove(
@@ -656,6 +889,7 @@ public extension ApelinService {
         decision: ApprovalDecision,
         scope: ApprovalScope? = nil,
         ownerVerified: Bool? = nil,
+        answer: AgentQuestionAnswer? = nil,
     ) async throws {
         _ = try await send(AgentApproveRequest(
             sessionID: sessionID,
@@ -663,6 +897,7 @@ public extension ApelinService {
             decision: decision,
             scope: scope,
             ownerVerified: ownerVerified,
+            answer: answer,
         ))
     }
 

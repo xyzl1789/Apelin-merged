@@ -13,6 +13,10 @@ struct ChatMessage: Identifiable, Hashable {
         /// row's text is the summary it goes on from, empty for a session
         /// that did not keep it.
         case compaction
+        /// The header of a turn (`ChatTurnHeaderRow`): the run's state, said
+        /// once for the whole turn rather than by each stretch inside it.
+        /// `seconds` is how long the turn took, once it has ended.
+        case turn(running: Bool, seconds: Int?)
 
         var isActivity: Bool {
             switch self {
@@ -43,39 +47,33 @@ struct ChatMessage: Identifiable, Hashable {
         }
     }
 
-    let id: UUID
+    var id: UUID
     var role: Role
     var text: String
     var detail = ""
+    /// A tool row's call, by the name the model used (`AgentToolName`): which
+    /// tool it is, for the symbol its line is drawn with.
+    var tool: String?
     var trace: [ChatMessage] = []
     var attachments: [ComposerAttachment]
     /// A user message sent during a run that the run has not taken yet.
     var isQueued = false
+    /// The requested delivery of durable input: queue or steer.
+    var queueDelivery: String?
     /// A user message another conversation's agent sent: the line shown
     /// over the bubble naming that conversation.
     var sender: String?
+    /// Only the currently running summary names the message it is processing.
+    /// A queued message must not replace this until the model takes it.
+    var processingSource: String?
     /// A tool row's call, and on a running summary its newest call, for the
     /// line under the summary.
     var banner: ToolCallBanner?
     /// A tool row whose result has not come back yet.
     var awaitsResult = false
-    /// On a running summary, the calls in its trace still waiting for a result.
-    var runningTools = 0
-    /// What a running summary says of a model request that failed, while
-    /// nothing has come of it yet.
-    enum Recovery: Hashable {
-        /// It failed with no route to the network and waits for one (the
-        /// session's `waitingForNetwork`).
-        case waitingForNetwork
-        /// It is being made again (the session's `reconnecting`).
-        case reconnecting
-    }
-
-    /// On the running summary, the failed model request it waits on.
-    var recovery: Recovery?
-    /// An error the session recorded, shown as one rather than as a reply
-    /// (`ChatFailureRow`); `text` keeps the words it came with.
-    var failure: ChatFailure?
+    /// On the running summary, a model request that failed is being made
+    /// again (the session's `reconnecting`) and nothing has come of it yet.
+    var isReconnecting = false
     /// On the turn's latest summary while the run goes, the output tokens
     /// the run has received so far (the session's `received`); nil before
     /// the first count, once the run has ended, and for a session older
@@ -88,24 +86,72 @@ struct ChatMessage: Identifiable, Hashable {
     /// the card says so, and Approve checks the device owner first.
     var runsAsRoot = false
     var approvalSections: [ApprovalCardText.Section] = []
+    /// An approval that is a question the agent asked
+    /// (`apelin_question_ask`): the card offers its options instead of
+    /// Approve and Deny, and the decision sends the answer.
+    var question: AgentQuestion?
+    /// When the reader sent it: a user message's, for the line under it.
+    var sentAt: Date?
+    /// Text the model wrote (`text`, `message`), not an error or a tool's
+    /// images: the rows a reply's menu acts on.
+    var isReply = false
+    /// The message whose turn this row is in, by its own id: a user
+    /// message's, and a reply's. Nil for a message without one (another
+    /// conversation's), which the history's changes cannot name.
+    var turnMessageID: UUID?
+    /// A user message whose run saved the code first: Checkpoint & Rewind
+    /// can put it back.
+    var hasCheckpoint = false
+    /// On a turn's last reply: what the turn cost and how long it took.
+    var turnStats: ChatTurnStats?
+    /// The conversation's newest reply, while no run goes: Copy and More
+    /// under it.
+    var offersActions = false
+    /// A reply the reader deleted (`replyDeleted`): left out of the rows
+    /// shown.
+    var isRemoved = false
+    /// A summary a folded turn draws for its whole process: the row shows its
+    /// line and the call it is on, and none of the steps under them — they are
+    /// what opening the turn's header is for.
+    var foldsProcessSteps = false
+    /// Adjacent process segments share one boundary inset, not two.
+    var activityJoinsPrevious = false
+    /// On a running turn's header, folded or expanded: the output tokens
+    /// received so far, and whether the run is writing a reply so the count
+    /// settles sooner (`receivedSettles`).
+    var headerReceivedTokens: Int?
+    var headerReceivedSettles = false
 
+    /// What a summary's title line says: a stretch still going names the run
+    /// and what it waits on, a finished one names what it did. aimini titles
+    /// a group of calls the same way, and no stretch calls itself finished
+    /// while the turn still works — one turn is not two processes, one
+    /// finished and one running, with a reply between them.
     var activityTitle: String {
-        guard case let .thinking(seconds, tools) = role else { return text }
+        guard case let .thinking(seconds, _) = role else { return text }
         // An unfinished summary counts only the calls still running; between
         // them the model is at work again, so it reads "Thinking…", or
-        // "Waiting for Network…" while a failed request waits for a route,
-        // or "Reconnecting…" while one is made again.
+        // "Reconnecting…" while a failed request is made again.
         guard let seconds else {
-            switch recovery {
-            case .waitingForNetwork: return String(localized: "Waiting for Network…")
-            case .reconnecting: return String(localized: "Reconnecting…")
-            case nil: break
+            if isReconnecting {
+                return String(localized: "Reconnecting…")
             }
-            guard runningTools > 0 else { return String(localized: "Thinking…") }
-            return runningTools == 1
+            let running = runningTools
+            guard running > 0 else { return String(localized: "Thinking…") }
+            return running == 1
                 ? String(localized: "Executing tool…")
-                : String(localized: "Executing \(runningTools) tools…")
+                : String(localized: "Executing \(running) tools…")
         }
+        // A finished stretch says nothing of its own: what it thought and
+        // called is in its steps, and a count of them reads better there than
+        // over them.
+        return ""
+    }
+
+    /// What a stretch of a run did, in aimini's words: "Thought for 3
+    /// seconds and called 2 tools", and the shorter forms of it. A turn's
+    /// header says the same of the whole turn while it runs.
+    static func workTitle(seconds: Int, tools: Int) -> String {
         if seconds <= 0 {
             guard tools > 0 else { return "" }
             return tools == 1 ? String(localized: "Called 1 tool") : String(localized: "Called \(tools) tools")
@@ -125,6 +171,11 @@ struct ChatMessage: Identifiable, Hashable {
             : String(localized: "Thought for \(seconds) seconds and called \(tools) tools")
     }
 
+    /// The calls this summary's trace is still waiting on.
+    private var runningTools: Int {
+        trace.count(where: { $0.role == .tool && $0.awaitsResult })
+    }
+
     var approvalTitle: String {
         text.components(separatedBy: "\n\n").first ?? ""
     }
@@ -138,5 +189,56 @@ struct ChatMessage: Identifiable, Hashable {
         self.role = role
         self.text = text
         self.attachments = attachments
+    }
+}
+
+/// The identity and content a step draws. Strings are copy-on-write; keeping
+/// them here distinguishes equal-length edits and different line wrapping.
+/// A byte count alone let unrelated steps reuse each other's measured height.
+struct ChatMessageShape: Hashable {
+    let id: UUID
+    let role: ChatMessage.Role
+    let text: String
+    let detail: String
+    let tool: String?
+    let banner: ToolCallBanner?
+    let awaitsResult: Bool
+
+    init(_ message: ChatMessage) {
+        id = message.id
+        role = message.role
+        text = message.text
+        detail = message.detail
+        tool = message.tool
+        banner = message.banner
+        awaitsResult = message.awaitsResult
+    }
+}
+
+/// What one turn of the conversation cost, as the provider counted it
+/// (the `usage` of each reply in it, summed), and how long it ran.
+struct ChatTurnStats: Hashable {
+    /// Read fresh, not from the provider's prompt cache.
+    var inputTokens = 0
+    var outputTokens = 0
+    var cacheReadTokens = 0
+    var cacheWriteTokens = 0
+    /// From the message to the turn's end; nil while it has not ended.
+    var seconds: Int?
+
+    /// Everything the model read: fresh, from the cache and into it.
+    var promptTokens: Int {
+        inputTokens + cacheReadTokens + cacheWriteTokens
+    }
+
+    /// The share of what it read that came from the cache, 0 ... 1; nil
+    /// when nothing did.
+    var cacheHitRate: Double? {
+        guard promptTokens > 0, cacheReadTokens > 0 else { return nil }
+        return min(1, Double(cacheReadTokens) / Double(promptTokens))
+    }
+
+    var hasTokens: Bool {
+        promptTokens > 0 || outputTokens > 0
     }
 }

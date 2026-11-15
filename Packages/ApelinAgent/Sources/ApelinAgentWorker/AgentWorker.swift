@@ -67,23 +67,21 @@ public enum AgentWorker {
                 if let asks = prompt.asksBeforeScreen {
                     await session.setAsksBeforeScreen(asks)
                 }
-                if let provider = prompt.provider {
-                    do {
-                        try await session.configure(
-                            provider: AgentWorker.provider(AgentOpenRequest(provider: provider, model: prompt.model)),
-                            thinking: .init(rawValue: prompt.reasoningEffort?.rawValue ?? "off") ?? .off,
-                            serviceTier: AgentWorker.serviceTier(prompt.serviceTier),
-                            credentials: KeychainCredentialSource(accessGroup: keychainAccessGroup),
-                        )
-                    } catch let error as ProviderResolutionError {
-                        throw AgentWorker.signInError(error)
-                    }
-                    await state.modelChoice.set(
-                        provider: provider,
-                        model: prompt.model,
-                        reasoningEffort: prompt.reasoningEffort,
-                        serviceTier: prompt.serviceTier,
-                    )
+                if let runMode = prompt.runMode {
+                    await session.setRunMode(runMode)
+                }
+                // Each prompt carries the reader's injection as the app has
+                // it now, so a chat that was already open hears the switch:
+                // the worker says so in this message's `<system-state>`.
+                if let injection = prompt.promptInjection {
+                    await session.setPromptInjection(injection)
+                }
+                let choice = try prompt.provider.map { provider in
+                    PendingModelChoice(
+                        provider: try AgentWorker.provider(provider: provider, model: prompt.model),
+                        wireProvider: provider, model: prompt.model,
+                        reasoningEffort: prompt.reasoningEffort, serviceTier: prompt.serviceTier,
+                        parameters: prompt.modelParameters ?? .init(), defaults: prompt.modelDefaults)
                 }
                 guard (prompt.attachments?.count ?? 0) <= 8 else {
                     throw ApelinError(.badRequest, "invalid attachment descriptor")
@@ -109,17 +107,31 @@ public enum AgentWorker {
                     guard data.count <= limit else { throw ApelinError(.badRequest, "attachment too large") }
                     return (attachment.name, attachment.mimeType, data)
                 }
+                // A queued reader choice owns its auxiliary defaults too;
+                // do not change compression/image settings of the active run.
+                if choice == nil { await session.setModelDefaults(prompt.modelDefaults) }
                 var sender: ConversationSender?
                 if let from = prompt.fromSessionID {
                     sender = await AgentWorker.sender(from, context: context)
                 }
-                try await session.prompt(prompt.text, messageID: prompt.messageID, files: files, from: sender)
+                try await session.prompt(prompt.text, messageID: prompt.messageID, files: files, from: sender, source: prompt.source, delivery: prompt.delivery ?? .queue, modelChoice: choice)
                 await session.generateTitle(for: prompt.text)
                 return Acknowledged()
+            }
+        case .agentGenerateImage:
+            await WorkerMain.serve(AgentGenerateImageRequest.self, request) { image in
+                let session = try await state.session(image.sessionID)
+                await session.setModelDefaults(image.modelDefaults)
+                return try await session.generateImage(for: image.prompt)
             }
         case .agentSteer:
             await WorkerMain.serve(AgentSteerRequest.self, request) { steer in
                 try await state.session(steer.sessionID).steer(steer.text)
+                return Acknowledged()
+            }
+        case .agentQueue:
+            await WorkerMain.serve(AgentQueueRequest.self, request) { queue in
+                try await state.session(queue.sessionID).manageQueue(queue)
                 return Acknowledged()
             }
         case .agentAbort:
@@ -129,7 +141,61 @@ public enum AgentWorker {
             }
         case .agentCompact:
             await WorkerMain.serve(AgentCompactRequest.self, request) { compact in
-                try await state.session(compact.sessionID).compact()
+                let session = try await state.session(compact.sessionID)
+                await session.setModelDefaults(compact.modelDefaults)
+                try await session.compact()
+                return Acknowledged()
+            }
+        // The reader picked another model in the composer's row: applied
+        // between runs, and the total that model reads is recorded, so the
+        // ring is right before a prompt is sent.
+        case .agentConfigure:
+            await WorkerMain.serve(AgentConfigureRequest.self, request) { configure in
+                let session = try await state.session(configure.sessionID)
+                let applied = try await session.configure(
+                    provider: AgentWorker.provider(AgentOpenRequest(
+                        provider: configure.provider,
+                        model: configure.model,
+                    )),
+                    thinking: .init(rawValue: configure.reasoningEffort?.rawValue ?? "off") ?? .off,
+                    serviceTier: AgentWorker.serviceTier(configure.serviceTier),
+                    modelParameters: configure.modelParameters ?? .init(),
+                    credentials: KeychainCredentialSource(accessGroup: keychainAccessGroup),
+                )
+                guard applied else { return AgentConfigureResponse(applied: false) }
+                await state.modelChoice.set(
+                    provider: configure.provider,
+                    model: configure.model,
+                    reasoningEffort: configure.reasoningEffort,
+                    serviceTier: configure.serviceTier,
+                    modelParameters: configure.modelParameters,
+                )
+                let figure = await session.contextFigure()
+                return AgentConfigureResponse(applied: true, tokens: figure.tokens, window: figure.window)
+            }
+        case .agentRewind:
+            await WorkerMain.serve(AgentRewindRequest.self, request) { rewind in
+                try await state.session(rewind.sessionID).rewind(to: rewind.messageID, truncate: rewind.truncate)
+                return Acknowledged()
+            }
+        case .agentEditMessage:
+            await WorkerMain.serve(AgentEditMessageRequest.self, request) { edit in
+                try await state.session(edit.sessionID).edit(
+                    edit.messageID,
+                    reply: edit.reply,
+                    text: edit.text,
+                    expected: edit.expected,
+                )
+                return Acknowledged()
+            }
+        case .agentDeleteReply:
+            await WorkerMain.serve(AgentDeleteReplyRequest.self, request) { delete in
+                try await state.session(delete.sessionID).deleteReply(delete.messageID, expected: delete.expected)
+                return Acknowledged()
+            }
+        case .agentFork:
+            await WorkerMain.serve(AgentForkRequest.self, request) { fork in
+                try await state.session(fork.sessionID).fork(through: fork.messageID, as: fork.newSessionID)
                 return Acknowledged()
             }
         case .agentApprove:
@@ -149,13 +215,53 @@ public enum AgentWorker {
                     .importAll(into: KeychainCredentialSource(accessGroup: keychainAccessGroup))
             }
         case .agentAccountList:
-            await WorkerMain.serve(AgentAccountListRequest.self, request) { _ in
-                await accounts.list()
+            await WorkerMain.serve(AgentAccountListRequest.self, request) { list in
+                await accounts.list(
+                    extraModels: list.extraModels ?? [:],
+                    onlyExtraModels: list.onlyExtraModels ?? false,
+                )
             }
         case .agentSkillList:
             await WorkerMain.serve(AgentSkillListRequest.self, request) { _ in
                 let home = URL(fileURLWithPath: context.assignment.home, isDirectory: true)
                 return SkillCatalog.listing(userDirectory: ApelinDataRoot(home: home).skills)
+            }
+        case .agentModelTest:
+            await WorkerMain.serve(AgentModelTestRequest.self, request) { query in
+                guard let taskID = request.taskID else {
+                    throw ApelinError(.badRequest, "a model test requires a task")
+                }
+                // The probe can take a minute: the handle goes back at once and
+                // each stage is emitted as it starts and ends, then the report
+                // travels as the `result` of the final `state`.
+                Task.detached(priority: .userInitiated) {
+                    let response = await AgentModelTester.run(
+                        query,
+                        credentials: KeychainCredentialSource(accessGroup: keychainAccessGroup),
+                    ) { stage in
+                        context.emit(taskID, AgentModelTestProgress.eventKind, stage.payload)
+                    }
+                    var payload: [String: ApelinCore.JSONValue] = [
+                        "state": .string(response.success ? TaskState.succeeded.rawValue : TaskState.failed.rawValue),
+                    ]
+                    if let report = try? ApelinCore.JSONValue(encoding: response) {
+                        payload[AgentModelTestResponse.stateMember] = report
+                    }
+                    if let failure = response.failure {
+                        payload["message"] = .string(failure)
+                    }
+                    context.emit(taskID, TaskEvent.stateKind, .object(payload))
+                }
+                return TaskHandle(taskID: taskID, kind: .modelTest)
+            }
+        case .agentRewritePrompt:
+            await WorkerMain.serve(AgentRewritePromptRequest.self, request) { query in
+                try await PromptRewriter.rewrite(
+                    query,
+                    home: URL(fileURLWithPath: context.assignment.home, isDirectory: true),
+                    installRoot: context.assignment.installRoot,
+                    credentials: KeychainCredentialSource(accessGroup: keychainAccessGroup),
+                )
             }
         case .agentAPIConfiguration:
             await WorkerMain.serve(AgentAPIConfigurationRequest.self, request) { query in
@@ -216,33 +322,21 @@ public enum AgentWorker {
         wire.flatMap { ServiceTier(rawValue: $0.rawValue) }
     }
 
-    /// What the app is told when a session's sign-in cannot be used. One
-    /// that is not saved is `denied`, with what the inbox refused beside
-    /// it. One that is saved and could not be exchanged or renewed is
-    /// `unavailable` with the reason the failure had (no network, a
-    /// provider out of reach or too slow), which the app says in its own
-    /// words, and `internal` in the provider's when it had none.
-    static func signInError(_ error: ProviderResolutionError, inboxRejected: [String] = []) -> ApelinError {
-        switch error {
-        case .missingCredentials:
-            var message = error.localizedDescription
-            if !inboxRejected.isEmpty {
-                message += " (inbox: \(inboxRejected.joined(separator: "; ")))"
-            }
-            return ApelinError(.denied, message)
-        case let .unresolved(message, reason):
-            guard let reason else { return ApelinError(.internal, message) }
-            return ApelinError(.unavailable, message, reason: reason)
-        }
-    }
-
     /// The kwwk provider configuration for an open request. The first four
     /// keep their own cases (and need a model named, as they always have);
     /// every other provider uses its credential store id and the default
     /// model chosen by ProviderRegistration when none is named.
     static func provider(_ open: AgentOpenRequest) throws -> ProviderConfiguration {
-        let model = open.model.flatMap { $0.isEmpty ? nil : $0 }
-        let provider = open.provider ?? .githubCopilot
+        try provider(provider: open.provider ?? .githubCopilot, model: open.model)
+    }
+
+    /// The same, from a provider and model rather than an open request: a
+    /// rewrite asks the model a session would, without opening one.
+    static func provider(
+        provider: AgentProvider,
+        model requested: String?,
+    ) throws -> ProviderConfiguration {
+        let model = requested.flatMap { $0.isEmpty ? nil : $0 }
         switch provider {
         case .githubCopilot:
             return .githubCopilot(model: model ?? defaultCopilotModel)
@@ -259,11 +353,6 @@ public enum AgentWorker {
              .trae, .traeIntl, .raccoon,
              .kimiCoding, .kimiCodingGlobal, .xai, .zai, .zaiCodingCN, .openRouter, .openAI, .google, .deepSeek,
              .openCodeGo, .openCodeZen:
-            return .stored(storeID: provider.storeID, model: model)
-        case .openAICompatibleEndpoint:
-            // As the first endpoint: its base URL is with its key, and the
-            // model is named.
-            guard let model else { throw ApelinError(.badRequest, "name the model for \(provider.rawValue)") }
             return .stored(storeID: provider.storeID, model: model)
         }
     }
@@ -305,6 +394,7 @@ actor WorkerState {
         let projectURL = dataRoot.workspace(for: identity.name, temporaryID: open.temporaryID)
 
         opening = true
+        let openedAt = Date()
         // one that fails leaves the place free for the host to try again
         defer { opening = false }
         // Credentials the owner dropped in the inbox are taken first.
@@ -327,6 +417,9 @@ actor WorkerState {
                     dataRoot: dataRoot,
                     thinking: .init(rawValue: open.reasoningEffort?.rawValue ?? "off") ?? .off,
                     serviceTier: AgentWorker.serviceTier(open.serviceTier),
+                    modelParameters: open.modelParameters ?? .init(),
+                    modelDefaults: open.modelDefaults ?? .init(),
+                    promptInjection: (open.promptInjection ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                     installRoot: context.assignment.installRoot,
                     hostRestarted: open.hostRestarted == true,
                 ),
@@ -337,12 +430,17 @@ actor WorkerState {
                     projectURL: projectURL,
                     projectsURL: dataRoot.projects,
                     modelChoice: modelChoice,
+                    modelDefaults: open.modelDefaults ?? .init(),
                 ),
                 digests: ledger,
                 credentials: keychain,
             )
         } catch let error as ProviderResolutionError {
-            throw AgentWorker.signInError(error, inboxRejected: imported.rejected)
+            var message = error.localizedDescription
+            if !imported.rejected.isEmpty {
+                message += " (inbox: \(imported.rejected.joined(separator: "; ")))"
+            }
+            throw ApelinError(.denied, message)
         } catch let error as ApelinError {
             throw error
         } catch {
@@ -358,14 +456,30 @@ actor WorkerState {
             model: open.model,
             reasoningEffort: open.reasoningEffort,
             serviceTier: open.serviceTier,
+            modelParameters: open.modelParameters,
         )
 
+        await modelChoice.setDefaults(open.modelDefaults)
+        let choiceStore = modelChoice
+        await session.observePendingModel { choice in
+            await choiceStore.set(provider: choice.wireProvider, model: choice.model,
+                                  reasoningEffort: choice.reasoningEffort, serviceTier: choice.serviceTier,
+                                  modelParameters: choice.parameters)
+            if let defaults = choice.defaults { await choiceStore.setDefaults(defaults) }
+        }
+
+        // The total this open's model reads. A conversation whose log ends on
+        // another model's window would otherwise draw that one as this one's
+        // until its next turn ended.
+        await session.recordContextUsage()
+
+        let boundary = try await session.replayBoundary()
         let events = try await session.events(afterSeq: 0)
         let relay = EventRelay(context: context, taskID: taskID)
         self.relay = Task { [weak self] in
             for await record in events {
-                await relay.relay(record.event)
-                if case let .finished(reason) = record.event {
+                await relay.relay(record.event, historical: record.seq <= boundary, at: record.date)
+                if record.seq > boundary, case let .finished(reason) = record.event {
                     await relay.flush()
                     await self?.runFinished(reason)
                 }
@@ -382,6 +496,17 @@ actor WorkerState {
                 await session.generateTitle(for: prompt)
             }
         }
+        // What the app waited on before this chat could take a message, on
+        // the conversation's own journal: the worker start, the session's
+        // open and the replay of its history.
+        session.journal.startup(
+            "open finished in \(AgentSession.milliseconds(since: openedAt)) "
+                + "(\(openedMessages(open)))",
+        )
+    }
+
+    private func openedMessages(_ open: AgentOpenRequest) -> String {
+        open.sessionID == nil ? "new: " : "resumed: " + (open.prompt.map { "\($0.count) chars" } ?? "no prompt")
     }
 
     func session(_ id: String) throws -> AgentSession {
@@ -397,8 +522,9 @@ actor WorkerState {
             throw ApelinError(.notFound, "This approval request is no longer waiting for a decision.")
         }
         // The host records a description or removal approval in its own
-        // ledger as it relays this decision; the agent keeps nothing.
-        try await session.approve(requestID: approve.approvalID, decision: Self.decision(approve))
+        // ledger as it relays this decision; the agent keeps nothing. An
+        // answer to a question goes with it, checked by the session's gate.
+        try await session.approve(requestID: approve.approvalID, decision: Self.decision(approve), answer: approve.answer)
     }
 
     /// The app's decision as the session's gate takes it: "for this
@@ -409,43 +535,8 @@ actor WorkerState {
         return .approve(approve.scope == .session ? .session : .once)
     }
 
-    /// How long a stopped run has to end. A tool call no longer holds it
-    /// (`ToolRunner.run`); this is for what is left, a model request or a
-    /// compaction that does not answer its cancellation.
-    static let stopPatience: Duration = .seconds(20)
-
-    /// Stops the run. One that has not ended `stopPatience` later would
-    /// leave the conversation working with Stop spent and every later
-    /// message queued behind it (#59), so the session's task is ended
-    /// instead (`endUnstopped`). Each stop is timed by itself: a second
-    /// one does not give the run more time.
     func abort() async {
-        guard let session else { return }
-        let stopped = await session.abort()
-        Task { [weak self] in
-            try? await Task.sleep(for: Self.stopPatience)
-            if !stopped.hasEnded {
-                await self?.endUnstopped()
-            }
-        }
-    }
-
-    /// Ends the task of a session whose stopped run did not end, and the
-    /// process with it, without waiting for the session: the app reads the
-    /// task's end as the turn's, and the conversation opens again on its
-    /// next message with the transcript its last finished run left.
-    private func endUnstopped() {
-        guard !finished else { return }
-        finished = true
-        if let context, let taskID {
-            let message = "This chat did not stop in time, so Apelin ended it. Send a message to continue."
-            context.emit(taskID, "error", .object(["message": .string(message)]))
-            context.finish(taskID, .cancelled, message: message)
-        }
-        Task.detached {
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            exit(0)
-        }
+        await session?.abort()
     }
 
     /// A run ended; a headless session ends with it.
@@ -489,6 +580,13 @@ actor EventRelay {
     private var lastFlush = Date()
     private var flushScheduled = false
     private var waiting = 0
+    private var historical: Bool?
+    /// When the record being replayed happened, in the log it came from.
+    /// `historical` event payloads carry it as `at`, because the host stamps
+    /// every task event with the moment it relayed it: without it a
+    /// conversation read back — a fork's whole history — says every turn
+    /// took as long as the replay did.
+    private var replayedAt: Date?
 
     init(context: WorkerContext, taskID: TaskID) {
         self.init { kind, payload in context.emit(taskID, kind, payload) }
@@ -499,7 +597,16 @@ actor EventRelay {
         self.emit = emit
     }
 
-    func relay(_ event: AgentSessionEvent) {
+    /// `at`: when the record happened, for a record read back from the
+    /// session's own log rather than one just made.
+    func relay(_ event: AgentSessionEvent, historical: Bool = false, at: Date? = nil) {
+        if self.historical != nil, self.historical != historical {
+            flush()
+        }
+        self.historical = historical
+        if let at {
+            replayedAt = at
+        }
         switch event {
         case let .textDelta(delta):
             text += delta
@@ -517,20 +624,38 @@ actor EventRelay {
             flush()
         }
         for (kind, payload) in Self.events(for: event, waiting: &waiting) {
-            emit(kind, payload)
+            emitEvent(kind, payload)
         }
+    }
+
+    /// A replay's payload is the record's own, with the two fields the app
+    /// reads beside it: `historical`, and when it happened.
+    private func emitEvent(_ kind: String, _ payload: ApelinCore.JSONValue?) {
+        guard historical == true else {
+            emit(kind, payload)
+            return
+        }
+        var values: [String: ApelinCore.JSONValue] = [:]
+        if let payload, case let .object(held) = payload {
+            values = held
+        }
+        values["historical"] = .bool(true)
+        if let replayedAt {
+            values["at"] = .number(replayedAt.timeIntervalSince1970)
+        }
+        emit(kind, .object(values))
     }
 
     func flush() {
         if !thinking.isEmpty {
-            emit("thinking", .object(["text": .string(thinking)]))
+            emitEvent("thinking", .object(["text": .string(thinking)]))
         }
         if !text.isEmpty {
-            emit("text", .object(["text": .string(text)]))
+            emitEvent("text", .object(["text": .string(text)]))
         }
         if let received {
             for (kind, payload) in Self.events(for: .received(tokens: received), waiting: &waiting) {
-                emit(kind, payload)
+                emitEvent(kind, payload)
             }
         }
         text = ""
@@ -561,18 +686,41 @@ actor EventRelay {
     /// listed in AGENTS.md ▸ Decisions ▸ Agent sessions.
     static func events(for event: AgentSessionEvent, waiting: inout Int) -> [(String, ApelinCore.JSONValue?)] {
         switch event {
-        case let .userMessage(id, text, attachments):
-            return [("prompt", .object([
+        case let .pendingQueue(messages, paused):
+            return [("pendingQueue", .object([
+                "messages": (try? ApelinCore.JSONValue(encoding: messages)) ?? .array([]),
+                "paused": .bool(paused),
+            ]))]
+        case let .userMessage(id, text, attachments, source):
+            var payload: [String: ApelinCore.JSONValue] = [
                 "id": .string(id.uuidString),
                 "text": .string(text),
                 "attachments": (try? ApelinCore.JSONValue(encoding: attachments)) ?? .array([]),
-            ]))]
-        case let .userMessageQueued(id, text, attachments):
+            ]
+            if let source {
+                payload["source"] = .string(source)
+            }
+            return [("prompt", .object(payload))]
+        case let .userMessageQueued(id, text, attachments, source):
+            var payload: [String: ApelinCore.JSONValue] = [
+                "id": .string(id.uuidString),
+                "text": .string(text),
+                "attachments": (try? ApelinCore.JSONValue(encoding: attachments)) ?? .array([]),
+            ]
+            if let source {
+                payload["source"] = .string(source)
+            }
+            return [("queued", .object(payload))]
+        case let .conversationMessageQueued(id, text, from):
             return [("queued", .object([
-                "id": .string(id.uuidString),
-                "text": .string(text),
-                "attachments": (try? ApelinCore.JSONValue(encoding: attachments)) ?? .array([]),
+                "id": .string(id.uuidString), "text": .string(text), "from": .string(from),
             ]))]
+        case let .conversationMessageTaken(id, text, from):
+            return [("prompt", .object([
+                "id": .string(id.uuidString), "text": .string(text), "from": .string(from),
+            ]))]
+        case let .conversationMessagesDropped(ids):
+            return [("queueDropped", .object(["ids": .array(ids.map { .string($0.uuidString) })]))]
         case let .queuedMessagesDropped(ids):
             return [("queueDropped", .object(["ids": .array(ids.map { .string($0.uuidString) })]))]
         case let .promptSubmitted(text, from):
@@ -593,8 +741,6 @@ actor EventRelay {
             return [("messageDiscarded", nil)]
         case .reconnecting:
             return [("reconnecting", nil)]
-        case .waitingForNetwork:
-            return [("waitingForNetwork", nil)]
         case .toolCallPreparing:
             return [("toolCallPreparing", nil)]
         case let .textDelta(text):
@@ -605,6 +751,11 @@ actor EventRelay {
             return [("message", .object(["text": .string(text)]))]
         case let .received(tokens):
             return [("received", .object(["tokens": .number(Double(tokens))]))]
+        case let .contextUsage(tokens, window):
+            return [("contextUsage", .object([
+                "tokens": .number(Double(tokens)),
+                "window": .number(Double(window)),
+            ]))]
         case let .toolCallStarted(call):
             return [("toolCall", .object([
                 "id": .string(call.id),
@@ -641,18 +792,36 @@ actor EventRelay {
                 payload["title"] = .string(title)
             }
             return [(AgentNoticeRules.eventKind, .object(payload))]
-        case let .error(message, reason):
-            var payload: [String: ApelinCore.JSONValue] = ["message": .string(message)]
-            if let reason {
-                payload["reason"] = .string(reason.rawValue)
-            }
-            return [("error", .object(payload))]
+        case let .runModeChanged(runMode, reason):
+            return [("runModeChanged", .object([
+                "mode": .string(runMode.rawValue),
+                "reason": .string(reason),
+            ]))]
+        case let .error(message):
+            return [("error", .object(["message": .string(message)]))]
         case let .finished(reason):
             return [("finished", .object(["reason": .string(reason.rawValue)]))]
         case .compactionStarted:
             return [("compactionStarted", nil)]
         case let .compactionFinished(result):
             return [("compactionFinished", (try? ApelinCore.JSONValue(encoding: result)) ?? .null)]
+        case let .usage(input, output, cacheRead, cacheWrite):
+            return [("usage", .object([
+                "input": .number(Double(input)),
+                "output": .number(Double(output)),
+                "cacheRead": .number(Double(cacheRead)),
+                "cacheWrite": .number(Double(cacheWrite)),
+            ]))]
+        case let .checkpointSaved(id):
+            return [("checkpoint", .object(["id": .string(id.uuidString)]))]
+        case let .messageEdited(id, text):
+            return [("messageEdited", .object(["id": .string(id.uuidString), "text": .string(text)]))]
+        case let .replyEdited(id, text):
+            return [("replyEdited", .object(["id": .string(id.uuidString), "text": .string(text)]))]
+        case let .replyDeleted(id):
+            return [("replyDeleted", .object(["id": .string(id.uuidString)]))]
+        case let .historyRewound(id):
+            return [("historyRewound", .object(["id": .string(id.uuidString)]))]
         }
     }
 
@@ -751,6 +920,14 @@ actor EventRelay {
         // (AgentResetToRemoteRules).
         case let .resetToRemote(reset):
             payload["detail"] = .object(["resetToRemote": (try? ApelinCore.JSONValue(encoding: reset)) ?? .null])
+        // The question the app shows in the card's place; the host matches
+        // nothing to it, since the answer reaches only the model.
+        case let .question(question):
+            payload["detail"] = .object([AgentQuestionRules.detailKey: (try? ApelinCore.JSONValue(encoding: question)) ?? .null])
+        // The mode a run asks to go to and the reason on the card; the host
+        // matches nothing to it either.
+        case let .runMode(runMode):
+            payload["detail"] = .object([AgentRunModeRules.detailKey: (try? ApelinCore.JSONValue(encoding: runMode)) ?? .null])
         }
         return .object(payload)
     }

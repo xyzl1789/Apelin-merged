@@ -1,3 +1,5 @@
+import struct ApelinProtocol.AgentQuestion
+import struct ApelinProtocol.AgentRunModeRequest
 import enum ApelinProtocol.GitRepositoryVisibility
 import Foundation
 
@@ -143,6 +145,16 @@ public enum ApprovalDetail: Sendable, Hashable, Codable {
     /// never granted for the session; the host lets through only the
     /// reset it names, once.
     case resetToRemote(ResetToRemoteApproval)
+    /// A question the agent asks the reader (`apelin_question_ask`): the
+    /// card shows its options in place of Approve and Deny, and the reply
+    /// carries the answer (`ApprovalGate.request(question:)`). Asked in
+    /// every mode, a plan run included, and never granted for the session.
+    case question(AgentQuestion)
+    /// The conversation's own run mode going back to a build
+    /// (`apelin_run_mode`): what is asked, and the agent's reason, which the
+    /// card shows. A switch to a plan asks nobody. The host matches nothing
+    /// to it; the answer reaches only the model.
+    case runMode(AgentRunModeRequest)
 }
 
 /// What a card asks while Ask Before Using the Screen is on (owner,
@@ -391,12 +403,14 @@ public struct OtherProjectApproval: Sendable, Hashable, Codable {
     public var sessionID: String?
     /// The prompt or message, as the other agent will read it.
     public var text: String?
-    public init(action: String, projectID: String, projectName: String, sessionID: String? = nil, text: String? = nil) {
+    public var delivery: String?
+    public init(action: String, projectID: String, projectName: String, sessionID: String? = nil, text: String? = nil, delivery: String? = nil) {
         self.action = action
         self.projectID = projectID
         self.projectName = projectName
         self.sessionID = sessionID
         self.text = text
+        self.delivery = delivery
     }
 }
 

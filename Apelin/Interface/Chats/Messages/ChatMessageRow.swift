@@ -17,7 +17,7 @@ final class ChatMessageRow: ListRowView {
 
     /// A row's insets at `width`: the padding, or more to centre the content
     /// in the readable width.
-    @objc dynamic static func insets(for width: CGFloat) -> UIEdgeInsets {
+    static func insets(for width: CGFloat) -> UIEdgeInsets {
         let side = max(horizontalPadding, ((width - readableWidth) / 2).rounded(.down))
         return UIEdgeInsets(
             top: ChatMarkdownView.blockSpacing / 2,
@@ -38,15 +38,42 @@ final class ChatMessageRow: ListRowView {
     private let senderLabel = UILabel()
     /// The message this row shows: only a change to it animates, never the
     /// row taking another message out of the pool.
-    @objc dynamic private var shownID: UUID?
+    private var shownID: UUID?
     private let label = TextLabelView()
+    /// The element VoiceOver reads a message by: where the chat's "Your
+    /// Messages" rotor puts the cursor.
+    var spokenElement: UIView { label }
     private let markdownView = ChatMarkdownView()
-    @objc dynamic private var markdownText: String?
+    private var markdownText: String?
     /// The reply has finished, but its last text is still fading in.
-    @objc dynamic private var finishesStreamWhenStill = false
-    @objc dynamic private var revealObservation: NSKeyValueObservation?
+    private var finishesStreamWhenStill = false
+    private var revealObservation: NSKeyValueObservation?
     private let attachmentsView = MessageAttachmentsView()
-    @objc dynamic var attachmentHeightLimit: CGFloat = 0 {
+    /// The line under the message (`MessageFooterView`).
+    private let footer = MessageFooterView()
+    private var showsFooter = false
+    /// Between what the message shows and the line under it.
+    private static let footerSpacing: CGFloat = 4
+    var onCopy: (() -> Void)? {
+        get { footer.onCopy }
+        set { footer.onCopy = newValue }
+    }
+
+    var onRewind: (() -> Void)? {
+        get { footer.onRewind }
+        set { footer.onRewind = newValue }
+    }
+
+    var onMore: (() -> Void)? {
+        get { footer.onMore }
+        set { footer.onMore = newValue }
+    }
+
+    /// Copy said Copied, under this message.
+    func showCopied() {
+        footer.showCopied()
+    }
+    var attachmentHeightLimit: CGFloat = 0 {
         didSet {
             if attachmentHeightLimit != oldValue {
                 setNeedsLayout()
@@ -57,7 +84,7 @@ final class ChatMessageRow: ListRowView {
     /// The screen's, the one `height(for:…)` was given, rather than the
     /// row's own traits, which a row not yet in its window may not have:
     /// the row lays its images out at the height it was measured at.
-    @objc dynamic var displayScale: CGFloat = 0 {
+    var displayScale: CGFloat = 0 {
         didSet {
             if displayScale != oldValue {
                 setNeedsLayout()
@@ -66,10 +93,10 @@ final class ChatMessageRow: ListRowView {
     }
 
     private var attachments: [ComposerAttachment] = []
-    @objc dynamic private var isUser = false
+    private var isUser = false
     private static let sizingMarkdown = ChatMarkdownView()
     private static let sizingLabel = TextLabelView()
-    @objc dynamic var onAttachmentLayoutChanged: (() -> Void)?
+    var onAttachmentLayoutChanged: (() -> Void)?
     var onPreview: ((ComposerAttachment) -> Void)?
     var onPreviewImages: (([ComposerAttachment], UUID) -> Void)?
 
@@ -112,6 +139,8 @@ final class ChatMessageRow: ListRowView {
         attachmentsView.onPreviewImages = { [weak self] items, selectedID in self?.onPreviewImages?(items, selectedID) }
         attachmentsView.onSizeChange = { [weak self] in self?.onAttachmentLayoutChanged?() }
         addSubview(attachmentsView)
+        footer.isHidden = true
+        addSubview(footer)
         revealObservation = markdownView.streamLabel.observe(\.isAnimating) { [weak self] _, _ in
             // Called while the label is still taking its animation down.
             DispatchQueue.main.async { [weak self] in
@@ -132,6 +161,7 @@ final class ChatMessageRow: ListRowView {
         label.attributedText = NSAttributedString()
         label.accessibilityLabel = nil
         bubble.isHidden = true
+        bubble.showsConversationBorder = false
         senderLabel.text = nil
         senderLabel.isHidden = true
         shownID = nil
@@ -145,6 +175,9 @@ final class ChatMessageRow: ListRowView {
         onAttachmentLayoutChanged = nil
         onPreview = nil
         onPreviewImages = nil
+        footer.reset()
+        footer.isHidden = true
+        showsFooter = false
     }
 
     func show(_ message: ChatMessage, isStreaming: Bool = false) {
@@ -170,6 +203,7 @@ final class ChatMessageRow: ListRowView {
         shownID = message.id
         label.accessibilityValue = waiting ? String(localized: "Waiting to Send") : nil
         bubble.isHidden = !isUser || message.text.isEmpty
+        bubble.showsConversationBorder = isUser && message.sender != nil
         senderLabel.text = isUser ? message.sender : nil
         senderLabel.isHidden = senderLabel.text == nil
         senderLabel.alpha = alpha
@@ -205,10 +239,15 @@ final class ChatMessageRow: ListRowView {
         }
         attachments = message.attachments
         attachmentsView.show(attachments, trailing: isUser, animated: isSameMessage)
+        showsFooter = MessageFooterView.shows(message)
+        footer.isHidden = !showsFooter
+        if showsFooter {
+            footer.show(message)
+        }
         setNeedsLayout()
     }
 
-    @objc dynamic private func finishStream() {
+    private func finishStream() {
         finishesStreamWhenStill = false
         markdownView.isStreaming = false
     }
@@ -233,6 +272,7 @@ final class ChatMessageRow: ListRowView {
             displayScale: displayScale,
         )
         let gap = hasText && attachmentHeight > 0 ? ChatMarkdownView.blockSpacing : 0
+        let footerHeight = showsFooter ? MessageFooterView.height + Self.footerSpacing : 0
         if isUser {
             let textHeight = textSize.map { ceil($0.height) + Self.textPadding * 2 } ?? 0
             let width = documentWidth
@@ -259,8 +299,18 @@ final class ChatMessageRow: ListRowView {
                 height: textHeight,
             ))
             label.frame = bubble.frame.insetBy(dx: Self.textPadding, dy: Self.textPadding)
+            if showsFooter {
+                // under the bubble, at its trailing edge
+                let footerWidth = min(footer.contentWidth, content.width)
+                footer.frame = directionalFrame(CGRect(
+                    x: content.maxX - footerWidth,
+                    y: top + attachmentHeight + gap + textHeight + Self.footerSpacing,
+                    width: footerWidth,
+                    height: MessageFooterView.height,
+                ))
+            }
         } else {
-            let textHeight = hasText ? max(0, content.height - attachmentHeight - gap) : 0
+            let textHeight = hasText ? max(0, content.height - attachmentHeight - gap - footerHeight) : 0
             markdownView.frame = CGRect(x: content.minX, y: content.minY, width: content.width, height: textHeight)
             markdownView.trackedScrollView = superview as? UIScrollView
             attachmentsView.frame = CGRect(
@@ -269,6 +319,16 @@ final class ChatMessageRow: ListRowView {
                 width: content.width,
                 height: attachmentHeight,
             )
+            if showsFooter {
+                // under the reply, at its leading edge
+                let footerWidth = min(footer.contentWidth, content.width)
+                footer.frame = directionalFrame(CGRect(
+                    x: content.minX,
+                    y: content.minY + textHeight + gap + attachmentHeight + Self.footerSpacing,
+                    width: footerWidth,
+                    height: MessageFooterView.height,
+                ))
+            }
         }
     }
 
@@ -303,15 +363,16 @@ final class ChatMessageRow: ListRowView {
         )
         let gap = textHeight > 0 && attachmentHeight > 0 ? ChatMarkdownView.blockSpacing : 0
         let senderHeight = user && message.sender != nil ? Self.senderHeight : 0
-        return senderHeight + textHeight + attachmentHeight + gap + insets.top + insets.bottom
+        let footerHeight = MessageFooterView.shows(message) ? MessageFooterView.height + footerSpacing : 0
+        return senderHeight + textHeight + attachmentHeight + gap + footerHeight + insets.top + insets.bottom
     }
 
-    @objc dynamic private static var senderFont: UIFont {
+    private static var senderFont: UIFont {
         .preferredFont(forTextStyle: .footnote)
     }
 
     /// The sender line and the space under it.
-    @objc dynamic private static var senderHeight: CGFloat {
+    private static var senderHeight: CGFloat {
         ceil(senderFont.lineHeight) + senderSpacing
     }
 
@@ -320,7 +381,7 @@ final class ChatMessageRow: ListRowView {
         (textSize.map { ceil($0.width) } ?? available) + textPadding * 2
     }
 
-    @objc dynamic private static func textWidth(for width: CGFloat, user: Bool) -> CGFloat {
+    private static func textWidth(for width: CGFloat, user: Bool) -> CGFloat {
         let insets = Self.insets(for: width)
         let available = width - insets.left - insets.right
         return max(user ? min(800, available - userContentPadding * 2) - textPadding * 2 : available, 1)
@@ -330,22 +391,22 @@ final class ChatMessageRow: ListRowView {
     /// line to the top of the label. TextKit's `boundingRect` gives shorter
     /// lines wherever a fallback font brings a taller ascent and descent, as
     /// PingFang does for Chinese, and the text then sat low in its bubble.
-    @objc dynamic private static func textSize(_ text: String, width: CGFloat) -> CGSize {
+    private static func textSize(_ text: String, width: CGFloat) -> CGSize {
         sizingLabel.attributedText = attributedText(text)
         return sizingLabel.sizeThatFits(CGSize(width: width, height: 0))
     }
 
-    @objc dynamic private static func attributedText(_ text: String) -> NSAttributedString {
+    private static func attributedText(_ text: String) -> NSAttributedString {
         NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: UIColor.label])
     }
 
-    @objc dynamic private static var font: UIFont {
+    private static var font: UIFont {
         .preferredFont(forTextStyle: .body)
     }
 }
 
 extension ChatMessageRow: TextLabelViewDelegate {
-    @objc dynamic func textLabelView(
+    func textLabelView(
         _ label: TextLabelView,
         editMenuForSelection selection: NSRange,
         suggestedActions: [UIMenuElement],

@@ -1,163 +1,96 @@
 // Lakr233's Inhouse Code, from FlowDown.
-// I CAN DO WHAT THE FUCK I WANT.
+// I CAN DO WHAT I WANT.
 
 import UIKit
 
 extension ComposerInputView {
-    @objc dynamic func textLayoutHeight(_ input: CGFloat) -> CGFloat {
+    func textLayoutHeight(_ input: CGFloat) -> CGFloat {
         var finalHeight = input
         finalHeight = max(font.lineHeight, finalHeight)
         finalHeight = min(finalHeight, maxTextEditorHeight)
         return ceil(finalHeight)
     }
 
-    @objc dynamic func switchToRequiredStatus() {
+    /// How tall the text would be were the band as wide as it is: what tells
+    /// the band its text has outgrown it.
+    ///
+    /// Counted rather than guessed from line breaks: a long paragraph wraps
+    /// without one, and a band that measured by newlines would show Expand only
+    /// once the reader pressed return.
+    private func measuredTextHeight() -> CGFloat {
+        let width = textView.bounds.width
+        guard width > 0, let text = textView.text, !text.isEmpty else { return font.lineHeight }
+        let measured = TextMeasurement.shared.measureSize(
+            of: NSAttributedString(
+                string: text,
+                attributes: [.font: font],
+            ),
+            usingWidth: width,
+        ).height
+        return ceil(max(measured, font.lineHeight))
+    }
+
+    /// One line's worth of room inside the band, either side of the text.
+    private var textRoomHeight: CGFloat {
+        maxTextEditorHeight - inset.top - inset.bottom
+    }
+
+    func switchToRequiredStatus() {
         assert(Thread.isMainThread)
-        // avoid flickering animation if set twice
-        NSObject.cancelPreviousPerformRequests(
-            withTarget: self,
-            selector: #selector(switchToRequiredStatusEx),
-            object: nil,
-        )
-        perform(#selector(switchToRequiredStatusEx), with: nil, afterDelay: 0.1)
+        // The band no longer has three shapes to choose between — the text
+        // takes the whole row whatever the state — but a caller setting the
+        // text twice still asks for a layout, and the height it publishes
+        // follows.
+        setNeedsLayout()
     }
 
-    @objc dynamic private func switchToRequiredStatusEx() {
-        doWithAnimation { [self] in
-            cameraButton.transform = .identity
-            moreButton.transform = .identity
-            sendButton.transform = .identity
-            if textView.isFirstResponder {
-                if textView.text.isEmpty, !hasAttachments {
-                    layoutStatus = .preFocusText
-                } else {
-                    layoutStatus = .editingText
-                }
-            } else {
-                if textView.text.isEmpty, !hasAttachments {
-                    layoutStatus = .standard
-                } else {
-                    layoutStatus = .editingText
-                }
-            }
-        }
-    }
-
-    @objc dynamic func layoutAsEditingText() {
-        // textField | sendButton
-        sendButton.frame = CGRect(
-            x: bounds.width - inset.right - iconSize.width,
-            y: bounds.height - iconSize.height - inset.bottom,
-            width: iconSize.width,
-            height: iconSize.height,
-        )
-        sendButton.alpha = 1
-        moreButton.frame = CGRect(
-            x: bounds.width - inset.right - iconSize.width,
-            y: bounds.height - iconSize.height - inset.bottom,
-            width: iconSize.width,
-            height: iconSize.height,
-        )
-        defer { moreButton.transform = CGAffineTransform(scaleX: 0.5, y: 0.5) }
-        moreButton.alpha = 0
-
-        let textLayoutHeight = textLayoutHeight(textHeight.value)
-        textView.frame = CGRect(
-            x: inset.left,
-            y: (bounds.height - textLayoutHeight) / 2,
-            width: sendButton.frame.minX - inset.left - iconSpacing,
-            height: textLayoutHeight,
-        )
-        placeholderLabel.frame = textView.frame
-
-        // invisible element
-        cameraButton.frame = CGRect(
-            x: 0 - inset.left - iconSize.width,
-            y: inset.top,
-            width: iconSize.width,
-            height: iconSize.height,
-        )
-        cameraButton.alpha = 0
-    }
-
-    @objc dynamic func layoutAsPreEditingText() {
-        defer { cameraButton.transform = CGAffineTransform(scaleX: 0.5, y: 0.5) }
-        defer { sendButton.transform = CGAffineTransform(scaleX: 0.5, y: 0.5) }
-
-        // invisible elements
-        cameraButton.frame = CGRect(
-            x: 0 - inset.left - iconSize.width,
-            y: inset.top,
-            width: iconSize.width,
-            height: iconSize.height,
-        )
-        cameraButton.alpha = 0
-
-        moreButton.frame = CGRect(
-            x: bounds.width - inset.right - iconSize.width,
-            y: inset.top,
-            width: iconSize.width,
-            height: iconSize.height,
-        )
-        moreButton.alpha = 1
-        // reset textField width to fill the space
-        let textLayoutHeight = textLayoutHeight(textHeight.value)
-        textView.frame = CGRect(
-            x: inset.left,
-            y: (bounds.height - textLayoutHeight) / 2,
-            width: moreButton.frame.minX - inset.left - iconSpacing,
-            height: textLayoutHeight,
-        )
-        textView.alpha = 1
-        placeholderLabel.frame = textView.frame
-
-        // invisible element
-        sendButton.frame = CGRect(
-            x: bounds.width + iconSpacing + inset.right,
-            y: bounds.height - iconSize.height - inset.bottom,
-            width: iconSize.width,
-            height: iconSize.height,
-        )
-        sendButton.alpha = 0
-    }
-
-    @objc dynamic func layoutAsStandard() {
-        defer { sendButton.transform = CGAffineTransform(scaleX: 0.5, y: 0.5) }
-
-        // captureButton | textField | moreButton
-        cameraButton.frame = CGRect(
+    /// Where the text starts: the band's own inset, and the text sits against
+    /// the top rather than centred, so a growing draft grows downward and the
+    /// first line stays where the reader left it.
+    private func textFrame(width: CGFloat) -> CGRect {
+        let height = textLayoutHeight(textHeight.value)
+        return CGRect(
             x: inset.left,
             y: inset.top,
-            width: iconSize.width,
-            height: iconSize.height,
+            width: max(0, width),
+            height: height,
         )
-        cameraButton.alpha = 1
-        moreButton.frame = CGRect(
-            x: bounds.width - inset.right - iconSize.width,
-            y: inset.top,
-            width: iconSize.width,
-            height: iconSize.height,
-        )
-        moreButton.alpha = 1
-        moreButton.transform = .identity
-        // reset textField width to fill the space
-        let textLayoutHeight = textLayoutHeight(textHeight.value)
-        textView.frame = CGRect(
-            x: cameraButton.frame.maxX + iconSpacing,
-            y: (bounds.height - textLayoutHeight) / 2,
-            width: moreButton.frame.minX - cameraButton.frame.maxX - iconSpacing * 2,
-            height: textLayoutHeight,
-        )
-        textView.alpha = 1
-        placeholderLabel.frame = textView.frame
+    }
 
-        // invisible element
-        sendButton.frame = CGRect(
-            x: bounds.width + inset.right,
-            y: inset.top,
-            width: iconSize.width,
-            height: iconSize.height,
+    /// The wand at the band's trailing corner, visible when there is something
+    /// to rewrite and no run to interrupt.
+    private func placeRewriteButton() {
+        let showsRewrite = hasContent && !isBusy
+        rewriteButton.alpha = showsRewrite ? 1 : 0
+        rewriteButton.isUserInteractionEnabled = showsRewrite
+
+        let rewriteSize = ComposerMetrics.Send.diameter
+        let x = bounds.width - inset.right - rewriteSize
+        rewriteButton.frame = CGRect(
+            x: x,
+            y: max(0, inset.top - 4),
+            width: rewriteSize,
+            height: rewriteSize,
         )
-        sendButton.alpha = 0
+    }
+
+    /// One shape, whatever the state: the text takes the band's row, and the
+    /// wand sits at the trailing corner when there is something to rewrite.
+    func layoutTextBand() {
+        // The wand takes the send's diameter when visible; text uses the rest.
+        let toolsShown = hasContent && !isBusy
+        let rewriteRoom = toolsShown ? ComposerMetrics.Send.diameter + iconSpacing : 0
+        let width = bounds.width - inset.left - inset.right - rewriteRoom
+        let frame = textFrame(width: width)
+        textView.frame = frame
+        // The tip rolls with a transform on it, and a view carrying one has no
+        // frame to set: its bounds and centre are what a layout pass may write.
+        placeholderLabel.bounds = CGRect(origin: .zero, size: frame.size)
+        placeholderLabel.center = CGPoint(x: frame.midX, y: frame.midY)
+        placeRewriteButton()
+    }
+
+    func updateOverflowState() {
+        // No-op: expand button removed, overflow state no longer tracked
     }
 }

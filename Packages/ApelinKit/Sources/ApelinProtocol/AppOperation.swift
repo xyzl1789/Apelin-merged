@@ -37,6 +37,9 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
     case installPackage
     case removePackage
     case installationList
+    /// Settings ▸ Apps: the apps under the bootstrap's `Applications`.
+    case applicationList
+    case applicationRemove
     case respring
     case approvalDigestState
 
@@ -62,9 +65,14 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
 
     case agentOpen
     case agentPrompt
+    case agentGenerateImage
     case agentSteer
     case agentAbort
     case agentCompact
+    /// The model the next message will use, applied to a session that is
+    /// already open, so the total the ring draws is the new model's at once.
+    case agentConfigure
+    case agentQueue
     case agentApprove
     case agentAttach
     case agentList
@@ -73,6 +81,11 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
     case agentCredentialImport
     case agentAccountList
     case agentSkillList
+    /// Rewrites a composer draft: one turn of the chosen model, with no
+    /// session and no tools, asked to improve the text and answer with it.
+    case agentRewritePrompt
+    /// A connectivity probe: exactly one user `Hi`, no session history or tools.
+    case agentModelTest
     case agentAPIConfiguration
     case agentModelList
     case agentModelActivate
@@ -80,6 +93,11 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
     case agentSignInRespond
     case agentSignInCancel
     case agentSignOut
+    /// The reader's changes to a conversation's history (`AgentHistory`).
+    case agentRewind
+    case agentEditMessage
+    case agentDeleteReply
+    case agentFork
 
     case toolHostOpen
     case toolHostClose
@@ -108,12 +126,46 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
     case gitRemoteRemove
     case gitResetPreview
     case gitResetToRemote
+    case gitBranches
+    case gitBranchCreate
+    case gitBranchCheckout
+    case gitBranchDelete
+    case gitBranchRename
+    case gitMerge
+    case gitMergeAbort
+    case gitTagCreate
+    case gitTagDelete
+    case gitLog
+    case gitCommitDetail
+    case gitCommitFileDiff
+    case gitFileVersions
+    case gitRestore
+    case gitDeletePaths
+    case gitIgnoreAppend
+    case gitReset
+    case gitStashList
+    case gitStashSave
+    case gitStashApply
+    case gitStashDrop
+    case gitStashClear
+    /// The work tree before a message's run, saved and put back
+    /// (`GitCheckpoint`).
+    case gitCheckpointSave
+    case gitCheckpointRestore
 
     case distributionRepositoryList
     case distributionRepositoryCreate
     case distributionRepositoryLink
     case distributionRepositoryUnlink
     case distributionPublish
+    /// Settings ▸ Plugins: the WeChat ClawBot channel — signing in with a
+    /// code to scan, the project its conversations run in, and whether it is
+    /// on. Served by the session host, which holds the sign-in and the poll.
+    case channelStatus
+    case channelSignIn
+    case channelVerifyCode
+    case channelConfigure
+    case channelSignOut
     case feedbackSend
     case feedbackRead
     case feedbackEdit
@@ -133,28 +185,37 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .environmentAttach, .environmentCancel: .environment
         case .extensionList, .projectCreate, .projectCheck, .projectRename, .projectDelete: .project
         case .buildStart, .buildAttach, .buildCancel: .build
-        case .installPackage, .removePackage, .installationList, .respring, .approvalDigestState: .install
+        case .installPackage, .removePackage, .installationList, .applicationList, .applicationRemove,
+             .respring, .approvalDigestState: .install
         case .fileRead, .protectedEditOpen, .protectedEditCommit: .files
         case .ptyOpen, .ptyAttach, .ptyResize, .ptyClose: .terminal
         case .logStream, .crashList, .crashOpen, .crashSymbolicate: .logs
         case .confirmLoaded, .confirmLoadedAttach, .captureScreen, .readUITree, .uiAction: .diagnostics
-        case .agentOpen, .agentPrompt, .agentSteer, .agentAbort, .agentCompact, .agentApprove, .agentAttach, .agentList,
+        case .agentOpen, .agentPrompt, .agentGenerateImage, .agentSteer, .agentAbort, .agentCompact, .agentConfigure, .agentQueue, .agentApprove, .agentAttach, .agentList,
              .agentClose, .agentRunCode, .agentCredentialImport, .agentAccountList, .agentSkillList,
+             .agentRewritePrompt, .agentModelTest,
              .agentAPIConfiguration, .agentModelList,
-             .agentModelActivate, .agentSignIn, .agentSignInRespond, .agentSignInCancel, .agentSignOut:
+             .agentModelActivate, .agentSignIn, .agentSignInRespond, .agentSignInCancel, .agentSignOut,
+             .agentRewind, .agentEditMessage, .agentDeleteReply, .agentFork:
             .agent
         case .toolHostOpen, .toolHostClose, .toolHostCall: .toolHost
         case .gitStatus, .gitDiff, .gitStage, .gitUnstage, .gitCommit, .gitInit, .gitClone, .gitCloneInto, .gitFetch,
              .gitPull,
              .gitPush, .gitSettings, .gitAuthorSet, .gitCredentialSet, .gitCredentialRemove, .gitRepositoryCreate,
              .gitIssueCreate, .gitSquash, .gitRemoteList, .gitRemoteSet, .gitRemoteRemove, .gitResetPreview,
-             .gitResetToRemote:
+             .gitResetToRemote, .gitBranches, .gitBranchCreate, .gitBranchCheckout, .gitBranchDelete,
+             .gitBranchRename, .gitMerge, .gitMergeAbort, .gitTagCreate, .gitTagDelete, .gitLog,
+             .gitCommitDetail, .gitCommitFileDiff, .gitFileVersions, .gitRestore, .gitDeletePaths,
+             .gitIgnoreAppend, .gitReset, .gitStashList, .gitStashSave, .gitStashApply, .gitStashDrop,
+             .gitStashClear, .gitCheckpointSave, .gitCheckpointRestore:
             .git
         case .transferExport, .transferInspect, .transferImport: .transfer
         case .distributionRepositoryList, .distributionRepositoryCreate, .distributionRepositoryLink,
              .distributionRepositoryUnlink, .distributionPublish, .feedbackSend, .feedbackRead, .feedbackEdit,
              .feedbackStarState, .feedbackStar:
             .distribution
+        case .channelStatus, .channelSignIn, .channelVerifyCode, .channelConfigure, .channelSignOut:
+            .channel
         }
     }
 
@@ -184,6 +245,8 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .installPackage: InstallPackageRequest.self
         case .removePackage: RemovePackageRequest.self
         case .installationList: InstallationListRequest.self
+        case .applicationList: ApplicationListRequest.self
+        case .applicationRemove: ApplicationRemoveRequest.self
         case .respring: RespringRequest.self
         case .approvalDigestState: ApprovalDigestStateRequest.self
         case .fileRead: FileReadRequest.self
@@ -204,9 +267,12 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .uiAction: UIActionRequest.self
         case .agentOpen: AgentOpenRequest.self
         case .agentPrompt: AgentPromptRequest.self
+        case .agentGenerateImage: AgentGenerateImageRequest.self
         case .agentSteer: AgentSteerRequest.self
         case .agentAbort: AgentAbortRequest.self
         case .agentCompact: AgentCompactRequest.self
+        case .agentQueue: AgentQueueRequest.self
+        case .agentConfigure: AgentConfigureRequest.self
         case .agentApprove: AgentApproveRequest.self
         case .agentAttach: AgentAttachRequest.self
         case .agentList: AgentListRequest.self
@@ -215,6 +281,8 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .agentCredentialImport: AgentCredentialImportRequest.self
         case .agentAccountList: AgentAccountListRequest.self
         case .agentSkillList: AgentSkillListRequest.self
+        case .agentRewritePrompt: AgentRewritePromptRequest.self
+        case .agentModelTest: AgentModelTestRequest.self
         case .agentAPIConfiguration: AgentAPIConfigurationRequest.self
         case .agentModelList: AgentModelListRequest.self
         case .agentModelActivate: AgentModelActivateRequest.self
@@ -222,6 +290,10 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .agentSignInRespond: AgentSignInRespondRequest.self
         case .agentSignInCancel: AgentSignInCancelRequest.self
         case .agentSignOut: AgentSignOutRequest.self
+        case .agentRewind: AgentRewindRequest.self
+        case .agentEditMessage: AgentEditMessageRequest.self
+        case .agentDeleteReply: AgentDeleteReplyRequest.self
+        case .agentFork: AgentForkRequest.self
         case .toolHostOpen: ToolHostOpenRequest.self
         case .toolHostClose: ToolHostCloseRequest.self
         case .toolHostCall: ToolHostCallRequest.self
@@ -248,6 +320,30 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .gitRemoteRemove: GitRemoteRemoveRequest.self
         case .gitResetPreview: GitResetPreviewRequest.self
         case .gitResetToRemote: GitResetToRemoteRequest.self
+        case .gitBranches: GitBranchesRequest.self
+        case .gitBranchCreate: GitBranchCreateRequest.self
+        case .gitBranchCheckout: GitBranchCheckoutRequest.self
+        case .gitBranchDelete: GitBranchDeleteRequest.self
+        case .gitBranchRename: GitBranchRenameRequest.self
+        case .gitMerge: GitMergeRequest.self
+        case .gitMergeAbort: GitMergeAbortRequest.self
+        case .gitTagCreate: GitTagCreateRequest.self
+        case .gitTagDelete: GitTagDeleteRequest.self
+        case .gitLog: GitLogRequest.self
+        case .gitCommitDetail: GitCommitDetailRequest.self
+        case .gitCommitFileDiff: GitCommitFileDiffRequest.self
+        case .gitFileVersions: GitFileVersionsRequest.self
+        case .gitRestore: GitRestoreRequest.self
+        case .gitDeletePaths: GitDeletePathsRequest.self
+        case .gitIgnoreAppend: GitIgnoreAppendRequest.self
+        case .gitReset: GitResetRequest.self
+        case .gitStashList: GitStashListRequest.self
+        case .gitStashSave: GitStashSaveRequest.self
+        case .gitStashApply: GitStashApplyRequest.self
+        case .gitStashDrop: GitStashDropRequest.self
+        case .gitStashClear: GitStashClearRequest.self
+        case .gitCheckpointSave: GitCheckpointSaveRequest.self
+        case .gitCheckpointRestore: GitCheckpointRestoreRequest.self
         case .distributionRepositoryList: DistributionRepositoryListRequest.self
         case .distributionRepositoryCreate: DistributionRepositoryCreateRequest.self
         case .distributionRepositoryLink: DistributionRepositoryLinkRequest.self
@@ -261,6 +357,11 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .transferExport: TransferExportRequest.self
         case .transferInspect: TransferInspectRequest.self
         case .transferImport: TransferImportRequest.self
+        case .channelStatus: ChannelStatusRequest.self
+        case .channelSignIn: ChannelSignInRequest.self
+        case .channelVerifyCode: ChannelVerifyCodeRequest.self
+        case .channelConfigure: ChannelConfigureRequest.self
+        case .channelSignOut: ChannelSignOutRequest.self
         }
     }
 }
@@ -283,6 +384,7 @@ public enum OperationDomain: String, Codable, CaseIterable, Sendable {
     case git
     case transfer
     case distribution
+    case channel
 }
 
 /// A request on the wire. Each operation has exactly one request type, and

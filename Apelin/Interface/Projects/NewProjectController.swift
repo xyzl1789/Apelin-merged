@@ -12,7 +12,7 @@ import UIKit
 final class NewProjectController: TableController, UITextFieldDelegate {
     /// The project made, and the message its first conversation sends, if any.
     var onCreate: ((ProjectSummary, _ firstPrompt: String?) -> Void)?
-    @objc dynamic var onCanCreateChange: ((Bool) -> Void)?
+    var onCanCreateChange: ((Bool) -> Void)?
     private let dismissesOnCreate: Bool
     private let preferredTemplateID: String?
 
@@ -23,18 +23,21 @@ final class NewProjectController: TableController, UITextFieldDelegate {
 
     private enum Section: Hashable {
         case name
+        case format
         case kind(DevelopmentExtensionKind)
         case repository
     }
 
     private enum Row: Equatable {
         case name
+        case format(ProjectOutputFormat, selected: Bool)
         case template(Choice, selected: Bool)
         case repository
 
         var id: String {
             switch self {
             case .name: "name"
+            case let .format(format, _): "format:" + format.rawValue
             case let .template(choice, _): "template:" + choice.template.id
             case .repository: "repository"
             }
@@ -54,16 +57,20 @@ final class NewProjectController: TableController, UITextFieldDelegate {
     )
 
     private var choices = [NewProjectController.emptyWorkspace]
-    @objc private dynamic var selectedID = NewProjectController.emptyWorkspace.template.id
+    private var selectedID = NewProjectController.emptyWorkspace.template.id
+    /// What an app template's build makes; only shown, and only sent, for an
+    /// app template. A deb is what every template wrote until this choice
+    /// existed, so it stays the default.
+    private var outputFormat = ProjectOutputFormat.deb
     private var draft = ProjectCreationDraft()
-    @objc private dynamic var loading = false
+    private var loading = false
 
     private let nameField = UITextField()
-    @objc private dynamic lazy var nameCell = Self.cell(containing: nameField)
+    private lazy var nameCell = Self.cell(containing: nameField)
     private let repositoryField = UITextField()
-    @objc private dynamic lazy var repositoryCell = Self.cell(containing: repositoryField)
+    private lazy var repositoryCell = Self.cell(containing: repositoryField)
 
-    @objc private dynamic static func cell(containing field: UITextField) -> UITableViewCell {
+    private static func cell(containing field: UITextField) -> UITableViewCell {
         UITableViewCell(style: .default, reuseIdentifier: nil).then { cell in
             cell.selectionStyle = .none
             cell.isAccessibilityElement = false
@@ -90,6 +97,10 @@ final class NewProjectController: TableController, UITextFieldDelegate {
             return nameCell
         case .repository:
             return repositoryCell
+        case let .format(format, selected):
+            let cell = table.dequeueReusableCell(withIdentifier: Self.templateCellID, for: indexPath)
+            configure(cell, format: format, selected: selected)
+            return cell
         case let .template(choice, selected):
             let cell = table.dequeueReusableCell(withIdentifier: Self.templateCellID, for: indexPath)
             configure(cell, choice: choice, selected: selected)
@@ -97,7 +108,7 @@ final class NewProjectController: TableController, UITextFieldDelegate {
         }
     }
 
-    @objc dynamic var canCreate: Bool {
+    var canCreate: Bool {
         !loading && draft.isValid
     }
 
@@ -144,14 +155,19 @@ final class NewProjectController: TableController, UITextFieldDelegate {
         dataSource.headerTitle = { section in
             switch section {
             case .name: String(localized: "Name")
+            case .format: String(localized: "Output")
             case let .kind(kind): kind.displayName
             case .repository: String(localized: "Git Repository")
             }
         }
-        dataSource.footerTitle = { section in
+        dataSource.footerTitle = { [weak self] section in
             switch section {
             case .name:
                 String(localized: "Leave it empty to use the name shown for now. Your agent will name the project once it knows what you’re making.")
+            case .format:
+                self?.outputFormat == .ipa
+                    ? String(localized: "The build makes one minimal app as an .ipa. Install it on this device, or export it in Distribute… to sign it for another.")
+                    : String(localized: "The build makes a .deb your package manager installs on a jailbroken device.")
             case .repository:
                 String(localized: "Optional. Your agent imports the repository into the new project and works out how to build it.")
             case .kind: nil
@@ -192,12 +208,12 @@ final class NewProjectController: TableController, UITextFieldDelegate {
         return (available.first { $0.kind == .workspace } ?? available[0]).template.id
     }
 
-    @objc private dynamic lazy var createButton = UIBarButtonItem(
+    private lazy var createButton = UIBarButtonItem(
         title: String(localized: "Create"),
         primaryAction: UIAction { [weak self] _ in self?.createProject() },
     )
 
-    @objc private dynamic lazy var creatingIndicator = UIBarButtonItem(customView: UIActivityIndicatorView(style: .medium).then {
+    private lazy var creatingIndicator = UIBarButtonItem(customView: UIActivityIndicatorView(style: .medium).then {
         $0.startAnimating()
         $0.isAccessibilityElement = true
         $0.accessibilityLabel = String(localized: "Creating Project…")
@@ -205,8 +221,13 @@ final class NewProjectController: TableController, UITextFieldDelegate {
 
     /// The repository field shows above the workspace section while the
     /// empty workspace is ticked.
-    @objc private dynamic func updateRows() {
+    private func updateRows() {
         var sections: [(Section, [Row])] = [(.name, [.name])]
+        if isAppTemplate {
+            sections.append((.format, ProjectOutputFormat.allCases.map { format in
+                .format(format, selected: format == outputFormat)
+            }))
+        }
         for kind in DevelopmentExtensionKind.displayOrder {
             let rows = choices.filter { $0.kind == kind }
                 .map { Row.template($0, selected: $0.template.id == selectedID) }
@@ -219,13 +240,19 @@ final class NewProjectController: TableController, UITextFieldDelegate {
         dataSource.update(sections, reconfigure: true)
     }
 
-    @objc private dynamic var importsRepository: Bool {
+    private var importsRepository: Bool {
         selectedID == Self.emptyWorkspace.template.id
+    }
+
+    /// Only an app template offers the choice; every other template builds
+    /// what it says in its own description.
+    private var isAppTemplate: Bool {
+        choices.first { $0.template.id == selectedID }?.kind == .app
     }
 
     /// The address typed, when the empty workspace takes one; nil when
     /// nothing is typed.
-    @objc private dynamic var repositoryAddress: String? {
+    private var repositoryAddress: String? {
         guard importsRepository else { return nil }
         let address = (repositoryField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return address.isEmpty ? nil : address
@@ -233,7 +260,7 @@ final class NewProjectController: TableController, UITextFieldDelegate {
 
     /// Only the basics: HTTPS, a host, and no user or token written into it,
     /// which would go into the conversation. The agent reports the rest.
-    @objc private dynamic static func isImportable(_ address: String) -> Bool {
+    private static func isImportable(_ address: String) -> Bool {
         guard let url = URLComponents(string: address), url.scheme?.lowercased() == "https",
               let host = url.host, !host.isEmpty, url.user == nil, url.password == nil else { return false }
         return true
@@ -258,13 +285,34 @@ final class NewProjectController: TableController, UITextFieldDelegate {
 
     /// A template's name and summary are its extension's English; the
     /// catalogue has the shipped ones, and anything else stays as written.
-    @objc private dynamic static func catalogText(_ text: String) -> String {
+    private static func catalogText(_ text: String) -> String {
         String(localized: String.LocalizationValue(text))
+    }
+
+    /// A row of the output format: what the build hands back, in the words
+    /// the agent's tool description and the project description skill use.
+    private func configure(_ cell: UITableViewCell, format: ProjectOutputFormat, selected: Bool) {
+        var content = UIListContentConfiguration.subtitleCell()
+        content.text = switch format {
+        case .deb: String(localized: ".deb Package")
+        case .ipa: String(localized: ".ipa")
+        }
+        content.secondaryText = switch format {
+        case .deb: String(localized: "A package your package manager installs on a jailbroken device.")
+        case .ipa: String(localized: "A minimal iOS app, zipped. Installs on this device, or signs for another with a certificate.")
+        }
+        content.secondaryTextProperties.color = .secondaryLabel
+        cell.contentConfiguration = content
+        cell.accessoryType = selected ? .checkmark : .none
+        // the tick is drawn; the trait says it
+        cell.isAccessibilityElement = true
+        cell.accessibilityLabel = [content.text, content.secondaryText].compactMap(\.self).joined(separator: ", ")
+        cell.accessibilityTraits = selected ? [.button, .selected] : .button
     }
 
     override func tableView(_: UITableView, willSelectRowAt indexPath: IndexPath) -> IndexPath? {
         switch dataSource.value(at: indexPath) {
-        case .template:
+        case .template, .format:
             break
         case .repository:
             repositoryField.becomeFirstResponder()
@@ -279,24 +327,31 @@ final class NewProjectController: TableController, UITextFieldDelegate {
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard case let .template(choice, _) = dataSource.value(at: indexPath) else { return }
-        selectedID = choice.template.id
-        updateRows()
+        switch dataSource.value(at: indexPath) {
+        case let .format(format, _):
+            outputFormat = format
+            updateRows()
+        case let .template(choice, _):
+            selectedID = choice.template.id
+            updateRows()
+        default:
+            break
+        }
     }
 
-    @objc private dynamic func nameChanged() {
+    @objc private func nameChanged() {
         draft.edit(nameField.text ?? "")
         updateCreate()
     }
 
-    @objc private dynamic func updateCreate() {
+    private func updateCreate() {
         createButton.isEnabled = canCreate
         onCanCreateChange?(canCreate)
     }
 
     /// While the request is out the page holds still: no edits, no other
     /// template, no close, and the spinner where Create was.
-    @objc private dynamic func setCreating(_ creating: Bool) {
+    private func setCreating(_ creating: Bool) {
         loading = creating
         navigationItem.rightBarButtonItem = creating ? creatingIndicator : createButton
         navigationItem.leftBarButtonItem?.isEnabled = !creating
@@ -306,14 +361,14 @@ final class NewProjectController: TableController, UITextFieldDelegate {
         updateCreate()
     }
 
-    @objc dynamic func textFieldShouldReturn(_: UITextField) -> Bool {
+    func textFieldShouldReturn(_: UITextField) -> Bool {
         if canCreate {
             createProject()
         }
         return false
     }
 
-    @objc dynamic func createProject() {
+    func createProject() {
         guard canCreate, let entry = choices.first(where: { $0.template.id == selectedID }) else { return }
         let address = repositoryAddress
         if let address, !Self.isImportable(address) {
@@ -334,6 +389,7 @@ final class NewProjectController: TableController, UITextFieldDelegate {
                     templateID: entry.template.id,
                     name: name,
                     automaticallyName: automaticallyName,
+                    outputFormat: isAppTemplate ? outputFormat : nil,
                 ))
                 NotificationCenter.default.post(name: .apelinProjectsChanged, object: nil)
                 let project = ProjectSummary(

@@ -23,6 +23,11 @@ public enum ProjectLanguage: String, Codable, Sendable {
 
 public enum ProductType: String, Codable, Sendable {
     case app, dylib, bundle, executable
+    /// An app's extension, `Name.appex`: an app directory the build assembles
+    /// like a bundle and links as an executable, embedded at
+    /// `PlugIns/<name>.appex` — in an `.ipa` by the packager, in a deb by a
+    /// layout entry.
+    case appex
 }
 
 public enum Architecture: String, Codable, Sendable, CaseIterable {
@@ -45,8 +50,39 @@ public struct ProjectDocument: Codable, Sendable, Equatable {
     public var architectures: ArchitectureMap
     public var configurations: Configurations
     public var products: [Product]
+    /// Swift modules compiled from sources a project carries — a dependency's,
+    /// vendored under the project — one `.swiftmodule` and one object each,
+    /// which a product that compiles Swift names in `swiftModules`. SwiftPM
+    /// itself never runs: the project says which folders are a module and
+    /// which modules it needs, so a package's own `Package.swift` is not read.
+    public var swiftModules: [SwiftModule]?
     public var build: Build
     public var package: Package
+
+    /// One module built out of the project's own files. Its name is the
+    /// Swift module name its sources `import`.
+    public struct SwiftModule: Codable, Sendable, Equatable {
+        public var name: String
+        public var sources: [String]
+        /// Modules this one imports, built before it.
+        public var dependencies: [String]?
+        /// Swift's direct C++ interop for this module: its `.swift` sources
+        /// import C++ declarations instead of a C facade. Off unless named; a
+        /// module that names it turns it on for every product that comes to
+        /// compile against this one, and for the modules this one imports
+        /// unless one of them says `false`.
+        public var cxxInterop: Bool?
+        /// Directories holding the C++ headers this module's Swift sources
+        /// import, given to the clang importer and to the native C++ files of
+        /// the products that compile against it.
+        public var headerSearchPaths: [String]?
+        /// The C++ standard the importer and native C++ see for this
+        /// module's closure, e.g. `c++17`. A module that names none is built
+        /// as `c++17`, so a module in a closure that compiles as another
+        /// standard must name it: the check refuses the mismatch rather than
+        /// importing the same headers with different layouts.
+        public var cxxStandard: String?
+    }
 
     public struct TemplateSource: Codable, Sendable, Equatable {
         public var extensionID: String
@@ -86,6 +122,9 @@ public struct ProjectDocument: Codable, Sendable, Equatable {
         public var debugInfo: Bool
         public var defines: [String: String]?
         public var cFlags: [String]?
+        /// C++ and Objective-C++ only, applied after `cFlags`: the files
+        /// `SourceLanguage.isCXX` names are the ones that see these.
+        public var cxxFlags: [String]?
         public var swiftFlags: [String]?
         public var linkFlags: [String]?
     }
@@ -109,14 +148,29 @@ public struct ProjectDocument: Codable, Sendable, Equatable {
         public var resources: [String]?
         public var infoPlist: String?
         public var entitlements: String?
+        /// The header the Swift compiler imports into every Swift file of
+        /// this product, giving Swift the C family's declarations.
+        public var bridgingHeader: String?
         public var installName: String?
         public var objcARC: Bool?
+        /// Swift's direct C++ interop for this product: its `.swift` sources
+        /// import C++ declarations directly. Off unless named, or unless a
+        /// `swiftModules` entry in its closure turns it on; naming it `false`
+        /// beside such a module is an error.
+        public var cxxInterop: Bool?
+        /// The C++ standard for this product's C++ and Objective-C++ files,
+        /// e.g. `c++17` or `c++20`, from the schema's list. With C++ interop
+        /// it is also the standard the Swift side is compiled with.
+        public var cxxStandard: String?
         public var frameworks: [String]?
         public var weakFrameworks: [String]?
         public var libraries: [String]?
         public var frameworkSearchPaths: [String]?
         public var librarySearchPaths: [String]?
         public var extensionSupport: [ExtensionSupport]?
+        /// The project's `swiftModules` this product compiles against and
+        /// links, each with the ones it depends on.
+        public var swiftModules: [String]?
 
         /// `@rpath/<name>.dylib` unless the project names one.
         public var effectiveInstallName: String {
@@ -290,6 +344,17 @@ public struct ProjectDocument: Codable, Sendable, Equatable {
     }
 
     public struct Package: Codable, Sendable, Equatable {
+        /// What the build hands back. `deb` when the description says
+        /// nothing: a package a package manager installs, laid out by
+        /// `layout`. `ipa`: this project's app in `Payload/`, zipped, which
+        /// installs as an app and never through a package manager — `layout`
+        /// stays empty and relations, a tweak filter and maintainer scripts
+        /// are refused.
+        public enum Format: String, Codable, Sendable, CaseIterable {
+            case deb
+            case ipa
+        }
+
         public var id: String
         public var name: String
         public var version: String
@@ -317,8 +382,13 @@ public struct ProjectDocument: Codable, Sendable, Equatable {
         public var replaces: [String]?
         public var provides: [String]?
         public var layout: [LayoutEntry]
+        public var format: Format?
         public var maintainerScripts: MaintainerScripts?
         public var tweakFilter: TweakFilter?
+
+        public var effectiveFormat: Format {
+            format ?? .deb
+        }
     }
 
     public func configuration(_ name: ConfigurationName) -> Configuration {

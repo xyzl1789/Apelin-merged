@@ -530,6 +530,8 @@ do {
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .approvalDigestState), "the agent may read the ledger")
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .installationList), "the agent may list installations")
     check(!CallerPolicy.allows(.worker(.environment, instance: nil), .installationList) && !CallerPolicy.allows(.worker(.diagnostics, instance: nil), .installationList), "no other worker lists installations")
+    check(!CallerPolicy.allows(.worker(.agent, instance: "s"), .applicationRemove)
+        && !CallerPolicy.allows(.worker(.environment, instance: nil), .applicationList), "the apps under Applications are the app's alone")
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .toolHostCall), "the agent may call tools")
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .confirmLoaded) && CallerPolicy.allows(.worker(.agent, instance: "s"), .confirmLoadedAttach), "the agent starts and reads a load check")
     // Accounts are the app's alone: a session's agent never starts, answers
@@ -657,6 +659,18 @@ do {
         "provider, model, effort and tier go as sent",
     )
     check(child.prompt == "Write the README" && child.title == "Docs", "the prompt goes as sent, the title on one trimmed line")
+    check(child.promptInjection == nil, "an opener with no injected instructions passes none on")
+    var injectedOpener = opener
+    injectedOpener.promptInjection = "Always answer in Chinese."
+    let inherited = try AgentConversationRules.childOpen(
+        AgentOpenRequest(prompt: "go"),
+        opener: injectedOpener,
+        target: project,
+    )
+    check(
+        inherited.promptInjection == "Always answer in Chinese.",
+        "a conversation an agent opens carries the reader's injected instructions too",
+    )
     let relaxed = await session("c-relaxed", mode: .relaxed)
     let relaxedChild = try AgentConversationRules.childOpen(
         AgentOpenRequest(approvalMode: .confirm, prompt: "go"),
@@ -692,13 +706,14 @@ do {
 
     // The approval an open or a message in another project spends: the
     // user's of exactly that call.
-    func otherProjectAsk(_ tool: String, action: String, projectID: String, sessionID: String? = nil, text: String) -> JSONValue {
+    func otherProjectAsk(_ tool: String, action: String, projectID: String, sessionID: String? = nil, text: String, delivery: String? = nil) -> JSONValue {
         var detail: [String: JSONValue] = [
             "action": .string(action), "projectID": .string(projectID), "projectName": .string("Other"), "text": .string(text),
         ]
         if let sessionID {
             detail["sessionID"] = .string(sessionID)
         }
+        if let delivery { detail["delivery"] = .string(delivery) }
         return .object(["tool": .string(tool), "detail": .object([AgentConversationRules.otherProjectDetail: .object(detail)])])
     }
     let openAsk = otherProjectAsk("apelin_conversation_create", action: "create", projectID: other.id, text: "Import the repository")
@@ -759,16 +774,19 @@ do {
         reasoningEffort: .max,
         serviceTier: .ultrafast,
         approvalMode: .relaxed,
+        promptInjection: "Always answer in Chinese.",
         fromSessionID: "c-forged",
+        delivery: .steer,
     )
     let rewritten = try AgentConversationRules.childPrompt(sent, sender: opener, target: target, descriptorCount: 0)
     check(rewritten.sessionID == "c-target" && rewritten.text == "Review Tweak.x", "the message goes to the target as typed")
     check(rewritten.fromSessionID == "c-opener", "and is marked with the sender the host knows, not the one it claimed")
+    check(rewritten.delivery == .steer, "the sender's explicit steering survives host sanitization")
     check(
         rewritten.approvalMode == nil && rewritten.provider == nil && rewritten.model == nil
             && rewritten.reasoningEffort == nil && rewritten.serviceTier == nil && rewritten.attachments == nil
-            && rewritten.messageID == nil,
-        "and carries no mode, provider, model, effort, tier, files or message id of the sender's",
+            && rewritten.messageID == nil && rewritten.promptInjection == nil,
+        "and carries no mode, provider, model, effort, tier, files, message id or injected instructions of the sender's",
     )
     expectError("a message carries no descriptors", code: .badRequest) {
         _ = try AgentConversationRules.childPrompt(sent, sender: opener, target: target, descriptorCount: 1)
@@ -799,6 +817,21 @@ do {
     check(toElsewhere.fromSessionID == "c-opener", "a message goes to another project's conversation the same way")
     let sendAsk = otherProjectAsk("apelin_conversation_send", action: "send", projectID: other.id, sessionID: "c-elsewhere", text: "Build it")
     check(AgentConversationRules.coversSend(toElsewhere, target: elsewhere, asked: sendAsk), "an approval of this message to this conversation covers it")
+    var steerElsewhere = toElsewhere
+    steerElsewhere.delivery = .steer
+    let steerAsk = otherProjectAsk("apelin_conversation_send", action: "send", projectID: other.id, sessionID: "c-elsewhere", text: "Build it", delivery: "steer")
+    check(!AgentConversationRules.coversSend(steerElsewhere, target: elsewhere, asked: sendAsk), "a queued-message approval never authorizes steering")
+    check(AgentConversationRules.coversSend(steerElsewhere, target: elsewhere, asked: steerAsk), "steering is covered by approval of that delivery")
+    check(!AgentConversationRules.coversSend(toElsewhere, target: elsewhere, asked: steerAsk), "a steering approval is not reused for a queued message")
+    var explicitQueue = toElsewhere
+    explicitQueue.delivery = .queue
+    check(AgentConversationRules.coversSend(explicitQueue, target: elsewhere, asked: sendAsk), "legacy approvals without delivery still mean queue")
+    for delivery in [AgentMessageDelivery.queue, .steer] {
+        var wire = sent
+        wire.delivery = delivery
+        let decoded = try JSONDecoder().decode(AgentPromptRequest.self, from: JSONEncoder().encode(wire))
+        check(decoded.delivery == delivery, "delivery survives the prompt wire round trip")
+    }
     check(
         !AgentConversationRules.coversSend(AgentPromptRequest(sessionID: "c-elsewhere", text: "Push it"), target: elsewhere, asked: sendAsk),
         "not another text",
@@ -831,7 +864,7 @@ do {
         )
     }
     let fromApp = AgentConversationRules.appPrompt(sent)
-    check(fromApp.fromSessionID == nil && fromApp.approvalMode == .relaxed && fromApp.model == "gpt", "the app's prompt keeps everything but a forged sender")
+    check(fromApp.fromSessionID == nil && fromApp.delivery == nil && fromApp.approvalMode == .relaxed && fromApp.model == "gpt", "the app's prompt keeps model settings but drops a forged sender and direct steering")
 
     // Abort and close: only the conversations the caller opened.
     let mine = await session("c-mine", parent: "c-opener", depth: 1)
@@ -1210,6 +1243,7 @@ func record(
     version: String,
     status: InstallationRecord.Status = .installed,
     created: Date = Date(),
+    application: InstallationRecord.Application? = nil,
 ) -> InstallationRecord {
     InstallationRecord(
         installationID: id,
@@ -1239,6 +1273,7 @@ func record(
         removalTransactionID: nil,
         removalTaskID: nil,
         removalReceipt: nil,
+        application: application,
     )
 }
 
@@ -1299,6 +1334,110 @@ do {
     expectError("removing a core package even with a record", code: .denied) { try ManagedPackagePolicy.checkRemoval(core, installed: installed, records: [core]) }
     let older = record(package: "com.example.tweak", version: "1.0", created: Date(timeIntervalSinceNow: -60))
     expectError("removing through a superseded record", code: .conflict) { try ManagedPackagePolicy.checkRemoval(older, installed: installed, records: [older, ours]) }
+}
+
+// An app's record outlives the root it was installed under: roothide renames
+// its `.jbroot-…` folder when the device is jailbroken again, and the bundle
+// moves with it. The record finds it there, and never takes a stranger's app
+// that happens to carry the same name.
+do {
+    let applications = scratchPath + "/newroot/Applications"
+    let gone = scratchPath + "/oldroot/Applications"
+    try FileManager.default.createDirectory(atPath: applications + "/Demo.app", withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(atPath: applications + "/Stranger.app", withIntermediateDirectories: true)
+    func identifier(_ id: String, at path: String) throws {
+        let plist = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": id], format: .xml, options: 0
+        )
+        try plist.write(to: URL(fileURLWithPath: path + "/Info.plist"))
+    }
+    try identifier("com.example.demo", at: applications + "/Demo.app")
+    try identifier("com.example.stranger", at: applications + "/Stranger.app")
+
+    let moved = InstallationRecord.Application(
+        bundleID: "com.example.demo", name: "Demo", bundlePath: gone + "/Demo.app"
+    )
+    check(moved.path(under: applications) == applications + "/Demo.app", "an app under a renamed root is found where it is now")
+    let stranger = InstallationRecord.Application(
+        bundleID: "com.example.demo", name: "Stranger", bundlePath: gone + "/Demo.app"
+    )
+    check(stranger.path(under: applications) == gone + "/Demo.app", "an app of another bundle with the same name is not taken for it")
+    let there = InstallationRecord.Application(
+        bundleID: "com.example.demo", name: "Demo", bundlePath: applications + "/Demo.app"
+    )
+    check(there.path(under: applications) == there.bundlePath, "a record that still names the bundle keeps its path")
+}
+
+// Settings ▸ Apps: only what Apelin installed from an .ipa, and what a
+// removal there would do.
+do {
+    let root = "/private/var/containers/Bundle/Application/.jbroot-0123456789ABCDEF"
+    let applications = ApplicationCensus.applicationsFolder(installRoot: root)
+    let demo = applications + "/Demo.app"
+    let gone = applications + "/Gone.app"
+    let owned = applications + "/Owned.app"
+    let lost = applications + "/Lost.app"
+    let stranger = applications + "/Stranger.app"
+
+    let rows = ApplicationCensus.rows(
+        installRoot: root,
+        registered: [
+            ("local.apelin.demo", demo),
+            ("local.apelin.gone", gone),
+            ("local.apelin.owned", owned),
+            ("com.example.stranger", stranger),
+        ],
+        records: [
+            record(
+                package: "local.apelin.demo", version: "1.0",
+                created: Date(timeIntervalSinceNow: -30),
+                application: .init(bundleID: "local.apelin.demo", name: "Demo", bundlePath: demo),
+            ),
+            record(
+                package: "local.apelin.gone", version: "0.9",
+                created: Date(timeIntervalSinceNow: -20),
+                application: .init(bundleID: "local.apelin.gone", name: "Gone", bundlePath: gone),
+            ),
+            record(
+                package: "local.apelin.owned", version: "2.0",
+                created: Date(timeIntervalSinceNow: -10),
+                application: .init(bundleID: "local.apelin.owned", name: "Owned", bundlePath: owned),
+            ),
+            record(
+                package: "local.apelin.lost", version: "1.0",
+                created: Date(timeIntervalSinceNow: -5),
+                application: .init(bundleID: "local.apelin.lost", name: "Lost", bundlePath: lost),
+            ),
+            // Not installed any more: nothing to list.
+            record(
+                package: "local.apelin.old", version: "1.0", status: .removed,
+                application: .init(bundleID: "local.apelin.old", name: "Old", bundlePath: applications + "/Old.app"),
+            ),
+        ],
+        owners: ["/Applications/Owned.app": "com.example.owner"],
+        describe: { path in
+            switch path {
+            case demo: ("local.apelin.demo", "Demo", "1.0")
+            case owned: ("local.apelin.owned", "Owned", "2.0")
+            default: nil
+            }
+        },
+    )
+
+    check(rows.map(\.name) == ["Demo", "Gone", "Owned"],
+          "only Apelin's own apps are listed, and only while something of them is left: \(rows.map(\.name))")
+    let byName = Dictionary(uniqueKeysWithValues: rows.map { ($0.name, $0) })
+    check(byName["Demo"]?.source == .apelin && byName["Demo"]?.removable == true
+        && byName["Demo"]?.path == demo && byName["Demo"]?.installationID != nil,
+          "an app Apelin installed is its own to remove")
+    check(byName["Gone"]?.path == nil && byName["Gone"]?.registeredPath == gone
+        && byName["Gone"]?.removable == true && byName["Gone"]?.version == "0.9",
+          "a registration with no bundle behind it is listed, and removable too")
+    check(byName["Owned"]?.source == .package && byName["Owned"]?.packageID == "com.example.owner"
+        && byName["Owned"]?.removable == false, "an app a package now lists is the package manager's")
+    check(!rows.contains { $0.bundleID == "com.example.stranger" }, "an app Apelin never installed is not listed")
+    check(ApplicationCensus.parseRegistered("local.apelin.demo : /Applications/Demo.app\nnonsense\n")
+        .first?.bundleID == "local.apelin.demo", "uicache's own list is read")
 }
 
 // MARK: - Deb control
@@ -1380,10 +1519,6 @@ await agentOpenChecks()
 
 await agentHostRunChecks()
 
-// MARK: - A stop the worker does not take (PatienceChecks.swift)
-
-await patienceChecks()
-
 // MARK: - shell_run as root (RootRunChecks.swift)
 
 await rootRunChecks(scratch: scratch, scratchPath: scratchPath)
@@ -1395,6 +1530,8 @@ await screenConsentChecks(scratch: scratch, scratchPath: scratchPath)
 // MARK: - A reset to a remote (ResetToRemoteChecks.swift)
 
 await resetToRemoteChecks(scratch: scratch, scratchPath: scratchPath)
+try await gitBranchChecks(scratch: scratch, scratchPath: scratchPath)
+try await terminalChecks(scratch: scratch, scratchPath: scratchPath)
 
 // MARK: - Install bridge against a fake irisind
 
@@ -2390,6 +2527,7 @@ do {
     check(environment["SDKROOT"] == developmentNewSDK, "SDKROOT is the newest SDK it reads: \(String(describing: environment["SDKROOT"]))")
     check(environment["IPHONEOS_DEPLOYMENT_TARGET"] == "16.0", "outside a project the deployment target is Apelin's default")
     check(environment["APELIN_TOOLCHAIN_BIN"] == developmentBin, "the toolchain is named for the login profile snippet")
+    check(environment["APELIN_TERMINAL"] == "1", "the terminal says the shell is Apelin's own, for the profile snippet's short prompt")
     check(environment.values.allSatisfy { !$0.contains("tok3n") && !$0.contains("inst-secret") }, "no record field but paths reaches the terminal")
     check(environment["GIT_CONFIG_KEY_0"] == "safe.bareRepository", "the terminal keeps its protected git config")
 }

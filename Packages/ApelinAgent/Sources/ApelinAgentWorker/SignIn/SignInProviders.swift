@@ -28,7 +28,6 @@ public extension AgentProvider {
         case .anthropicOAuth: CredentialProviderID.anthropicOAuth
         case .anthropic: CredentialProviderID.anthropicAPIKey
         case .openAICompatible: CredentialProviderID.openAICompatible
-        case let .openAICompatibleEndpoint(number): CredentialProviderID.openAICompatibleEndpoint(number)
         case .openAICodex: "openai-codex"
         case .cursor: "cursor"
         case .devin: "devin"
@@ -65,8 +64,7 @@ public extension AgentProvider {
         case .anthropicOAuth, .openAICodex, .cursor, .devin, .kiro, .antigravity, .qoder, .qoderCN, .workBuddy,
              .workBuddyAI, .zai, .zaiCodingCN, .openRouter, .trae, .traeIntl, .raccoon:
             .browser
-        case .anthropic, .openAICompatible, .openAICompatibleEndpoint, .openAI, .google, .deepSeek, .openCodeGo,
-             .openCodeZen:
+        case .anthropic, .openAICompatible, .openAI, .google, .deepSeek, .openCodeGo, .openCodeZen:
             .apiKey
         }
     }
@@ -148,9 +146,8 @@ enum SignInKeyForms {
         ]),
     ]
 
-    /// A further OpenAI-compatible endpoint takes the first one's form.
     static func fields(for provider: AgentProvider) -> [KeyField]? {
-        all.first { $0.provider == provider.kind }?.fields
+        all.first { $0.provider == provider }?.fields
     }
 }
 

@@ -350,6 +350,9 @@ actor AgentSessionTable {
         /// Ask Before Using the Screen, as the app last sent it; an agent's
         /// session has its opener's.
         var asksBeforeScreen = true
+        /// The reader's standing instructions, as the session opened with
+        /// them: an agent's session has its opener's.
+        var promptInjection: String? = nil
         var title: String?
         var createdAt: Date
         var approvals: [String: ApprovalDecision] = [:]
@@ -357,6 +360,9 @@ actor AgentSessionTable {
         var runCodeGrants: [RunCodeGrant] = []
         /// The session whose agent opened this one; nil for the app's.
         var parentSessionID: String?
+        /// What opened it besides the app: a chat channel's name
+        /// (`AgentOpenRequest.origin`), kept for `agentList`.
+        var origin: String? = nil
         /// 0 for a session the app opened, its opener's plus one otherwise.
         var depth = 0
         /// The tasks this session's agent started (setups, imports, git),
@@ -441,6 +447,12 @@ actor AgentSessionTable {
         entries[session]?.asksBeforeScreen = asks
     }
 
+    /// The reader's standing instructions as they are now: a conversation an
+    /// agent opens from here inherits these. "" turns them off, as nil does.
+    func setPromptInjection(_ text: String, session: String) {
+        entries[session]?.promptInjection = text.isEmpty ? nil : text
+    }
+
     /// Nil forgets the decision.
     func record(_ sessionID: String, approvalID: String, decision: ApprovalDecision?) {
         entries[sessionID]?.approvals[approvalID] = decision
@@ -519,6 +531,7 @@ actor AgentSessionTable {
                 state: record?.state ?? .interrupted,
                 updatedAt: record?.updatedAt ?? entry.createdAt,
                 parentSessionID: entry.parentSessionID,
+                origin: entry.origin,
             ))
         }
         return result

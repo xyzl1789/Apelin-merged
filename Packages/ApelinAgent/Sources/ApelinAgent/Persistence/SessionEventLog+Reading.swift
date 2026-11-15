@@ -7,15 +7,35 @@ extension SessionEventLog {
     struct Summary: Sendable, Equatable {
         /// The last record's number.
         var lastSeq: UInt64 = 0
-        /// Every `userMessage` id: the same message sent again is a duplicate.
+        /// Every model-accepted user message id, direct or from another conversation.
         var userMessageIDs: Set<UUID> = []
+        /// The last of them, in the order the log took them: its boundary is
+        /// where a chat whose history came back empty is read back from.
+        var lastUserMessageID: UUID?
         var hasTitle = false
+        /// Raw opening input, not the injected model context. Retained so an
+        /// unfinished title uses the same message after the worker reopens.
+        var titleSource: String?
         /// Approvals asked and never resolved, in the order asked.
         var openApprovals: [String] = []
+        /// A previous process left these operations without their terminal
+        /// event. Reopening restores history, never a running model task.
+        var unfinishedTurn = false
+        var unfinishedCompaction = false
+
+        var interruptionEvents: [AgentSessionEvent] {
+            var events: [AgentSessionEvent] = []
+            if unfinishedCompaction { events.append(.compactionFinished(.init(outcome: .cancelled))) }
+            if unfinishedTurn { events.append(.finished(reason: .aborted)) }
+            return events
+        }
 
         /// The kinds of event `add` reads, as the encoder spells their
         /// cases: the only lines the opening scan decodes, but for the last.
-        static let kinds: Set<String> = ["userMessage", "titleUpdated", "approvalRequested", "approvalResolved"]
+        static let kinds: Set<String> = [
+            "userMessage", "conversationMessageTaken", "titleUpdated", "approvalRequested", "approvalResolved",
+            "promptSubmitted", "steered", "messageStarted", "finished", "compactionStarted", "compactionFinished",
+        ]
 
         init() {}
 
@@ -29,7 +49,18 @@ extension SessionEventLog {
         mutating func add(_ record: SessionEventRecord) {
             lastSeq = record.seq
             switch record.event {
-            case let .userMessage(id, _, _): userMessageIDs.insert(id)
+            case let .userMessage(id, text, _, _), let .conversationMessageTaken(id, text, _):
+                if titleSource == nil {
+                    let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !text.isEmpty { titleSource = String(text.prefix(3000)) }
+                }
+                userMessageIDs.insert(id)
+                lastUserMessageID = id
+                unfinishedTurn = true
+            case .promptSubmitted, .steered, .messageStarted: unfinishedTurn = true
+            case .finished: unfinishedTurn = false
+            case .compactionStarted: unfinishedCompaction = true
+            case .compactionFinished: unfinishedCompaction = false
             case .titleUpdated: hasTitle = true
             case let .approvalRequested(request): openApprovals.append(request.id)
             case let .approvalResolved(id, _): openApprovals.removeAll { $0 == id }

@@ -13,7 +13,12 @@ on:
   release:
     types: [published, edited]
   workflow_run:
-    workflows: [Release]
+    # Every workflow that ends with a published release carries packages the
+    # site serves: CI publishes a version, Release publishes a tag pushed by
+    # hand, and Debug build is the one this repository publishes with while its
+    # automatic runs are off. A publisher missing here leaves the package source
+    # naming the previous version, which a device then keeps offering.
+    workflows: [CI, Release, Debug build]
     types: [completed]
   workflow_dispatch:
 
@@ -64,6 +69,52 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_REPOSITORY: ${{ github.repository }}
         run: python3 .depiction-tools/scripts/update-depiction-changelogs.py --repository "$RELEASE_REPOSITORY" --depiction Documents/Site/depiction.json
+      # A package source the device's package manager can add once and update
+      # from: the newest release's packages, and the index that names them, at
+      # <site>/repo/. It is built here rather than committed, so the site
+      # carries what the release carries and nothing older.
+      - name: Assemble the package source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          repo=Documents/Site/repo
+          tag="$(gh release view --json tagName --jq .tagName 2>/dev/null || true)"
+          if [ -z "$tag" ]; then
+            echo "no release is published yet: the site carries no package source"
+            exit 0
+          fi
+          echo "packages of $tag"
+          rm -rf "${repo:?}"
+          mkdir -p "$repo/debs"
+          gh release download "$tag" --pattern '*.deb' --dir "$repo/debs"
+          cp Documents/Site/icon.png "$repo/CydiaIcon.png"
+          if ! command -v dpkg-scanpackages > /dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
+          fi
+          cd "$repo"
+          dpkg-scanpackages -m debs /dev/null > Packages
+          gzip -9c Packages > Packages.gz
+          # A flat repository: the Release file sits beside the index it sums,
+          # and the source is the address of this folder.
+          apt-ftparchive release . > Release
+          ls -l Packages Packages.gz Release debs
+      # A Pages site is made once, by hand: Settings ▸ Pages ▸ Source "GitHub
+      # Actions". The workflow cannot make one — the API answers "Resource not
+      # accessible by integration" for GITHUB_TOKEN, whatever this asks — so it
+      # says what is missing instead of failing inside configure-pages.
+      - name: Check the repository has a Pages site
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh api "repos/$GH_REPO/pages" > /dev/null 2>&1; then
+            echo "::error::No Pages site yet. In Settings ▸ Pages set Source to \"GitHub Actions\", then re-run this workflow."
+            exit 1
+          fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -90,6 +90,10 @@ public struct AgentAccount: Codable, Sendable, Equatable {
     /// Processing tiers the provider catalog lists, keyed by model ID; a
     /// model it does not name is offered none.
     public var serviceTiers: [String: [AgentServiceTier]]?
+    /// What each model was read as, keyed by model ID: the catalog entry found
+    /// for a name the provider does not describe itself, so the settings page
+    /// can show a relay's models with the figures they really have.
+    public var capabilities: [String: AgentModelCapabilities]?
     public var isAPIKeyAccount: Bool {
         usesAPIKey ?? (method == .apiKey)
     }
@@ -105,6 +109,7 @@ public struct AgentAccount: Codable, Sendable, Equatable {
         usesAPIKey: Bool? = nil,
         reasoningEfforts: [String: [AgentReasoningEffort]]? = nil,
         serviceTiers: [String: [AgentServiceTier]]? = nil,
+        capabilities: [String: AgentModelCapabilities]? = nil,
     ) {
         self.provider = provider
         self.method = method
@@ -116,6 +121,7 @@ public struct AgentAccount: Codable, Sendable, Equatable {
         self.usesAPIKey = usesAPIKey
         self.reasoningEfforts = reasoningEfforts
         self.serviceTiers = serviceTiers
+        self.capabilities = capabilities
     }
 }
 
@@ -124,7 +130,23 @@ public struct AgentAccount: Codable, Sendable, Equatable {
 public struct AgentAccountListRequest: OperationRequest {
     public typealias Response = AgentAccountListResponse
     public static let operation = AppOperation.agentAccountList
-    public init() {}
+    /// Model ids this device keeps for a provider and the agent's own list does
+    /// not: a custom endpoint's model, saved in the app's settings and never
+    /// in the credentials. Keyed by the provider's id (`AgentProvider.rawValue`,
+    /// `openAICompatible`). The catalogs are read over these too, so a relay's
+    /// model is named and measured like one of the provider's own.
+    public var extraModels: [String: [String]]?
+    /// True for a caller that wants only the models it named: each signed-in
+    /// account then answers with the `extraModels` of its own provider and
+    /// nothing else, and an account it named none for has no model. Requested
+    /// IDs are preserved for every provider, including live or custom models
+    /// absent from bundled catalogs.
+    /// Absent keeps the whole list, with `extraModels` added to it.
+    public var onlyExtraModels: Bool?
+    public init(extraModels: [String: [String]]? = nil, onlyExtraModels: Bool? = nil) {
+        self.extraModels = extraModels
+        self.onlyExtraModels = onlyExtraModels
+    }
 }
 
 public struct AgentAccountListResponse: Codable, Sendable, Equatable {
@@ -254,8 +276,11 @@ public struct AgentSignOutRequest: OperationRequest {
 }
 
 public extension ApelinService {
-    func agentAccountList() async throws -> AgentAccountListResponse {
-        try await send(AgentAccountListRequest())
+    func agentAccountList(
+        extraModels: [String: [String]]? = nil,
+        onlyExtraModels: Bool? = nil,
+    ) async throws -> AgentAccountListResponse {
+        try await send(AgentAccountListRequest(extraModels: extraModels, onlyExtraModels: onlyExtraModels))
     }
 
     func agentAPIConfiguration(provider: AgentProvider) async throws -> AgentAPIConfigurationResponse {

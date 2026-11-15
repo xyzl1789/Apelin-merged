@@ -13,6 +13,14 @@ extension ComposerView {
         func onComposerUpdateDraft(_ draft: ComposerDraft)
         /// The text field took the keyboard.
         func onComposerBeginEditing()
+        /// Expand was tapped: show the same draft on a page tall enough for it.
+        func onComposerExpandTapped()
+        /// The wand was tapped, with the draft as it stood.
+        func onComposerRewriteRequested(draft: String)
+        /// The wand was tapped again while a rewrite ran, or the draft it was
+        /// rewriting was sent as it stood: either way nothing is left to
+        /// apply, and a running request is stopped.
+        func onComposerRewriteCancelled()
         func onComposerCameraTapped()
         func onComposerPhotoTapped()
         func onComposerFileTapped()
@@ -25,5 +33,12 @@ extension ComposerView {
         func onComposerPastedImage(_ image: UIImage)
         /// Items dropped on the composer, each with a file to read.
         func onComposerDropped(_ providers: [NSItemProvider])
+        /// Send, from the row under the draft. The composer has already been
+        /// asked to take the draft; this says a send was meant now.
+        func onComposerSendTapped()
+        /// The stop the send turns into while a run is going.
+        func onComposerStopTapped()
+        /// The provider's mark was tapped: choose which model answers.
+        func onComposerModelPickerTapped()
     }
 }

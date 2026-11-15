@@ -29,9 +29,43 @@ enum AgentHandler: DomainHandler {
         case .agentSteer:
             return await forward(request, AgentSteerRequest.self, host: host) { $0.sessionID }
         case .agentAbort:
-            return await abort(request, host: host)
+            let reply = await forward(request, AgentAbortRequest.self, host: host) { $0.sessionID }
+            // No worker serves it: the run ended with the process that had it,
+            // and the task it was recorded under is the only thing still
+            // saying otherwise. The reply says so, so the row stops.
+            if case let .failure(error) = reply.0.result, error.code == .notFound,
+               let abort = try? request.decode(AgentAbortRequest.self)
+            {
+                await endDetachedSession(abort.sessionID, host: host)
+            }
+            // The shell_run calls the stopped run was waiting on stop with it.
+            if case .success = reply.0.result, let abort = try? request.decode(AgentAbortRequest.self) {
+                AgentRunCode.stop(session: abort.sessionID)
+            }
+            return reply
         case .agentCompact:
             return await forward(request, AgentCompactRequest.self, host: host) { $0.sessionID }
+        // The composer's row picked another model: the session applies it
+        // between runs, and records the total that model reads.
+        case .agentQueue:
+            return await forward(request, AgentQueueRequest.self, host: host) { $0.sessionID }
+        case .agentConfigure:
+            return await forward(request, AgentConfigureRequest.self, host: host) { $0.sessionID }
+        // The reader's changes to the history, the app's alone (CallerPolicy):
+        // the session's worker makes each one, between runs.
+        case .agentRewind:
+            let reply = await forward(request, AgentRewindRequest.self, host: host) { $0.sessionID }
+            // a rewind stops the run first, and what it ran with it
+            if case .success = reply.0.result, let rewind = try? request.decode(AgentRewindRequest.self) {
+                AgentRunCode.stop(session: rewind.sessionID)
+            }
+            return reply
+        case .agentEditMessage:
+            return await forward(request, AgentEditMessageRequest.self, host: host) { $0.sessionID }
+        case .agentDeleteReply:
+            return await forward(request, AgentDeleteReplyRequest.self, host: host) { $0.sessionID }
+        case .agentFork:
+            return await fork(request, host: host)
         case .agentApprove:
             return await approve(request, host: host)
         case .agentAttach:
@@ -75,9 +109,18 @@ enum AgentHandler: DomainHandler {
         case .agentRunCode:
             return await runCode(request, host: host)
         // The credential worker's operations are the app's alone (CallerPolicy).
-        case .agentCredentialImport, .agentAccountList, .agentSkillList, .agentAPIConfiguration, .agentModelList,
-             .agentSignOut:
+        case .agentCredentialImport, .agentAccountList, .agentSkillList, .agentRewritePrompt,
+             .agentAPIConfiguration, .agentModelList, .agentSignOut:
             return await host.forward(request, to: .agent, instance: credentialInstance)
+        // The probe runs for up to a minute: a task, so the page shows each
+        // stage as it happens instead of only the report at the end.
+        case .agentModelTest:
+            do {
+                _ = try request.decode(AgentModelTestRequest.self)
+            } catch {
+                return request.fail(error)
+            }
+            return await host.startTask(request, kind: .modelTest, role: .agent, instance: credentialInstance)
         case .agentModelActivate:
             do {
                 _ = try request.decode(AgentModelActivateRequest.self)
@@ -112,6 +155,19 @@ enum AgentHandler: DomainHandler {
         await host.approvals.forgetSession(sessionID)
         await AgentSessionTable.shared.forgetGrants(sessionID)
         AgentRunCode.stop(session: sessionID)
+    }
+
+    /// A session nothing serves any more: a chat whose worker went with the
+    /// process that ran it (the app was quit, the host restarted). Its open
+    /// task is left `running` on disk, so every launch finds a row that says
+    /// it is working with no way to stop it. Ending that task is what makes
+    /// Stop mean something, and what the next `agentOpen` resumes from.
+    private static func endDetachedSession(_ sessionID: String, host: SessionHost) async {
+        guard let entry = await AgentSessionTable.shared.entry(sessionID) else { return }
+        if let record = await host.registry.record(entry.task.taskID), !record.state.isTerminal {
+            await host.registry.finish(entry.task.taskID, .interrupted, message: "the process that ran it ended")
+        }
+        await forgetClosed(sessionID, host: host)
     }
 
     /// Closes every running session of a project, each as `agentClose`
@@ -351,10 +407,14 @@ enum AgentHandler: DomainHandler {
                 project: project,
                 mode: open.approvalMode,
                 asksBeforeScreen: asksBeforeScreen,
+                promptInjection: resolved.promptInjection,
                 title: title ?? existing?.title,
                 createdAt: Date(),
                 parentSessionID: opener?.sessionID ?? existing?.parentSessionID ?? saved?.parentSessionID,
-                depth: opener.map { $0.depth + 1 } ?? existing?.depth ?? saved?.depth ?? 0,
+                // An agent's open names no origin: a channel's does, and the
+                // app lists the conversation it made.
+                origin: opener == nil ? resolved.origin : nil,
+                depth: opener.map { $0.depth + 1 } ?? existing?.depth ?? saved?.depth ?? 0
             ),
             releasingReservation: opener != nil,
         )
@@ -419,6 +479,12 @@ enum AgentHandler: DomainHandler {
             if let asks = prompt.asksBeforeScreen {
                 await AgentSessionTable.shared.setAsksBeforeScreen(asks, session: prompt.sessionID)
             }
+            // The reader's instructions as the app has them now: a
+            // conversation an agent opens from here inherits these, not the
+            // ones this session opened with.
+            if let injection = prompt.promptInjection {
+                await AgentSessionTable.shared.setPromptInjection(injection, session: prompt.sessionID)
+            }
             guard let mode = prompt.approvalMode else { return }
             await host.approvals.setMode(mode, session: prompt.sessionID)
             await AgentSessionTable.shared.setMode(mode, session: prompt.sessionID)
@@ -449,6 +515,23 @@ enum AgentHandler: DomainHandler {
         return await host.attach(request, AgentAttachRequest.self)
     }
 
+    /// A fork's new session is a UUID no session has yet: the source's
+    /// worker writes its folder, and refuses one that is there already.
+    private static func fork(_ request: HostRequest, host: SessionHost) async -> HostReply {
+        do {
+            let fork = try request.decode(AgentForkRequest.self)
+            guard UUID(uuidString: fork.newSessionID) != nil, fork.newSessionID != fork.sessionID else {
+                throw ApelinError(.badRequest, "a fork's session ID must be a new UUID")
+            }
+            if await AgentSessionTable.shared.entry(fork.newSessionID) != nil {
+                throw ApelinError(.conflict, "a session \(fork.newSessionID) is open already")
+            }
+        } catch {
+            return request.fail(error)
+        }
+        return await forward(request, AgentForkRequest.self, host: host) { $0.sessionID }
+    }
+
     /// Hands a session request to that session's running worker: from the
     /// app for any session; from an agent only for a session it opened.
     private static func forward<R: OperationRequest>(
@@ -457,63 +540,20 @@ enum AgentHandler: DomainHandler {
         host: SessionHost,
         sessionID: (R) -> String,
     ) async -> HostReply {
-        do {
-            let id = try await reachable(request, R.self, host: host, sessionID: sessionID)
-            return await deliver(request, request.request, to: id, host: host)
-        } catch {
-            return request.fail(error)
-        }
-    }
-
-    /// The session a request names, once its caller may reach it.
-    private static func reachable<R: OperationRequest>(
-        _ request: HostRequest,
-        _: R.Type,
-        host: SessionHost,
-        sessionID: (R) -> String,
-    ) async throws -> String {
-        let id = try sessionID(request.decode(R.self))
-        if let caller = try await callerSession(request, host: host) {
-            try await AgentConversationRules.mayStop(
-                AgentSessionTable.shared.entry(id),
-                caller: caller,
-                sessionID: id,
-            )
-        }
-        return id
-    }
-
-    /// How long a session's worker has to take a stop before the host ends
-    /// it: taking one only flags the run, so a worker that has not answered
-    /// by then is not serving its session any more.
-    static let stopPatience = 10.0
-
-    /// Stops a session's run, and the shell_run calls it was waiting on
-    /// with it. A worker that does not take the stop is ended (#59): its
-    /// task ends there, which the app reads as the turn's end, and the
-    /// conversation opens again on its next message with what its
-    /// transcript kept. Left running, it could be neither stopped nor
-    /// continued.
-    private static func abort(_ request: HostRequest, host: SessionHost) async -> HostReply {
         let id: String
         do {
-            id = try await reachable(request, AgentAbortRequest.self, host: host) { $0.sessionID }
+            id = try sessionID(request.decode(R.self))
+            if let caller = try await callerSession(request, host: host) {
+                try await AgentConversationRules.mayStop(
+                    AgentSessionTable.shared.entry(id),
+                    caller: caller,
+                    sessionID: id,
+                )
+            }
         } catch {
             return request.fail(error)
         }
-        let taken = await Patience.answer(within: stopPatience) {
-            await deliver(request, request.request, to: id, host: host)
-        }
-        guard let reply = taken else {
-            NSLog("apelind-session: agent session %@ did not take a stop; ending its worker", id)
-            AgentRunCode.stop(session: id)
-            await host.workers.end(.agent, instance: id)
-            return (.success(request.requestID, Acknowledged()), [])
-        }
-        if case .success = reply.0.result {
-            AgentRunCode.stop(session: id)
-        }
-        return reply
+        return await deliver(request, request.request, to: id, host: host)
     }
 
     /// Sends `wire` to session `id`'s running worker, after `prepare`.

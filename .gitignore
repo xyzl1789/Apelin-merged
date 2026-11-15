@@ -1,3 +1,6 @@
+# Local Apelin project descriptor (workspace metadata, not repository source)
+apelin-project.json
+
 .DS_Store
 xcuserdata/
 DerivedData/

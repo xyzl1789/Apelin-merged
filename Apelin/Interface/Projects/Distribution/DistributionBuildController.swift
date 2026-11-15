@@ -52,7 +52,7 @@ final class DistributionBuildController: TableController {
     }
 
     private enum Row: Hashable {
-        case stage(Stage), outcome, finding(Int)
+        case stage(Stage), outcome, finding(Int), install
     }
 
     private struct RowContent: Equatable {
@@ -64,6 +64,14 @@ final class DistributionBuildController: TableController {
     private let projectName: String
     private let target: BuildBootstrap
     private let method: ProjectBuildMethod
+    /// What the build is made for: an `.ipa` has no bootstrap to choose
+    /// between, so it is chosen in Debug or Release.
+    private let configuration: BuildConfiguration
+    /// Whether the build makes one app as an `.ipa`, which this page can
+    /// put on the device; a package is the installer's business.
+    private let isIPA: Bool
+    @objc private dynamic var installStatus: String?
+    private var installWork: Task<Void, Never>?
     private var stage = Stage.preparing
     private var artifact: BuildArtifact?
     /// The build's `distribution.*` warnings about the package it wrote.
@@ -113,19 +121,24 @@ final class DistributionBuildController: TableController {
         return elements
     }
 
-    /// Share Package and Publish to Repository; the share sheet points at
+    /// Share Package and Publish to Repository; an `.ipa` is only shared,
+    /// since a package repository takes no app. The share sheet points at
     /// `anchor`, the item whose menu they were chosen from.
     @objc private dynamic func distributionActions(anchor: UIBarButtonItem) -> [UIMenuElement] {
         let attributes: UIMenuElement.Attributes = isPreparingPackage ? .disabled : []
+        let share = UIAction(
+            title: artifact?.isIPA == true
+                ? String(localized: "Share .ipa")
+                : String(localized: "Share Package"),
+            image: UIImage(systemName: "square.and.arrow.up"),
+            attributes: attributes,
+        ) { [weak self, weak anchor] _ in
+            guard let anchor else { return }
+            self?.sharePackage(from: anchor)
+        }
+        guard artifact?.isIPA != true else { return [share] }
         return [
-            UIAction(
-                title: String(localized: "Share Package"),
-                image: UIImage(systemName: "square.and.arrow.up"),
-                attributes: attributes,
-            ) { [weak self, weak anchor] _ in
-                guard let anchor else { return }
-                self?.sharePackage(from: anchor)
-            },
+            share,
             UIAction(
                 title: String(localized: "Publish to Repository"),
                 image: UIImage(systemName: "shippingbox"),
@@ -136,21 +149,31 @@ final class DistributionBuildController: TableController {
         ]
     }
 
-    init(projectName: String, target: BuildBootstrap, method: ProjectBuildMethod) {
+    init(
+        projectName: String,
+        target: BuildBootstrap,
+        method: ProjectBuildMethod,
+        configuration: BuildConfiguration = .release,
+        isIPA: Bool = false,
+    ) {
         self.projectName = projectName
         self.target = target
         self.method = method
+        self.configuration = configuration
+        self.isIPA = isIPA
         super.init(style: .insetGrouped)
     }
 
     @available(*, unavailable)
     required init?(coder _: NSCoder) {
-        fatalError("Use init(projectName:target:method:)")
+        fatalError("Use init(projectName:target:method:configuration:isIPA:)")
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = target.rawValue
+        title = isIPA
+            ? (configuration == .debug ? String(localized: "Debug") : String(localized: "Release"))
+            : target.rawValue
         navigationItem.largeTitleDisplayMode = .never
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Build")
         dataSource = TableDataSource(
@@ -200,6 +223,9 @@ final class DistributionBuildController: TableController {
             content.imageProperties.tintColor = .systemOrange
             content.textProperties.numberOfLines = 0
             content.secondaryTextProperties.numberOfLines = 0
+        case .install:
+            content.textProperties.numberOfLines = 0
+            content.textProperties.color = .secondaryLabel
         }
         cell.contentConfiguration = content
         cell.accessibilityLabel = [value.text, value.secondaryText].compactMap(\.self).joined(separator: ", ")
@@ -244,6 +270,9 @@ final class DistributionBuildController: TableController {
                     secondaryText: DistributionAdvice.advice(for: findings[index]),
                 )
             }
+            if let installStatus {
+                rows.append(RowContent(row: .install, text: installStatus))
+            }
             if !rows.isEmpty {
                 sections.append((.outcome, rows))
             }
@@ -280,6 +309,7 @@ final class DistributionBuildController: TableController {
         outcome = nil
         finishedState = nil
         findings = []
+        installStatus = nil
         stage = .preparing
         logLines = []
         logPage?.update(logLines)
@@ -290,7 +320,9 @@ final class DistributionBuildController: TableController {
                 try Task.checkCancellation()
                 artifact = try await build(projectID: id)
                 finishedState = .succeeded
-                outcome = String(localized: "The package is ready to export.")
+                outcome = artifact?.isIPA == true
+                    ? String(localized: "The .ipa is ready to share and sign for a device.")
+                    : String(localized: "The package is ready to export.")
                 StarPrompt.buildsCompleted(1, from: self)
             } catch is CancellationError {
                 finishedState = .cancelled
@@ -302,6 +334,9 @@ final class DistributionBuildController: TableController {
             work = nil
             updateNavigation()
             updateRows()
+            if finishedState == .succeeded, isIPA, artifact != nil, presentedViewController == nil {
+                askToInstall()
+            }
         }
         updateNavigation()
         updateRows()
@@ -310,7 +345,7 @@ final class DistributionBuildController: TableController {
     private func build(projectID: String) async throws -> BuildArtifact {
         let handle = try await ApelinService.app.buildStart(
             projectID: projectID,
-            configuration: .release,
+            configuration: configuration,
             bootstrap: target,
         )
         return try await withTaskCancellationHandler {
@@ -351,6 +386,57 @@ final class DistributionBuildController: TableController {
             return artifact
         } onCancel: {
             Task { try? await ApelinService.app.buildCancel(taskID: handle.taskID) }
+        }
+    }
+
+    // MARK: - Installing the app
+
+    /// Asked once the build has made an `.ipa`: the app can go on this
+    /// device from here, the file being signed by the host as it installs.
+    private func askToInstall() {
+        guard installWork == nil, presentedViewController == nil else { return }
+        let alert = UIAlertController(
+            title: String(localized: "Install on This Device?"),
+            message: nil,
+            preferredStyle: .alert,
+        )
+        alert.addAction(UIAlertAction(title: String(localized: "Not Now"), style: .cancel))
+        alert.addAction(UIAlertAction(title: String(localized: "Install"), style: .default) { [weak self] _ in
+            self?.install()
+        })
+        present(alert, animated: true)
+    }
+
+    /// The host unpacks the `.ipa`, signs it with the bootstrap's `ldid`
+    /// and registers it with `uicache`, so the app appears on the Home
+    /// Screen; its task's own outcome is what the row below says.
+    @objc private dynamic func install() {
+        guard installWork == nil, let artifact else { return }
+        installStatus = String(localized: "Installing…")
+        updateRows()
+        installWork = Task { [weak self] in
+            guard let self else { return }
+            var failure: String?
+            var succeeded = false
+            do {
+                let handle = try await ApelinService.app.installPackage(
+                    artifactID: artifact.artifactID,
+                    digest: artifact.digest,
+                )
+                for try await event in ApelinService.app.events(of: handle) {
+                    if event.kind == TaskEvent.stateKind {
+                        succeeded = event.payload?["state"]?.stringValue == TaskState.succeeded.rawValue
+                        failure = event.payload?["message"]?.stringValue
+                    }
+                }
+            } catch {
+                failure = error.readableMessage
+            }
+            installStatus = succeeded
+                ? String(localized: "Installed. Open it from the Home Screen.")
+                : failure ?? String(localized: "The app could not be installed.")
+            installWork = nil
+            updateRows()
         }
     }
 

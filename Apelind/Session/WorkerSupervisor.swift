@@ -7,42 +7,43 @@ import Foundation
 /// spawned for and an instance key (a build ID, an agent session ID; nil for
 /// the shared environment, diagnostics and log-reader workers).
 final class WorkerProcess: @unchecked Sendable {
+    /// How long a worker has to answer. A worker runs a turn to completion on
+    /// its own clock, so the bound is generous: it is here to name the layer
+    /// that stopped answering, not to cut a slow turn short.
+    static let defaultDeadline: Duration = .seconds(300)
+
     let role: WorkerRole
     let key: String?
     let channel: WorkerChannel
-    /// Kills the process, unless it was reaped already: its pid may be
-    /// another's by then.
-    private let kill: @Sendable () -> Void
     private let lock = PthreadLock()
     @objc dynamic private var inFlight = 0
     @objc dynamic private var idleSince = Date()
 
-    init(role: WorkerRole, key: String?, channel: WorkerChannel, kill: @escaping @Sendable () -> Void = {}) {
+    init(role: WorkerRole, key: String?, channel: WorkerChannel) {
         self.role = role
         self.key = key
         self.channel = channel
-        self.kill = kill
-    }
-
-    /// Ends a worker that no longer answers. Closing the channel ends its
-    /// tasks and fails the calls waiting on it; the process is killed
-    /// because one that does not read its channel never sees it close.
-    @objc dynamic func end() {
-        channel.close()
-        kill()
     }
 
     /// Forwards a request; `taskID` tells the worker which task it serves,
-    /// `resumed` that the host is starting it again after a restart.
+    /// `resumed` that the host is starting it again after a restart, and
+    /// `deadline` bounds the wait for its answer.
     func call(
         _ request: WireRequest,
         descriptors: [OwnedDescriptor],
         taskID: TaskID? = nil,
         resumed: Bool = false,
+        deadline: Duration? = WorkerProcess.defaultDeadline,
     ) async throws -> (WireReply, [OwnedDescriptor]) {
         lock.withLock { inFlight += 1 }
         defer { lock.withLock { inFlight -= 1; idleSince = Date() } }
-        return try await channel.call(request, descriptors: descriptors, taskID: taskID, resumed: resumed)
+        return try await channel.call(
+            request,
+            descriptors: descriptors,
+            taskID: taskID,
+            resumed: resumed,
+            deadline: deadline,
+        )
     }
 
     @objc dynamic func idleFor() -> TimeInterval {
@@ -136,13 +137,6 @@ actor WorkerSupervisor {
         workers.removeAll()
     }
 
-    /// Ends the role's worker when it no longer answers (`WorkerProcess.end`).
-    /// The next request for it starts a new one.
-    func end(_ role: WorkerRole, instance: String? = nil) {
-        let key = Key(role: role, instance: instance)
-        workers.removeValue(forKey: key)?.end()
-    }
-
     private func start(_ key: Key) async throws -> WorkerProcess {
         let (local, remote) = try WorkerChannel.makePair()
         defer { close(remote) }
@@ -175,16 +169,7 @@ actor WorkerSupervisor {
             throw ApelinError(.unavailable, "\(error)")
         }
 
-        // Read and written on `queue` alone, where the process is reaped.
-        let reaped = Reaped()
-        let queue = queue
-        let worker = WorkerProcess(role: key.role, key: key.instance, channel: channel) {
-            queue.async {
-                if !reaped.value {
-                    kill(pid, SIGKILL)
-                }
-            }
-        }
+        let worker = WorkerProcess(role: key.role, key: key.instance, channel: channel)
         let onRequest = requestHandler
         let onEvent = eventHandler
         let onExit = exitHandler
@@ -200,7 +185,6 @@ actor WorkerSupervisor {
             Task { await self?.forget(worker) }
         }
         reapWhenExited(pid, queue: queue) { status in
-            reaped.value = true
             if status != 0 {
                 NSLog("apelind-session: %@ exited (status %d)", key.role.executableName, status)
             }
@@ -231,11 +215,6 @@ actor WorkerSupervisor {
             workers[key] = nil
         }
     }
-}
-
-/// Whether a worker's process was reaped, kept on the supervisor's queue.
-private final class Reaped: @unchecked Sendable {
-    @objc dynamic var value = false
 }
 
 /// Fires once; `wait` answers whether it fired in time.

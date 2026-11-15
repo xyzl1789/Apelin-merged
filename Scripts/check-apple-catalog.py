@@ -12,10 +12,6 @@ is what they cannot answer:
 - a release Apple lists that is neither reviewed nor refused, waiting for a
   review.
 
-A package marked `withdrawn` there is one Apple is known to have stopped
-serving: Apelin offers it only while the catalog lists it, so its recorded
-address is not asked again.
-
 Everything is read from `Packages/ApelinToolchain/.../Support.swift`, so there
 is no second table to keep. `.github/workflows/apple-catalog.yml` runs this
 every day and files an issue with what it prints.
@@ -43,8 +39,7 @@ CATALOG = (
 SUPPORT = "Packages/ApelinToolchain/Sources/ApelinToolchain/Support.swift"
 VERSION = re.compile(r'(?:Command Line Tools (?:for Xcode )?|"SU_VERS"\s*=\s*")([0-9]+(?:\.[0-9]+)*)')
 PACKAGE = re.compile(
-    r'productID: "(?P<id>[^"]+)",\s*sha256: "[0-9a-f]{64}",\s*url: "(?P<url>[^"]+)",\s*size: (?P<size>[\d_]+),'
-    r'\s*upstreamDigest: "[0-9a-f]{40}",(?P<withdrawn>(?:\s*//[^\n]*)*\s*withdrawn: true,)?',
+    r'productID: "(?P<id>[^"]+)",\s*sha256: "[0-9a-f]{64}",\s*url: "(?P<url>[^"]+)",\s*size: (?P<size>[\d_]+),',
 )
 
 
@@ -70,15 +65,14 @@ def served_size(url):
 
 
 def reviewed(text):
-    """Each reviewed package's version, by product, its address and size, and
-    whether Apple is known to have stopped serving it."""
+    """Each reviewed package's version, by product, and its address and size."""
     releases = text.split("public static let releases: [CommandLineToolsRelease] = [", 1)[1]
     releases = releases.split("/// Releases looked at and refused", 1)[0]
     packages = {}
     for row in re.split(r"\n\s*\.init\(\n", releases)[1:]:
         version = re.search(r'version: "([^"]+)"', row).group(1)
         for match in PACKAGE.finditer(row):
-            packages[match["id"]] = (version, match["url"], int(match["size"]), match["withdrawn"] is not None)
+            packages[match["id"]] = (version, match["url"], int(match["size"]))
     if not packages:
         raise SystemExit(f"error: no package read from {SUPPORT}")
     return packages
@@ -120,9 +114,7 @@ def main():
         return 2
 
     gone, moved = [], []
-    for product, (version, address, size, withdrawn) in sorted(packages.items()):
-        if withdrawn:
-            continue
+    for product, (version, address, size) in sorted(packages.items()):
         try:
             length = served_size(address)
         except urllib.error.HTTPError as error:
@@ -141,11 +133,7 @@ def main():
         for product, version in sorted(products.items(), key=lambda item: item[1])
         if product not in packages and version not in known
     ]
-    unlisted = [
-        f"- {version} (`{product}`)"
-        for product, (version, _, _, withdrawn) in sorted(packages.items())
-        if product not in products and not withdrawn
-    ]
+    unlisted = [f"- {packages[product][0]} (`{product}`)" for product in sorted(packages) if product not in products]
 
     sections = [
         ("Reviewed packages Apple no longer serves. No device can set these up:", gone),

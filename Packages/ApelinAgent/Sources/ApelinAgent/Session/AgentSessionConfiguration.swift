@@ -1,3 +1,4 @@
+import ApelinProtocol
 import struct ApelinToolCore.ToolManifestPolicy
 import Foundation
 import KWWKAgent
@@ -17,6 +18,18 @@ public struct AgentSessionConfiguration: Sendable {
     public var thinking: ThinkingLevel
     /// The processing tier its requests ask for; nil is the provider's default.
     public var serviceTier: ServiceTier?
+    /// What the app's model settings override on the model's own record: the
+    /// window compaction is measured against and the most a reply may be.
+    public var modelParameters: AgentModelParameters
+    /// What the app chose for operations beside the main conversation turn.
+    public var modelDefaults: AgentModelDefaults
+    /// The reader's standing instructions (Settings ▸ Agent ▸ Prompt
+    /// Injection), which the system prompt carries before anything else;
+    /// empty when there are none. What the session opens with: the app's next
+    /// prompt can change them for the session's life
+    /// (`AgentSession.setPromptInjection`), and the model hears that in the
+    /// message's `<system-state>` — this prompt keeps the bytes it opened with.
+    public var promptInjection: String
     /// Hard cap on assistant turns per run; nil for none.
     public var maxTurns: Int?
     /// The install root the session host derived from its own path, which
@@ -48,6 +61,9 @@ public struct AgentSessionConfiguration: Sendable {
         mcpServers: [MCPServerConfiguration] = [],
         thinking: ThinkingLevel = .off,
         serviceTier: ServiceTier? = nil,
+        modelParameters: AgentModelParameters = .init(),
+        modelDefaults: AgentModelDefaults = .init(),
+        promptInjection: String = "",
         maxTurns: Int? = nil,
         installRoot: String? = nil,
         systemState: SystemStateSource = .device,
@@ -64,6 +80,9 @@ public struct AgentSessionConfiguration: Sendable {
         self.mcpServers = mcpServers
         self.thinking = thinking
         self.serviceTier = serviceTier
+        self.modelParameters = modelParameters
+        self.modelDefaults = modelDefaults
+        self.promptInjection = promptInjection
         self.maxTurns = maxTurns
         self.installRoot = installRoot
         self.systemState = systemState
