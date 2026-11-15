@@ -106,7 +106,11 @@ public actor AccountDesk {
         let stored = await Set(store.providerIds())
         var accounts: [AgentAccount] = []
         accounts.reserveCapacity(AgentProvider.signInOrder.count)
-        for provider in AgentProvider.signInOrder {
+        for listed in AgentProvider.signInOrder {
+            // What the list shows for each provider: for the OpenAI-compatible
+            // login, every endpoint signed in to, in number order, then one
+            // more that is not, so there is always one to add (#60).
+            for provider in Self.listed(listed, stored: stored) {
             let accountStarted = DispatchTime.now().uptimeNanoseconds
             let requested = extraModels[provider.rawValue] ?? []
             let others = Array(provider.signInMethods.dropFirst())
@@ -151,11 +155,32 @@ public actor AccountDesk {
                     "listed \(provider.storeID, privacy: .public) in \(Self.milliseconds(since: accountStarted), privacy: .public) ms: \(account.models?.count ?? 0, privacy: .public) models, catalog \(account.capabilities == nil ? 0 : 1, privacy: .public)",
                 )
             }
+            }
         }
         Self.log.notice(
             "listed \(accounts.count, privacy: .public) providers in \(Self.milliseconds(since: started), privacy: .public) ms, \(onlyExtraModels ? "named" : "all", privacy: .public) models",
         )
         return AgentAccountListResponse(accounts: accounts)
+    }
+
+    /// What the list shows for `provider`: itself, and for the
+    /// OpenAI-compatible login every endpoint signed in to, in number
+    /// order, then one more that is not, so there is always one to add
+    /// (#60). The one to add is the first endpoint while that is free,
+    /// else the lowest number no endpoint has.
+    static func listed(_ provider: AgentProvider, stored: Set<String>) -> [AgentProvider] {
+        guard provider == .openAICompatible else { return [provider] }
+        let numbers = stored.compactMap(CredentialProviderID.endpointNumber).sorted()
+        var endpoints = numbers.map(AgentProvider.openAICompatibleEndpoint)
+        if stored.contains(provider.storeID) {
+            endpoints.insert(provider, at: 0)
+            if let free = AgentProvider.endpointNumbers.first(where: { !numbers.contains($0) }) {
+                endpoints.append(.openAICompatibleEndpoint(free))
+            }
+        } else {
+            endpoints.append(provider)
+        }
+        return endpoints
     }
 
     /// The whole list with the caller's own models added: what every account
