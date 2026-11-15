@@ -741,6 +741,8 @@ actor EventRelay {
             return [("messageDiscarded", nil)]
         case .reconnecting:
             return [("reconnecting", nil)]
+        case .waitingForNetwork:
+            return [("waitingForNetwork", nil)]
         case .toolCallPreparing:
             return [("toolCallPreparing", nil)]
         case let .textDelta(text):
