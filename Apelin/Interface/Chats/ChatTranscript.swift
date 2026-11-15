@@ -744,7 +744,7 @@ struct ChatTranscript {
         rows[index].role = .thinking(seconds: nil, tools: tools)
         rows[index].receivedTokens = receivedTokens
         rows[index].banner = rows[index].trace.last { $0.role == .tool }?.banner
-        rows[index].isReconnecting = reconnecting
+        rows[index].recovery = reconnecting ? .reconnecting : nil
     }
 
     /// Whether a row is one of the summaries the transcript folds a run's
