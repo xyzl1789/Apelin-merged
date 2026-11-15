@@ -344,8 +344,13 @@ struct ChatTranscript {
                 }
             case "error":
                 // Also the sessions that recorded a whole NSError before the agent cut it.
-                let message = payload?["message"]?.stringValue.map(ErrorDescription.localized)
-                add(ChatMessage(id: id, role: .assistant, text: message ?? ""))
+                let message = payload?["message"]?.stringValue.map(ErrorDescription.localized) ?? ""
+                var row = ChatMessage(id: id, role: .assistant, text: message)
+                row.failure = ChatFailure(
+                    message: message,
+                    reason: payload?["reason"]?.stringValue.map(ApelinError.Reason.init(rawValue:)),
+                )
+                add(row)
             case "received":
                 receivedTokens = payload?["tokens"]?.doubleValue.map { Int($0) }
             case "contextUsage":
