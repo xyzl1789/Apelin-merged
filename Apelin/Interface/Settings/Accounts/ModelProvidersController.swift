@@ -111,9 +111,9 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
         dataSource.beginLoad()
         loader = Task { [weak self] in
             do {
-                let list = try await ApelinService.app.agentAccountList()
+                let accounts = try await ApelinService.app.agentAccountsWithKnownModels()
                 guard !Task.isCancelled, let self else { return }
-                accounts = list.accounts
+                self.accounts = accounts
                 failure = nil
             } catch {
                 guard !Task.isCancelled, let self else { return }
@@ -248,6 +248,12 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
                 image: UIImage(systemName: "checklist"),
             ) { [weak self] _ in
                 self?.presentPageAsFormSheet(ModelActivationController(account: account))
+            },
+            UIAction(
+                title: String(localized: "Model Parameters"),
+                image: UIImage(systemName: "slider.horizontal.3"),
+            ) { [weak self] _ in
+                self?.presentPageAsFormSheet(ModelParametersController(account: account))
             },
             UIMenu(options: .displayInline, children: [
                 UIAction(

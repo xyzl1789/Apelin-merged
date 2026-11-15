@@ -10,6 +10,16 @@ public extension ChannelHostBackend {
         _ request: ConversationCreateToolRequest,
     ) async throws -> ConversationCreateToolResponse {
         let choice = await modelChoice.current
+        // The app's model defaults as its last prompt carried them, so a
+        // conversation opened here starts from the settings in force now.
+        let defaults = await modelChoice.defaults
+        // A delegated conversation starts on the model Settings ▸ Default
+        // Models names for them, where the reader named one, and on this
+        // session's own model otherwise. A model other than this chat's is
+        // opened on its own figures: the effort, tier and limits here belong
+        // to the model they were chosen for.
+        let delegated = defaults?.derivedConversation
+        let inherits = delegated.map { $0.provider == choice.provider && $0.model == choice.model } ?? true
         let target = request.target ?? project
         // The host opens it in that project, resolved again, under this
         // session's mode; the mode here is a placeholder.
@@ -17,11 +27,13 @@ public extension ChannelHostBackend {
             try await service.agentOpen(AgentOpenRequest(
                 projectID: target.id,
                 projectName: target.name.rawValue,
-                provider: choice.provider,
-                model: choice.model,
+                provider: inherits ? choice.provider : delegated?.provider,
+                model: inherits ? choice.model : delegated?.model,
+                modelDefaults: defaults ?? modelDefaults,
                 approvalMode: .confirm,
-                reasoningEffort: choice.reasoningEffort,
-                serviceTier: choice.serviceTier,
+                reasoningEffort: inherits ? choice.reasoningEffort : nil,
+                serviceTier: inherits ? choice.serviceTier : nil,
+                modelParameters: inherits ? choice.modelParameters : nil,
                 prompt: request.prompt,
                 title: request.title,
             ))
@@ -37,9 +49,9 @@ public extension ChannelHostBackend {
         _ request: ConversationSendToolRequest,
     ) async throws -> ConversationActionToolResponse {
         try await conversation("apelin_conversation_send") {
-            _ = try await service.send(AgentPromptRequest(sessionID: request.sessionID, text: request.text))
+            _ = try await service.send(AgentPromptRequest(sessionID: request.sessionID, text: request.text, delivery: request.delivery))
         }
-        return ConversationActionToolResponse(sessionID: request.sessionID, done: "sent")
+        return ConversationActionToolResponse(sessionID: request.sessionID, done: request.delivery == .steer ? "steer requested; retained in the queue until taken" : "queued for a new run after the active run succeeds")
     }
 
     /// General Chat names no project and gets every project's it may reach,

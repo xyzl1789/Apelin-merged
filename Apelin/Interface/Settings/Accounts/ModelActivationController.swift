@@ -119,8 +119,14 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
         let cell = tableView.dequeueReusableCell(withIdentifier: "model", for: indexPath)
         let model = row.id
         var content = cell.defaultContentConfiguration()
-        content.text = model
+        // The catalog's name over the provider's id: the id is what the
+        // conversation sends, and it stays readable under the name.
+        content.text = account.displayName(for: model)
         content.textProperties.numberOfLines = 0
+        if account.catalogTitle(for: model) != nil {
+            content.secondaryText = model
+            content.secondaryTextProperties.color = .secondaryLabel
+        }
         cell.contentConfiguration = content
         cell.accessoryType = row.selected ? .checkmark : .none
         cell.accessibilityTraits = row.selected ? [.button, .selected] : [.button]

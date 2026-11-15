@@ -3,6 +3,7 @@ import enum ApelinProtocol.AgentToolName
 import enum ApelinProtocol.FeedbackRules
 import struct ApelinProtocol.GitIssueCreateRequest
 import struct ApelinProtocol.GitRepositoryCreateRequest
+import struct ApelinProtocol.GitRestoreRequest
 import enum ApelinProtocol.GitRepositoryVisibility
 import Foundation
 import KWWKAI
@@ -77,6 +78,72 @@ extension ToolRunner {
             // An address that would never be fetched is refused before
             // anyone is asked about it.
             _ = try WebFetch.target(arguments.requireString("url"))
+        case .gitBranchCreate, .gitBranchCheckout:
+            try GitBranchTools.checkName(arguments.requireString("name"))
+            if let start = arguments.argNonEmptyString("start_point") {
+                try GitBranchTools.checkRevision(start)
+            }
+            try GitRemoteTools.checkName(arguments.argNonEmptyString("remote"))
+        case .gitBranchRename:
+            try GitBranchTools.checkName(arguments.requireString("from"))
+            try GitBranchTools.checkName(arguments.requireString("to"))
+        case .gitBranchDelete:
+            let name = try arguments.requireString("name")
+            try GitBranchTools.checkName(name)
+            let remote = arguments.argNonEmptyString("remote")
+            try GitRemoteTools.checkName(remote)
+            facts.branchDeletion = InvocationFacts.BranchDeletion(
+                name: name,
+                remote: remote,
+                force: arguments.argBool("force") ?? false,
+            )
+        case .gitTag:
+            let action = try arguments.requireString("action")
+            guard let tagAction = GitTagToolRequest.Action(rawValue: action) else {
+                throw ToolArgumentError("git_tag needs action create or delete.")
+            }
+            let name = try arguments.requireString("name")
+            try GitBranchTools.checkName(name)
+            if let commit = arguments.argNonEmptyString("commit") {
+                try GitBranchTools.checkRevision(commit)
+            }
+            let remote = arguments.argNonEmptyString("remote")
+            try GitRemoteTools.checkName(remote)
+            facts.tagChange = InvocationFacts.TagChange(
+                name: name,
+                deleting: tagAction == .delete,
+                annotated: arguments.argNonEmptyString("message") != nil,
+                remote: remote,
+            )
+        case .gitStash:
+            let action = try arguments.requireString("action")
+            guard let stashAction = GitStashToolRequest.Action(rawValue: action) else {
+                throw ToolArgumentError("git_stash needs action list, save, apply, drop or clear.")
+            }
+            let index = arguments.argInt("index") ?? 0
+            guard index >= 0 else { throw ToolArgumentError("a stash index cannot be negative.") }
+            facts.stashReads = stashAction == .list
+        case .gitRestore, .gitClean:
+            guard let paths = arguments.argStrings("paths"), !paths.isEmpty else {
+                throw ToolArgumentError("paths must be a non-empty list of project-relative paths")
+            }
+            if name == .gitRestore {
+                let source = arguments.argString("source") ?? "head"
+                guard GitRestoreRequest.Source(rawValue: source) != nil else {
+                    throw ToolArgumentError("git_restore needs source head or index.")
+                }
+            }
+            facts.discardedPaths = paths
+        case .gitMerge:
+            try GitBranchTools.checkRevision(arguments.requireString("branch"))
+        case .gitCommitDetail:
+            try GitBranchTools.checkRevision(arguments.requireString("commit"))
+        case .gitLog:
+            let limit = arguments.argInt("limit") ?? 50
+            let skip = arguments.argInt("skip") ?? 0
+            guard (1 ... 1000).contains(limit), skip >= 0 else {
+                throw ToolArgumentError("git_log needs limit from 1 to 1000 and a nonnegative skip.")
+            }
         case .gitRemoteSet:
             try GitRemoteTools.checkSet(arguments)
         case .gitResetToRemote:
@@ -252,6 +319,7 @@ extension ToolRunner {
             sessionID: arguments.argNonEmptyString("session_id"),
             text: name == .conversationCreate ? arguments.argString("prompt")
                 : name == .conversationSend ? arguments.argString("text") : nil,
+            delivery: name == .conversationSend ? arguments.argString("delivery") : nil,
         )
     }
 
@@ -445,6 +513,22 @@ extension ToolRunner {
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
                 answer.give(nil)
+            }
+        }
+    }
+
+    /// Saves the work tree before message `messageID`'s run, waiting at most
+    /// `seconds`: whether it was saved in that time. One that answers later
+    /// is not offered, since the run may have changed the files by then.
+    nonisolated func saveCheckpoint(messageID: UUID, within seconds: Double) async -> Bool {
+        let backend = backend
+        let answer = FirstAnswer<Bool>()
+        return await withCheckedContinuation { continuation in
+            answer.continuation = continuation
+            Task { await answer.give((try? backend.gitCheckpointSave(messageID: messageID)) ?? false) }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                answer.give(false)
             }
         }
     }

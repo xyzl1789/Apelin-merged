@@ -51,8 +51,16 @@ final class ToolchainDetailController: TableController {
 
     @objc private dynamic func menuItems() -> [UIMenuElement] {
         var items: [UIMenuElement] = [
-            UIAction(title: String(localized: "Show in Fila"), image: UIImage(systemName: "folder")) { [weak self] _ in
-                self?.revealInFila(path: self?.record.path ?? "")
+            // A toolchain the host could not place has no folder to show, so
+            // the item is there but disabled; the path is unwrapped again in
+            // the handler, never guessed.
+            UIAction(
+                title: String(localized: "Browse Files"),
+                image: UIImage(systemName: "folder"),
+                attributes: record.path == nil ? .disabled : [],
+            ) { [weak self] _ in
+                guard let self, let path = record.path else { return }
+                browseFiles(directory: path)
             },
             UIAction(
                 title: String(localized: "Export…"),
@@ -150,7 +158,7 @@ final class ToolchainDetailController: TableController {
         }
         var metadata: [Row] = []
         if let count = record.fileCount {
-            metadata.append(.value(.files, String(localized: "Files"), count.formatted()))
+            metadata.append(.value(.files, String(localized: "File Count"), count.formatted()))
         }
         if let product = Self.product(of: record) {
             metadata.append(.value(.appleProduct, String(localized: "Apple Product ID"), product))

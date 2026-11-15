@@ -29,6 +29,9 @@ public final class SessionJournal: @unchecked Sendable {
         case tool = "Tool"
         case approval = "Approval"
         case compaction = "Compaction"
+        /// How the session came up: the host's start, this open, and every
+        /// step that took long enough for the app to notice.
+        case startup = "Startup"
     }
 
     /// What started a compaction.
@@ -152,6 +155,17 @@ public final class SessionJournal: @unchecked Sendable {
         perform { $0.write(.session, "Approval mode is now \(mode.rawValue)") }
     }
 
+    /// The app sent different instructions from the ones this session opened
+    /// with. What the model hears is the next message's delta; this is the
+    /// same change for whoever reads the journal, without the text itself.
+    func promptInjectionChanged(to text: String) {
+        perform {
+            $0.write(.session, text.isEmpty
+                ? "Injected instructions: off"
+                : "Injected instructions: on, \(text.count) characters")
+        }
+    }
+
     /// The session closes: calls still running are interrupted. `flush`
     /// waits for the lines.
     @objc dynamic func sessionClosed() {
@@ -236,14 +250,30 @@ public final class SessionJournal: @unchecked Sendable {
             guard let self else { return attempt }
             let (stream, out) = AssistantMessageStream.makeStream()
             Task {
-                for await event in attempt {
-                    out.push(event)
+                do {
+                    try await NetworkRecovery.cancellable(options?.cancellation) {
+                        for await event in attempt {
+                            try Task.checkCancellation()
+                            try options?.cancellation?.throwIfCancelled()
+                            out.push(event)
+                        }
+                        let final = await attempt.result()
+                        try Task.checkCancellation()
+                        try options?.cancellation?.throwIfCancelled()
+                        if final.stopReason == .error {
+                            self.requestFailed(final, model: model)
+                        }
+                        out.end(final)
+                    }
+                } catch {
+                    // End this intermediate stream too: no orphaned reader
+                    // keeps buffering late provider events or logging failures
+                    // against the session's next turn.
+                    out.end(AssistantMessage(
+                        content: [], api: model.api, provider: model.provider, model: model.id,
+                        stopReason: .aborted, errorMessage: "Request was aborted",
+                    ))
                 }
-                let final = await attempt.result()
-                if final.stopReason == .error {
-                    self.requestFailed(final, model: model)
-                }
-                out.end(final)
             }
             return stream
         }
@@ -541,6 +571,14 @@ public final class SessionJournal: @unchecked Sendable {
 
     private func write(_ category: Category, _ message: String, level: DiagnosticLevel = .info, at date: Date = Date()) {
         file?.write(category.rawValue, redaction.redacted(message), level: level, date: date)
+    }
+
+    /// One line about this session's start, on the journal's queue: the
+    /// steps that made the app wait, so Settings ▸ Logs ▸ Chats names them.
+    /// Returns at once; nothing waits for the write.
+    public func startup(_ message: String, level: DiagnosticLevel = .info) {
+        let now = Date()
+        perform { $0.write(.startup, message, level: level, at: now) }
     }
 
     @objc private dynamic func errorText(_ text: String) -> String {

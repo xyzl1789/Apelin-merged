@@ -1,5 +1,6 @@
 import ApelinCore
 import ApelinProtocol
+import Foundation
 
 /// The git service on a project, served by apelin-environment (libgit2),
 /// and an empty repository made on GitHub, or an issue opened on one the
@@ -14,7 +15,29 @@ enum GitHandler: DomainHandler {
         switch request.operation {
         case .gitStatus, .gitDiff, .gitStage, .gitUnstage, .gitCommit, .gitInit,
              .gitRemoteList, .gitRemoteSet, .gitRemoteRemove,
+             .gitBranches, .gitLog, .gitCommitDetail,
              .gitSettings, .gitAuthorSet, .gitCredentialSet, .gitCredentialRemove:
+            return await host.forward(request, to: .environment)
+        case .gitBranchCreate, .gitBranchCheckout, .gitBranchDelete, .gitBranchRename, .gitMerge, .gitMergeAbort,
+             .gitTagCreate, .gitTagDelete, .gitRestore, .gitDeletePaths,
+             .gitStashSave, .gitStashApply, .gitStashDrop, .gitStashClear:
+            if case let .worker(.agent, instance) = request.caller,
+               let refusal = await AgentGitBranchRules.authorize(request.request, session: instance, registry: host.registry)
+            {
+                return request.fail(refusal)
+            }
+            return await host.forward(request, to: .environment)
+        // Destructive work-tree operations remain app-only: CallerPolicy does
+        // not expose them to the agent. Listing stashes reads only.
+        case .gitCommitFileDiff, .gitFileVersions,
+             .gitIgnoreAppend, .gitReset:
+            return await host.forward(request, to: .environment)
+        case .gitStashList:
+            return await host.forward(request, to: .environment)
+        // Checkpoint & Rewind's code: the agent saves its own project's
+        // work tree before a run (the scope check above holds it to that
+        // project); only the app puts one back, as CallerPolicy decides.
+        case .gitCheckpointSave, .gitCheckpointRestore:
             return await host.forward(request, to: .environment)
         case .gitRepositoryCreate:
             return await createRepository(request, host: host)
@@ -55,7 +78,11 @@ enum GitHandler: DomainHandler {
         guard let scoped = try? JSONCoding.decode(Scoped.self, from: request.request.payload) else {
             return ApelinError(.badRequest, "\(request.operation.rawValue) names no project")
         }
-        guard scoped.projectID == entry.project.id || scoped.projectID == entry.project.name else {
+        // A request may name a folder inside its project — a repository the
+        // workspace keeps there — and that is still the same project.
+        guard [entry.project.id, entry.project.name].contains(where: {
+            scoped.projectID == $0 || scoped.projectID.hasPrefix($0 + "/")
+        }) else {
             return ApelinError(.denied, "an agent's git call acts only on its own project")
         }
         return nil
@@ -146,3 +173,4 @@ enum GitHandler: DomainHandler {
         return await host.forward(request, to: .environment)
     }
 }
+

@@ -61,6 +61,8 @@ public struct ChannelHostBackend: AgentHostBackend {
     public let projectsURL: URL
     /// What the session runs with now, which apelin_conversation_create passes on.
     public let modelChoice: SessionModelChoice
+    /// Auxiliary defaults inherited by conversations this session creates.
+    public let modelDefaults: AgentModelDefaults
 
     public static let maximumScreenshotBytes = 4 * 1024 * 1024
     static let logExcerptBytes = 8 * 1024
@@ -81,6 +83,7 @@ public struct ChannelHostBackend: AgentHostBackend {
         projectURL: URL,
         projectsURL: URL? = nil,
         modelChoice: SessionModelChoice = SessionModelChoice(),
+        modelDefaults: AgentModelDefaults = .init(),
     ) {
         self.service = service
         self.sessionID = sessionID
@@ -88,6 +91,7 @@ public struct ChannelHostBackend: AgentHostBackend {
         self.projectURL = projectURL
         self.projectsURL = projectsURL ?? projectURL.deletingLastPathComponent()
         self.modelChoice = modelChoice
+        self.modelDefaults = modelDefaults
     }
 
     // MARK: shell_run
@@ -280,6 +284,12 @@ public struct ChannelHostBackend: AgentHostBackend {
     }
 
     public func createProject(_ request: ProjectCreateToolRequest) async throws -> ProjectCreateToolResponse {
+        let format = try request.outputFormat.map { raw -> ProjectOutputFormat in
+            guard let format = ProjectOutputFormat(rawValue: raw) else {
+                throw ApelinError(.badRequest, "unknown output_format \(raw); use deb or ipa")
+            }
+            return format
+        }
         let created = try await service.projectCreate(ProjectCreateRequest(
             templateID: request.templateID,
             name: request.name,
@@ -291,6 +301,7 @@ public struct ChannelHostBackend: AgentHostBackend {
                 case let .list(items): .array(items.map(ApelinCore.JSONValue.string))
                 }
             },
+            outputFormat: format,
         ))
         return ProjectCreateToolResponse(
             projectID: created.projectID,
@@ -528,6 +539,16 @@ public struct ChannelHostBackend: AgentHostBackend {
             head: status.head,
             entries: status.entries.map { GitStatusToolEntry(path: $0.path, index: $0.index, worktree: $0.worktree) },
         )
+    }
+
+    /// A project with no repository has nothing to save, and says so as
+    /// `notFound`; that is no failure.
+    public func gitCheckpointSave(messageID: UUID) async throws -> Bool {
+        do {
+            return try await service.gitCheckpointSave(projectID: project.id, messageID: messageID).commit != nil
+        } catch let error as ApelinError where error.code == .notFound {
+            return false
+        }
     }
 
     public func gitDiff(_ request: GitDiffToolRequest) async throws -> GitDiffToolResponse {

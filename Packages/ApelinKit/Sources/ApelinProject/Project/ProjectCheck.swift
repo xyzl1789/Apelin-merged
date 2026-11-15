@@ -140,16 +140,100 @@ public struct ProjectCheck: Sendable {
             )
         }
 
+        // Every input path, and which languages the project really compiles:
+        // expanding the sources here is what the toolchain and SDK are then
+        // asked about.
+        var compilesSwift = !(project.swiftModules ?? []).isEmpty
+        var usesCXXInterop = false
         for (index, product) in project.products.enumerated() {
             let field = "/products/\(index)"
+            var languages: Set<SourceLanguage> = []
+            var unknownSources: Set<String> = []
             for pattern in product.sources {
-                checkGlob(pattern, root: root, field: "\(field)/sources", add: add)
+                for match in checkGlob(pattern, root: root, field: "\(field)/sources", add: add) {
+                    guard let language = SourceLanguage(path: match.relative) else {
+                        if unknownSources.insert(match.relative).inserted {
+                            add(
+                                "project.source.unsupported",
+                                .error,
+                                "\(match.relative) is not a .c, .m, .cpp, .cc, .cxx, .mm or .swift source",
+                                file: match.relative,
+                                field: "\(field)/sources",
+                            )
+                        }
+                        continue
+                    }
+                    languages.insert(language)
+                }
+            }
+            if languages.contains(.swift) {
+                compilesSwift = true
+            }
+            if let header = product.bridgingHeader {
+                do {
+                    _ = try ProjectFiles.read(header, in: root)
+                } catch {
+                    add(
+                        "project.bridgingHeader.missing",
+                        .error,
+                        String(describing: error),
+                        file: header,
+                        field: "\(field)/bridgingHeader",
+                        fixes: ["openProjectFile"],
+                    )
+                }
+                if !languages.contains(.swift) {
+                    add(
+                        "project.bridgingHeader.unused",
+                        .error,
+                        "\(header) is the bridging header, but \(product.id) compiles no .swift source",
+                        file: header,
+                        field: "\(field)/bridgingHeader",
+                    )
+                }
             }
             for pattern in product.resources ?? [] {
                 checkGlob(pattern, root: root, field: "\(field)/resources", add: add)
             }
             for path in product.headerSearchPaths ?? [] {
                 checkDirectory(path, root: root, field: "\(field)/headerSearchPaths", add: add)
+            }
+            // The interop this product builds with, resolved as the build
+            // resolves it. A contradiction is reported here too, for a
+            // project that reached the check without validation.
+            var interop = CXXInteropSettings.disabled
+            do {
+                interop = try project.cxxInteropSettings(for: product)
+            } catch let error as CXXInteropError {
+                add("project.cxxInterop", .error, error.reason, field: error.field ?? field)
+            } catch {
+                add("project.cxxInterop", .error, String(describing: error), field: field)
+            }
+            if interop.enabled {
+                usesCXXInterop = true
+                if !languages.contains(.swift), (product.swiftModules ?? []).isEmpty {
+                    add(
+                        "project.cxxInterop.noSwift",
+                        .error,
+                        "\(product.id) turns on Swift's C++ interop but compiles no .swift source and names no swift module: "
+                            + "interop is a property of the product's Swift code",
+                        field: "\(field)/cxxInterop",
+                    )
+                }
+                // The importer skips the bridging header entirely while
+                // interop is on, silently, so the two are refused together.
+                if let header = product.bridgingHeader {
+                    add(
+                        "project.cxxInterop.bridgingHeader",
+                        .error,
+                        "\(header) cannot be combined with C++ interop: Swift's importer drops the bridging header "
+                            + "when -cxx-interoperability-mode is on; declare those C declarations in a module of a "
+                            + "module.modulemap under headerSearchPaths instead",
+                        file: header,
+                        field: "\(field)/bridgingHeader",
+                        fixes: ["openProjectFile"],
+                    )
+                }
             }
             for path in (product.frameworkSearchPaths ?? []) + (product.librarySearchPaths ?? []) {
                 checkDirectory(path, root: root, field: "\(field)/searchPaths", add: add)
@@ -177,6 +261,25 @@ public struct ProjectCheck: Sendable {
                         fixes: ["openProjectFile"],
                     )
                 }
+            }
+        }
+        for (index, module) in (project.swiftModules ?? []).enumerated() {
+            var unknownSources: Set<String> = []
+            for pattern in module.sources {
+                for match in checkGlob(pattern, root: root, field: "/swiftModules/\(index)/sources", add: add)
+                    where SourceLanguage(path: match.relative) != .swift && unknownSources.insert(match.relative).inserted
+                {
+                    add(
+                        "project.source.unsupported",
+                        .error,
+                        "\(match.relative) is not a .swift source",
+                        file: match.relative,
+                        field: "/swiftModules/\(index)/sources",
+                    )
+                }
+            }
+            for path in module.headerSearchPaths ?? [] {
+                checkDirectory(path, root: root, field: "/swiftModules/\(index)/headerSearchPaths", add: add)
             }
         }
         for (index, entry) in project.package.layout.enumerated() {
@@ -250,7 +353,7 @@ public struct ProjectCheck: Sendable {
                     fixes: ["rebindToolchain"],
                 )
             }
-            let tools = ["clang", "lipo", "dsymutil", "strip"] + (project.language == .swift ? ["swiftc"] : [])
+            let tools = ["clang", "lipo", "dsymutil", "strip"] + (compilesSwift ? ["swiftc"] : [])
             for tool in tools where access(toolchain.tool(tool).path, X_OK) != 0 {
                 add(
                     "environment.toolchain.incomplete",
@@ -260,13 +363,25 @@ public struct ProjectCheck: Sendable {
                     fixes: ["repairToolchain"],
                 )
             }
-            if project.language == .swift, !toolchain.components.contains("swift") {
+            if compilesSwift, !toolchain.components.contains("swift") {
                 add(
                     "environment.toolchain.noSwift",
                     .error,
-                    "toolchain \(toolchain.id) was set up without the Swift component",
-                    field: "/language",
+                    "toolchain \(toolchain.id) was set up without the Swift component, and this project compiles Swift",
+                    field: "/products",
                     fixes: ["addSwiftComponent"],
+                )
+            }
+            // Swift's C++ interop arrived with Swift 5.9, which Command Line
+            // Tools 15.0 carries.
+            if usesCXXInterop, toolchain.version.compare("15.0", options: .numeric) == .orderedAscending {
+                add(
+                    "environment.toolchain.cxxInterop",
+                    .error,
+                    "toolchain \(toolchain.id) (Command Line Tools \(toolchain.version)) cannot compile Swift's C++ interop: "
+                        + "it needs Command Line Tools 15.0 (Swift 5.9) or newer",
+                    field: "/environment/toolchain",
+                    fixes: ["repairToolchain"],
                 )
             }
         } else {
@@ -280,18 +395,22 @@ public struct ProjectCheck: Sendable {
         }
         // The tools' machine code is the M1's (`HostCPU`): on an older CPU
         // Swift, and clang building a module, stop on an illegal instruction.
-        if project.language == .swift {
+        if compilesSwift {
             let refusal: String? = if let requirements = toolchain?.swiftRequirements {
                 requirements.unavailableReason
             } else {
                 HostCPU.swiftRefusal
             }
             if let refusal {
-                add("environment.device.swift", .error, refusal, field: "/language")
+                add("environment.device.swift", .error, refusal, field: "/products")
             }
         }
+        // C++ files get cxxFlags after cFlags, and -fcxx-modules is theirs:
+        // both lists are what the C++ compile line may carry.
         let modules = [project.configurations.Debug, project.configurations.Release].contains { configuration in
-            (configuration.cFlags ?? []).contains { $0.hasPrefix("-fmodules") || $0.hasPrefix("-fcxx-modules") }
+            ((configuration.cFlags ?? []) + (configuration.cxxFlags ?? [])).contains {
+                $0.hasPrefix("-fmodules") || $0.hasPrefix("-fcxx-modules")
+            }
         }
         if modules, !(toolchain?.clangModuleCPUFeatures ?? ["FEAT_SHA3"]).allSatisfy(HostCPU.has) {
             add(
@@ -300,6 +419,18 @@ public struct ProjectCheck: Sendable {
                 "clang modules (-fmodules, @import) cannot be built on this device: Apple's clang uses an "
                     + "instruction its CPU lacks (FEAT_SHA3, from the A13 on); drop the flag and #import headers",
                 field: "/configurations",
+            )
+        }
+        // The Swift C++ importer builds every imported header as a clang
+        // module, with that same clang: a CPU that cannot run the module
+        // machinery cannot run interop either.
+        if usesCXXInterop, !(toolchain?.clangModuleCPUFeatures ?? ["FEAT_SHA3"]).allSatisfy(HostCPU.has) {
+            add(
+                "environment.device.clangModules",
+                .error,
+                "Swift's C++ interop imports headers as clang modules, which Apple's clang cannot build on this device: "
+                    + "it uses an instruction its CPU lacks (FEAT_SHA3, from the A13 on); put the C++ behind a C facade",
+                field: "/products",
             )
         }
         let sdk = (try? registry.sdk(project.environment.sdk.id)) ?? nil
@@ -342,7 +473,7 @@ public struct ProjectCheck: Sendable {
                     fixes: ["rebindSDK", "rebindToolchain"],
                 )
             }
-            if project.language == .swift, let toolchain, let newest = toolchain.newestSDK,
+            if compilesSwift, let toolchain, let newest = toolchain.newestSDK,
                newest.split(separator: ".").first != sdk.version.split(separator: ".").first
             {
                 add(
@@ -354,7 +485,7 @@ public struct ProjectCheck: Sendable {
                     fixes: ["rebindSDK"],
                 )
             }
-            if project.language == .swift {
+            if compilesSwift {
                 // The iOS 27 SDK carries Swift interfaces for arm64e only.
                 let module = sdk.path + "/usr/lib/swift/Swift.swiftmodule/"
                 for bootstrap in project.architectures.bootstraps {
@@ -483,19 +614,22 @@ public struct ProjectCheck: Sendable {
         return Result(diagnostics: out, digests: digests, project: project)
     }
 
+    @discardableResult
     private func checkGlob(
         _ pattern: String,
         root: URL,
         field: String,
         add: (String, DiagnosticSeverity, String, String?, String?, [String]) -> Void,
-    ) {
+    ) -> [ProjectGlob.Match] {
         do {
             let matches = try ProjectGlob.expand(pattern, in: root)
             if matches.isEmpty {
                 add("project.glob.empty", .error, "\(pattern) matches no file", nil, field, ["openProjectFolder"])
             }
+            return matches
         } catch {
             add("project.path.outside", .error, String(describing: error), nil, field, [])
+            return []
         }
     }
 

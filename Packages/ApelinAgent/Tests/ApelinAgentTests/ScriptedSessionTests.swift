@@ -1,5 +1,6 @@
 @testable import ApelinAgent
 import Foundation
+import ApelinProtocol
 import KWWKAgent
 import KWWKAI
 import Testing
@@ -31,8 +32,8 @@ struct ScriptedSessionTests {
         let after = try #require(records.last?.seq)
         provider.setResponses([.message(fauxAssistantMessage(#"{"title":"Build a widget","projectName":"Weather Widget"}"#))])
         events = try await session.events(afterSeq: after)
-        // The first request's task finalizer is actor-queued after its title.
-        await Task.yield()
+        // Wait for the title task's finalizer, not merely its emitted title.
+        await session.waitForTitle()
         await session.generateTitle(for: "Build a weather widget in this project")
         for await record in events {
             if case .projectNameSuggested = record.event {
@@ -103,8 +104,12 @@ struct ScriptedSessionTests {
             project: home.project, provider: .registered(provider.getModel()), approval: ApprovalPolicy(mode: .confirm), dataRoot: home.dataRoot,
         ),
         backend: MockBackend(), digests: MockDigestLedger(), credentials: DeliveredCredentialSource())
-        for _ in 0 ..< AgentSession.maximumTitleMisses + 2 {
-            await session.generateTitle(for: "Explain the title view")
+        // One trigger exhausts the bounded retries: no second reader send is needed.
+        await session.generateTitle(for: "Explain the title view")
+        await session.waitForTitle()
+        #expect(await asked.value == AgentSession.maximumTitleMisses)
+        for _ in 0 ..< 2 {
+            await session.generateTitle(for: "A different follow-up")
             await session.waitForTitle()
         }
         #expect(await asked.value == AgentSession.maximumTitleMisses)
@@ -220,7 +225,7 @@ struct ScriptedSessionTests {
 
         let events = records.map(\.event)
         #expect(records.map(\.seq) == Array(1 ... UInt64(records.count)))
-        #expect(events.first == .promptSubmitted(text: "Turn the hook on, build, install and check it loaded."))
+        #expect(events.contains { if case .userMessage(_, "Turn the hook on, build, install and check it loaded.", _, _) = $0 { return true }; return false })
         let toolOrder = events.compactMap { event -> String? in
             switch event {
             case let .toolCallStarted(call): "start:\(call.name)"
@@ -314,7 +319,7 @@ struct ScriptedSessionTests {
     }
 
     @Test(.timeLimit(.minutes(1)))
-    func `a message sent during a run joins it after the tool call in progress`() async throws {
+    func `an explicit pending steer joins after the tool call in progress`() async throws {
         let home = try TemporaryHome()
         defer { home.remove() }
         let faux = await registerFauxProvider()
@@ -337,6 +342,7 @@ struct ScriptedSessionTests {
             events.append(record.event)
             if case let .approvalRequested(request) = record.event {
                 try await session.prompt("and keep the logs", messageID: later)
+                try await session.manageQueue(.init(sessionID: session.id, action: .steer, messageID: later))
                 try await session.approve(requestID: request.id, decision: .approve(.once))
             }
             if case .finished = record.event {
@@ -344,14 +350,14 @@ struct ScriptedSessionTests {
             }
         }
         let queuedAt = events.firstIndex {
-            if case .userMessageQueued(later, "and keep the logs", _) = $0 {
+            if case .userMessageQueued(later, "and keep the logs", _, _) = $0 {
                 true
             } else {
                 false
             }
         }
         let takenAt = events.firstIndex {
-            if case .userMessage(later, "and keep the logs", _) = $0 {
+            if case .userMessage(later, "and keep the logs", _, _) = $0 {
                 true
             } else {
                 false
@@ -372,7 +378,7 @@ struct ScriptedSessionTests {
     }
 
     @Test(.timeLimit(.minutes(1)))
-    func `a message queued when the run is stopped is dropped`() async throws {
+    func `a pending message when the run is stopped remains paused`() async throws {
         let home = try TemporaryHome()
         defer { home.remove() }
         let faux = await registerFauxProvider()
@@ -403,13 +409,18 @@ struct ScriptedSessionTests {
                 break
             }
         }
-        #expect(dropped == [later])
+        #expect(dropped.isEmpty)
+        let snapshots = try await session.log.records(afterSeq: 0).map(\.event)
+        #expect(snapshots.contains {
+            if case let .pendingQueue(messages, paused) = $0 { return paused && messages.contains { $0.id == later } }
+            return false
+        })
         // a stop is a stop: no run follows to take the message
         await session.waitForIdle()
         let recorded = try await session.log.records(afterSeq: 0).map(\.event)
         #expect(recorded.filter { $0 == .finished(reason: .aborted) }.count == 1, "\(recorded)")
         #expect(!recorded.contains {
-            if case .userMessage(later, _, _) = $0 {
+            if case .userMessage(later, _, _, _) = $0 {
                 true
             } else {
                 false
@@ -419,7 +430,7 @@ struct ScriptedSessionTests {
     }
 
     @Test(.timeLimit(.minutes(1)))
-    func `a message queued when the run fails starts the next run, and is read once`() async throws {
+    func `a pending message after failure requires resume and is read once`() async throws {
         let home = try TemporaryHome()
         defer { home.remove() }
         let faux = await registerFauxProvider()
@@ -472,6 +483,12 @@ struct ScriptedSessionTests {
             }
             if case let .finished(reason) = record.event {
                 finished.append(reason)
+                if reason == .failed {
+                    await session.waitForIdle()
+                    let waiting = try await session.log.records(afterSeq: 0).map(\.event)
+                    #expect(!waiting.contains { if case .userMessage(later, _, _, _) = $0 { return true }; return false })
+                    try await session.manageQueue(.init(sessionID: session.id, action: .resume))
+                }
                 if finished.count == 2 {
                     break
                 }
@@ -487,7 +504,7 @@ struct ScriptedSessionTests {
         }, "\(events)")
         let failedAt = events.firstIndex { $0 == .finished(reason: .failed) }
         let takenAt = events.firstIndex {
-            if case .userMessage(later, "and keep the logs", _) = $0 {
+            if case .userMessage(later, "and keep the logs", _, _) = $0 {
                 true
             } else {
                 false

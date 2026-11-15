@@ -109,6 +109,14 @@ actor InstallBridge {
             guard caller == .app || caller.isAgent else {
                 throw ApelinError(.denied, "build artifacts are installed by the app or the agent")
             }
+            // An `.ipa` is an app, not a package: it is unpacked and put on
+            // the device here, and dpkg never sees it.
+            if found.isIPA {
+                if case let .worker(.agent, session) = caller {
+                    try await checkAgentInstall(artifact: found, session: session)
+                }
+                return try await installApplication(found)
+            }
             origin = .build
             source = found.path
             artifact = found
@@ -364,6 +372,265 @@ actor InstallBridge {
         }
     }
 
+    // MARK: Apps
+
+    /// An `.ipa` onto the device: unpacked into root's staging, its one
+    /// `Payload/*.app` copied under `Applications`, every Mach-O signed, and
+    /// registered with `uicache`. dpkg and irisind take no part — an app is
+    /// not a package — and the record keeps the bundle so a removal can take
+    /// it away again.
+    private func installApplication(_ artifact: ArtifactRegistry.Artifact) async throws -> TaskHandle {
+        let installationID = UUID().uuidString.lowercased()
+        let handle = await registry.create(kind: .install, owner: nil)
+        let now = Date()
+        let record = InstallationRecord(
+            installationID: installationID,
+            origin: .build,
+            artifactID: artifact.artifactID,
+            artifactDigest: artifact.digest,
+            projectID: artifact.projectID,
+            buildID: artifact.buildID,
+            packageID: artifact.packageID ?? "",
+            version: artifact.version ?? "",
+            packagingDigest: artifact.packagingDigest,
+            transactionID: UUID().uuidString.lowercased(),
+            taskID: handle.taskID.rawValue,
+            status: .staged,
+            createdAt: now,
+            updatedAt: now,
+            followedSeq: 0,
+            receipt: nil,
+            removalTransactionID: nil,
+            removalTaskID: nil,
+            removalReceipt: nil,
+            application: nil
+        )
+        do {
+            try await installations.save(record)
+        } catch {
+            await registry.finish(handle.taskID, .failed, message: Self.message(error))
+            throw error
+        }
+        await registry.setResume(handle.taskID, .object([
+            "installationID": .string(installationID), "application": .bool(true),
+        ]))
+        await registry.append(handle.taskID, kind: "stage", payload: .object([
+            "stage": .string("staged"), "installationID": .string(installationID),
+            "digest": .string(artifact.digest),
+        ]))
+        Task { await self.runAppInstall(installationID, taskID: handle.taskID) }
+        return handle
+    }
+
+    private func runAppInstall(_ installationID: String, taskID: TaskID) async {
+        guard let record = await installations.record(installationID),
+              let artifact = await artifacts.artifact(record.artifactID)
+        else {
+            await registry.finish(taskID, .failed, message: "This installation could not be found. Try again.")
+            return
+        }
+        let layout = ApplicationInstall.Layout(installRoot: paths.installRoot)
+        let workspace = paths.staging.appendingPathComponent(installationID)
+        var placed: URL?
+        do {
+            try FileManager.default.createDirectory(
+                at: workspace,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            await registry.append(taskID, kind: "stage", payload: .object(["stage": .string("unpacking")]))
+            // The same copy-and-hash a deb gets: what is unpacked is the
+            // bytes the record's digest names, not whatever the path holds now.
+            let staged = workspace.appendingPathComponent("package.ipa")
+            let stagedDigest = try stage(from: artifact.path, to: staged)
+            guard stagedDigest == record.artifactDigest else {
+                throw ApelinError(
+                    .conflict,
+                    "the .ipa's SHA-256 is \(stagedDigest), not \(record.artifactDigest); it changed after it was approved",
+                )
+            }
+            let entries = try ZipExtractor.extract(staged, into: workspace)
+            await registry.append(taskID, kind: "log", payload: .object([
+                "line": .string("Unpacked \(entries.count) files from the .ipa"),
+            ]))
+            let bundle = try AppBundle.find(in: workspace)
+            let destination = URL(fileURLWithPath: layout.applications)
+                .appendingPathComponent(bundle.name + ".app")
+            try await checkPlacement(
+                of: bundle, at: destination, applications: layout.applications, installationID: installationID
+            )
+            do {
+                try FileManager.default.createDirectory(
+                    atPath: layout.applications,
+                    withIntermediateDirectories: true,
+                    attributes: [.posixPermissions: 0o755]
+                )
+            } catch {
+                throw ApelinError(.internal, "\(layout.applications) could not be made")
+            }
+            await registry.append(taskID, kind: "log", payload: .object([
+                "line": .string("Installing \(bundle.bundleID) \(bundle.version)"),
+            ]))
+            try ApplicationInstall.copy(bundle.root, to: destination)
+            placed = destination
+            let signed = try ApplicationInstall.sign(destination, layout: layout, scratch: workspace)
+            await registry.append(taskID, kind: "log", payload: .object([
+                "line": .string("Signed \(signed.count) files with ldid"),
+            ]))
+            try ApplicationInstall.register(destination, layout: layout, installRoot: paths.installRoot)
+            let receipt = InstallationRecord.Receipt(
+                state: "succeeded",
+                exitStatus: 0,
+                packageID: bundle.bundleID,
+                version: bundle.version,
+                failure: nil,
+                failureText: nil,
+                finishedAt: Date()
+            )
+            _ = try await installations.update(installationID) {
+                $0.status = .installed
+                $0.receipt = receipt
+                $0.packageID = bundle.bundleID
+                $0.version = bundle.version
+                $0.application = InstallationRecord.Application(
+                    bundleID: bundle.bundleID,
+                    name: bundle.name,
+                    bundlePath: destination.path
+                )
+            }
+            let result = InstallResult(
+                installationID: installationID,
+                transactionID: record.transactionID,
+                packageID: bundle.bundleID,
+                version: bundle.version,
+                artifactDigest: record.artifactDigest,
+                projectID: record.projectID,
+                buildID: record.buildID
+            )
+            let value = try? JSONValue(encoding: result)
+            await registry.append(taskID, kind: "result", payload: value)
+            await registry.append(taskID, kind: TaskEvent.stateKind, payload: .object([
+                "state": .string(TaskState.succeeded.rawValue), "result": value ?? .null,
+            ]))
+        } catch {
+            if let placed { Self.removeTree(placed, inside: layout.applications) }
+            _ = try? await installations.update(installationID) { $0.status = .failed }
+            await registry.finish(taskID, .failed, message: Self.message(error))
+        }
+        Self.removeTree(workspace, inside: paths.staging.path)
+    }
+
+    /// Whether the app can go where its bundle asks: nothing else at that
+    /// path, and no installation of ours already holding this bundle ID.
+    /// A record whose own copy of the app is gone no longer holds it — that
+    /// app went away with the root it was installed under, or outside Apelin.
+    private func checkPlacement(
+        of bundle: AppBundle, at destination: URL, applications: String, installationID: String
+    ) async throws {
+        guard !bundle.bundleID.hasPrefix("com.apple.") else {
+            throw ApelinError(.denied, "an .ipa cannot claim \(bundle.bundleID), a system bundle ID")
+        }
+        let records = await installations.all()
+        if let other = records.first(where: {
+            $0.installationID != installationID && $0.status == .installed
+                && $0.application?.bundleID == bundle.bundleID
+                && $0.application.map { FileManager.default.fileExists(atPath: $0.path(under: applications)) } == true
+        }) {
+            throw ApelinError(
+                .conflict,
+                "\(bundle.bundleID) is already installed from \(other.installationID). Remove that installation first."
+            )
+        }
+        var metadata = stat()
+        if stat(destination.path, &metadata) == 0 {
+            throw ApelinError(
+                .conflict,
+                "\(destination.lastPathComponent) is already on the device. Remove it first, then try again."
+            )
+        }
+    }
+
+    /// An app this bridge installed, off the device: out of LaunchServices
+    /// first, then its bundle.
+    private func runAppRemoval(_ record: InstallationRecord, taskID: TaskID) async {
+        let layout = ApplicationInstall.Layout(installRoot: paths.installRoot)
+        guard let application = record.application else {
+            await registry.finish(taskID, .failed, message: "This installation holds no app to remove.")
+            return
+        }
+        do {
+            let bundlePath = application.path(under: layout.applications)
+            var metadata = stat()
+            let present = lstat(bundlePath, &metadata) == 0
+            if present {
+                try ApplicationInstall.unregisterAnywhere(
+                    bundlePath,
+                    layout: layout,
+                    installRoot: paths.installRoot
+                )
+                // LaunchServices may still name the path this record was
+                // written with, from the root the app went in under: an
+                // unregistration there costs nothing and leaves no ghost.
+                if application.bundlePath != bundlePath {
+                    _ = try? ApplicationInstall.unregisterAnywhere(
+                        application.bundlePath,
+                        layout: layout,
+                        installRoot: paths.installRoot
+                    )
+                }
+                guard Self.removeTree(URL(fileURLWithPath: bundlePath), inside: layout.applications) else {
+                    throw ApelinError(.denied, "\(bundlePath) is not inside \(layout.applications)")
+                }
+                // Every other record of this bundle named the app this
+                // removal took away — an earlier install under a root the
+                // bootstrap has since renamed. None of them keeps saying it
+                // is on the device.
+                for other in await installations.all()
+                    where other.installationID != record.installationID
+                    && other.status == .installed
+                    && other.application?.bundleID == application.bundleID
+                {
+                    _ = try? await installations.update(other.installationID) { $0.status = .removed }
+                }
+            }
+            _ = try await installations.update(record.installationID) {
+                $0.status = .removed
+                $0.removalReceipt = InstallationRecord.Receipt(
+                    state: "succeeded",
+                    exitStatus: 0,
+                    packageID: application.bundleID,
+                    version: record.version,
+                    failure: nil,
+                    failureText: nil,
+                    finishedAt: Date()
+                )
+            }
+            let removed: JSONValue = .object([
+                "installationID": .string(record.installationID),
+                "packageID": .string(application.bundleID),
+            ])
+            await registry.append(taskID, kind: "removed", payload: removed)
+            await registry.append(taskID, kind: TaskEvent.stateKind, payload: .object([
+                "state": .string(TaskState.succeeded.rawValue), "removed": removed,
+            ]))
+        } catch {
+            _ = try? await installations.update(record.installationID) { $0.status = .installed }
+            await registry.finish(taskID, .failed, message: Self.message(error))
+        }
+    }
+
+    /// Deletes a folder the host made, and — when `folder` says which one —
+    /// only inside it.
+    @discardableResult
+    private static func removeTree(_ url: URL, inside folder: String) -> Bool {
+        guard let path = CanonicalPath.resolve(url.path),
+              let root = CanonicalPath.resolve(folder),
+              CanonicalPath.isCanonical(path, inside: root)
+        else { return false }
+        try? FileManager.default.removeItem(at: url)
+        return true
+    }
+
     /// Whether the package database shows this install done, whatever
     /// irisind answered: the package installed at the version submitted,
     /// its file list written since the installation was recorded. A
@@ -430,13 +697,21 @@ actor InstallBridge {
         guard InstallationStore.validID(request.installationID) else {
             throw ApelinError(.badRequest, "an installation ID is the lowercase UUID returned by the install")
         }
-        let record = await installations.record(request.installationID)
-        try await ManagedPackagePolicy.checkRemoval(
-            record,
-            installed: packages.installedPackages(),
-            records: installations.all(),
-        )
-        guard var record else { throw ApelinError(.notFound, "no installation \(request.installationID)") }
+        guard let existing = await installations.record(request.installationID) else {
+            throw ApelinError(.notFound, "no installation \(request.installationID)")
+        }
+        if existing.application == nil {
+            try await ManagedPackagePolicy.checkRemoval(
+                existing,
+                installed: packages.installedPackages(),
+                records: installations.all(),
+            )
+        } else {
+            guard existing.status == .installed else {
+                throw ApelinError(.denied, "This app is not installed, or it is still being installed or removed.")
+            }
+        }
+        var record = existing
         try Self.checkRemover(caller, of: record)
 
         // Removal is confirmed every time under Confirm (§7), whatever was approved before.
@@ -449,6 +724,29 @@ actor InstallBridge {
                     "approval required: removing \(record.packageID) needs the user's approval for this removal",
                 )
             }
+        }
+
+        // An app comes off the device here: no irisind, no dpkg.
+        if record.application != nil {
+            let handle = await registry.create(kind: .install, owner: nil)
+            do {
+                record = try await installations.update(record.installationID) {
+                    $0.status = .removing
+                    $0.removalTaskID = handle.taskID.rawValue
+                }
+            } catch {
+                await registry.finish(handle.taskID, .failed, message: Self.message(error))
+                throw error
+            }
+            await registry.setResume(handle.taskID, .object([
+                "installationID": .string(record.installationID), "removal": .bool(true),
+            ]))
+            await registry.append(handle.taskID, kind: "stage", payload: .object([
+                "stage": .string("removing"), "installationID": .string(record.installationID),
+                "packageID": .string(record.packageID),
+            ]))
+            Task { await self.runAppRemoval(record, taskID: handle.taskID) }
+            return handle
         }
 
         try await requireService()
@@ -565,23 +863,38 @@ actor InstallBridge {
     /// this caller would act on it and, if not, the refusal it would give.
     func list(_ request: InstallationListRequest, caller: Caller) async throws -> InstallationListResponse {
         let installed = try packages.installedPackages()
+        let applications = ApplicationInstall.Layout(installRoot: paths.installRoot).applications
         let records = await installations.all()
         var newest: [String: InstallationRecord] = [:]
         // Oldest first: a later install of a package supersedes an earlier
         // one, and a removal under way is listed as that, not as the
-        // install before it.
+        // install before it. A record whose app or package is no longer on
+        // the device is not a candidate at all, so an older record that can
+        // still be managed is not hidden behind it.
         for record in records where record.status == .installed || record.status == .removing {
+            // An app is on the device while its bundle is; a package while
+            // dpkg lists it installed.
+            let onDevice = record.application.map { FileManager.default.fileExists(atPath: $0.path(under: applications)) }
+                ?? (installed[record.packageID]?.isInstalled == true)
+            guard onDevice else { continue }
             newest[record.packageID] = record
         }
-        let listed = newest.values.filter {
-            installed[$0.packageID]?.isInstalled == true
-                && (request.packageID == nil || $0.packageID == request.packageID)
-                && (request.projectID == nil || $0.projectID == request.projectID)
+        let listed = newest.values.filter { record in
+            (request.packageID == nil || record.packageID == request.packageID)
+                && (request.projectID == nil || record.projectID == request.projectID)
         }
         return InstallationListResponse(installations: listed.sorted { $0.createdAt > $1.createdAt }.map { record in
             var refusal: String?
             do {
-                try ManagedPackagePolicy.checkRemoval(record, installed: installed, records: records)
+                if let application = record.application {
+                    guard record.status == .installed,
+                          FileManager.default.fileExists(atPath: application.path(under: applications))
+                    else {
+                        throw ApelinError(.conflict, "This app is no longer on the device.")
+                    }
+                } else {
+                    try ManagedPackagePolicy.checkRemoval(record, installed: installed, records: records)
+                }
                 try Self.checkRemover(caller, of: record)
             } catch {
                 refusal = Self.message(error)
@@ -597,6 +910,80 @@ actor InstallBridge {
                 reason: refusal,
             )
         })
+    }
+
+    // MARK: Apps
+
+    /// Settings ▸ Apps: the apps Apelin installed from an `.ipa` that are
+    /// still on the device — its bundle, or the registration left after the
+    /// bundle went away — each with what a removal from there would do.
+    /// Read afresh every time: an app removed elsewhere changes it, and
+    /// there is nothing to keep.
+    func applicationList() async throws -> ApplicationListResponse {
+        let layout = ApplicationInstall.Layout(installRoot: paths.installRoot)
+        // A bootstrap without uicache still lists the records it holds.
+        let registered = ApplicationCensus.parseRegistered(
+            (try? ApplicationInstall.run(layout.uicache, ["-l"]))?.output ?? ""
+        )
+        let owners = ApplicationCensus.packageOwners(infoDirectory: (paths.installRoot == "/" ? "" : paths.installRoot)
+            + "/var/lib/dpkg/info")
+        return ApplicationListResponse(applications: ApplicationCensus.rows(
+            installRoot: paths.installRoot,
+            registered: registered,
+            records: await installations.all(),
+            owners: owners,
+        ))
+    }
+
+    /// Takes an app the list showed off the device: its registration first,
+    /// then the bundle, and the installation record that named it — or only
+    /// the registration, when that is all that is left of it.
+    ///
+    /// The pair the list answered is what removes anything: a path this host
+    /// did not just list is never taken, and a bundle outside `Applications`
+    /// is refused by `removeTree` whatever the path says.
+    func removeApplication(_ request: ApplicationRemoveRequest) async throws -> Acknowledged {
+        let listed = try await applicationList().applications
+        guard let app = listed.first(where: { $0.bundleID == request.bundleID && $0.path == request.path })
+            ?? listed.first(where: { $0.bundleID == request.bundleID && request.path == nil })
+        else {
+            throw ApelinError(.notFound, "This app is no longer on the device.")
+        }
+        guard app.removable else {
+            throw ApelinError(.denied, app.reason ?? "This app cannot be removed from here.")
+        }
+        let layout = ApplicationInstall.Layout(installRoot: paths.installRoot)
+        // The registration, by the path LaunchServices names — for a bundle
+        // that is gone, the only thing left to take away.
+        if let registered = app.registeredPath {
+            try ApplicationInstall.unregisterAnywhere(registered, layout: layout, installRoot: paths.installRoot)
+        }
+        if let path = app.path {
+            guard Self.removeTree(URL(fileURLWithPath: path), inside: layout.applications) else {
+                throw ApelinError(.denied, "\(path) is not inside \(layout.applications)")
+            }
+        }
+        // Every record of this bundle says it is gone: the one this install
+        // made, and any older one a renamed root left behind.
+        let all = await installations.all()
+        for record in all
+            where record.status == .installed && record.application?.bundleID == app.bundleID
+        {
+            _ = try? await installations.update(record.installationID) {
+                $0.status = .removed
+                $0.removalReceipt = InstallationRecord.Receipt(
+                    state: "succeeded",
+                    exitStatus: 0,
+                    packageID: record.packageID,
+                    version: record.version,
+                    failure: nil,
+                    failureText: nil,
+                    finishedAt: Date(),
+                )
+            }
+        }
+        NSLog("apelind-session: removed app %@", app.bundleID)
+        return Acknowledged()
     }
 
     // MARK: Toolchain folders
@@ -654,7 +1041,16 @@ actor InstallBridge {
         await registry.append(record.id, kind: "stage", payload: .object(["stage": .string("resumed")]))
         if record.resume?["removal"]?.boolValue == true {
             guard installation.status == .removing else { return false }
-            Task { await self.runRemoval(installationID, taskID: record.id) }
+            if installation.application != nil {
+                Task { await self.runAppRemoval(installation, taskID: record.id) }
+            } else {
+                Task { await self.runRemoval(installationID, taskID: record.id) }
+            }
+            return true
+        }
+        if installation.application != nil || record.resume?["application"]?.boolValue == true {
+            guard installation.status == .staged else { return false }
+            Task { await self.runAppInstall(installationID, taskID: record.id) }
             return true
         }
         guard installation.status == .staged || installation.status == .submitted else { return false }

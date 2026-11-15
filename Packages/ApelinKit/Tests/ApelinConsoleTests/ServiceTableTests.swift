@@ -80,6 +80,10 @@ final class ServiceTableTests: XCTestCase {
             return Row(reply: InstallationListResponse(installations: [])) {
                 _ = try await $0.installationList(packageID: "local.apelin.hello")
             }
+        case .applicationList:
+            return Row(reply: ApplicationListResponse(applications: [])) { _ = try await $0.applicationList() }
+        case .applicationRemove:
+            return Row(reply: ack) { try await $0.applicationRemove(bundleID: "local.apelin.hello", path: nil) }
         case .respring:
             return Row(reply: ack) { try await $0.respring() }
         case .approvalDigestState:
@@ -139,6 +143,16 @@ final class ServiceTableTests: XCTestCase {
             return Row(reply: ack) { try await $0.agentAbort(sessionID: "s") }
         case .agentCompact:
             return Row(reply: ack) { try await $0.agentCompact(sessionID: "s") }
+        case .agentQueue:
+            return Row(reply: ack) { _ = try await $0.agentQueue(AgentQueueRequest(sessionID: "s", action: .resume)) }
+        case .agentConfigure:
+            return Row(reply: AgentConfigureResponse(applied: true, tokens: 1, window: 2)) {
+                _ = try await $0.agentConfigure(AgentConfigureRequest(
+                    sessionID: "s",
+                    provider: .anthropic,
+                    model: "test",
+                ))
+            }
         case .agentApprove:
             return Row(reply: ack) { try await $0.agentApprove(sessionID: "s", approvalID: "a", decision: .deny) }
         case .agentAttach:
@@ -161,6 +175,14 @@ final class ServiceTableTests: XCTestCase {
             return Row(reply: AgentSkillListResponse(skills: [
                 AgentSkill(name: "example", description: "An example.", source: .builtIn, body: "Do it."),
             ])) { _ = try await $0.agentSkillList() }
+        case .agentModelTest:
+            return Row(reply: TaskHandle(taskID: id, kind: .modelTest)) {
+                _ = try await $0.agentModelTest(AgentModelTestRequest(provider: .anthropic, model: "test"))
+            }
+        case .agentRewritePrompt:
+            return Row(reply: AgentRewritePromptResponse(text: "Rewritten.")) {
+                _ = try await $0.agentRewritePrompt(text: "Original.", provider: nil, model: nil)
+            }
         case .agentSignIn:
             return Row(reply: TaskHandle(taskID: id, kind: .signIn)) { _ = try await $0.agentSignIn(provider: .githubCopilot) }
         case .agentAPIConfiguration:
@@ -175,6 +197,16 @@ final class ServiceTableTests: XCTestCase {
             return Row(reply: ack) { try await $0.agentSignInCancel(taskID: id) }
         case .agentSignOut:
             return Row(reply: ack) { try await $0.agentSignOut(provider: .anthropic) }
+        case .agentRewind:
+            return Row(reply: ack) { try await $0.agentRewind(sessionID: "s", messageID: UUID()) }
+        case .agentEditMessage:
+            return Row(reply: ack) { try await $0.agentEditMessage(sessionID: "s", messageID: UUID(), text: "t") }
+        case .agentDeleteReply:
+            return Row(reply: ack) { try await $0.agentDeleteReply(sessionID: "s", messageID: UUID()) }
+        case .agentFork:
+            return Row(reply: ack) {
+                try await $0.agentFork(sessionID: "s", newSessionID: UUID().uuidString, messageID: UUID())
+            }
         case .distributionRepositoryList:
             return Row(reply: DistributionRepositoryListResponse()) { _ = try await $0.distributionRepositoryList() }
         case .distributionRepositoryCreate:
@@ -185,6 +217,16 @@ final class ServiceTableTests: XCTestCase {
             return Row(reply: ack) { try await $0.distributionRepositoryUnlink() }
         case .distributionPublish:
             return Row(reply: handle) { _ = try await $0.distributionPublish(files: ["/tmp/a.deb"]) }
+        case .channelStatus:
+            return Row(reply: ChannelState()) { _ = try await $0.channelStatus() }
+        case .channelSignIn:
+            return Row(reply: ChannelState()) { _ = try await $0.channelSignIn() }
+        case .channelVerifyCode:
+            return Row(reply: ChannelState()) { _ = try await $0.channelVerifyCode("123456") }
+        case .channelConfigure:
+            return Row(reply: ChannelState()) { _ = try await $0.channelConfigure(enabled: true) }
+        case .channelSignOut:
+            return Row(reply: ChannelState()) { _ = try await $0.channelSignOut() }
         case .feedbackSend:
             return Row(reply: FeedbackSendResponse(number: 1, url: "https://github.com/owngoal-dev/Apelin/issues/1")) {
                 _ = try await $0.feedbackSend(title: "t", body: "b")
@@ -286,6 +328,14 @@ final class ServiceTableTests: XCTestCase {
                 expectedHead: nil,
             )
             return Row(reply: handle) { _ = try await $0.gitResetToRemote(reset) }
+        case .gitCheckpointSave:
+            return Row(reply: GitCheckpointSaveResponse(commit: nil)) {
+                _ = try await $0.gitCheckpointSave(projectID: "p", messageID: UUID())
+            }
+        case .gitCheckpointRestore:
+            return Row(reply: GitCheckpointRestoreResponse(backupBranch: nil, written: 0, removed: 0)) {
+                _ = try await $0.gitCheckpointRestore(projectID: "p", messageID: UUID())
+            }
         }
     }
 

@@ -8,7 +8,11 @@ PROJECT             := $(ROOT_DIR)/Apelin.xcodeproj
 # The app scheme builds apelind too: the app target depends on the daemon.
 SCHEME              := Apelin
 CONFIGURATION       ?= Release
-DERIVED_DATA        ?= /private/tmp/apelin-deriveddata
+# Inside the repository, which .gitignore covers. A copy under /private/tmp is
+# a clean build after every reboot and every periodic clean-up — minutes here —
+# so the incremental build the loop relies on never survived the night. CI
+# passes its own path, so a runner still starts clean.
+DERIVED_DATA        ?= $(ROOT_DIR)/build/DerivedData
 
 DEVICE_DESTINATION  := generic/platform=iOS
 PRODUCTS_DIR        := $(DERIVED_DATA)/Build/Products/$(CONFIGURATION)-iphoneos
@@ -67,8 +71,13 @@ CATALOG_KEYS_CHECK := $(ROOT_DIR)/Scripts/check-catalog-keys.py
 SHELL_DELETES_CHECK := $(ROOT_DIR)/Scripts/check-shell-deletes.py
 PERSISTED_READS_CHECK := $(ROOT_DIR)/Scripts/check-persisted-reads.py
 OBJC_DATA_CHECK := $(ROOT_DIR)/Scripts/check-objc-data.py
+CHAT_PAIRING_CHECK := $(ROOT_DIR)/Scripts/check-chat-pairing.py
+RETIRED_APPS_CHECK := $(ROOT_DIR)/Scripts/check-retired-apps.py
 SYMBOL_CHECK        := $(ROOT_DIR)/Scripts/check-symbol-availability.py
 RPATH_CHECK         := $(ROOT_DIR)/Scripts/check-rpath-dependencies.py
+# The agent's system prompt is Packages/ApelinAgent/Prompts/*.md, compiled in
+# as SystemPromptText.swift; --check fails when the two differ.
+PROMPTS_EMBEDDER    := $(ROOT_DIR)/Packages/ApelinAgent/Scripts/embed-prompts.py
 # The device harness: console scripts and suites on a vphone or a device,
 # from the Mac (Documents/Console.md ▸ From the Mac).
 DEVICE_TOOL         := $(ROOT_DIR)/Scripts/device.py
@@ -183,7 +192,7 @@ endif
 
 shell_word = '$(subst ','\'',$(1))'
 
-.PHONY: checklist sdk-tier all help print-version print-build-number print-deb-path set-version check format harness build _package deb deb-roothide deb-rootless deb-all deb-extensions deb-agent-tools template-archive install vphone install-app vphone-app device-status device-install device-test device-run old-runtime clean
+.PHONY: checklist sdk-tier all help print-version print-build-number print-deb-path set-version check format harness build _package deb fast deb-roothide deb-rootless deb-all deb-extensions deb-agent-tools template-archive install vphone install-app vphone-app device-status device-install device-test device-run old-runtime clean
 
 all: deb
 
@@ -196,11 +205,13 @@ help:
 	@echo "  deb-roothide  Package for roothide (unprefixed, iphoneos-arm64e)"
 	@echo "  deb-rootless  Package for a rootless bootstrap (/var/jb, iphoneos-arm64)"
 	@echo "  deb-all       Both packages from one build, then every extension package"
+	@echo "  fast          Build the app per file and put it on the vphone (make vphone-app INCREMENTAL=1): the local loop"
 	@echo "  deb-extensions  The four development extensions, roothide and rootless"
 	@echo "  deb-agent-tools The agent tool extensions and the assembler's source archive"
 	@echo "  install       Package for FLAVOR and update the installation on DEVICE_HOST:DEVICE_PORT"
 	@echo "  vphone        Package roothide and update the installation on the vphone (VPHONE=<name>, or the one running)"
 	@echo "  vphone-app    Build and put only Apelin.app over the vphone's installed one (no gates, harness or package)"
+	@echo "  vphone-app INCREMENTAL=1  The same with per-file incremental Swift instead of Release's whole-module: the fast loop"
 	@echo "  install-app   The same onto DEVICE_HOST:DEVICE_PORT"
 	@echo "  device-status   What the vphone or device has installed, registered and running"
 	@echo "  device-install  Install every built package (Apelin and its extensions) without building"
@@ -251,7 +262,8 @@ check:
 	@for script in "$(DEB_PACKAGER)" "$(DEVICE_INSTALLER)" "$(VERSION_APPLIER)" "$(XCODEBUILD_WRAPPER)" \
 		"$(LICENSE_COLLECTOR)" "$(ACCESSIBILITY_CHECK)" "$(STALE_STRINGS_CHECK)" "$(FORMAT_STRINGS_CHECK)" "$(TRANSLATIONS_CHECK)" \
 		"$(CATALOG_KEYS_CHECK)" "$(SHELL_DELETES_CHECK)" "$(PERSISTED_READS_CHECK)" "$(OBJC_DATA_CHECK)" \
-		"$(SYMBOL_CHECK)" "$(RPATH_CHECK)" "$(SCHEMA_FIXTURES_CHECK)" "$(TEMPLATES_CHECK)" \
+		"$(CHAT_PAIRING_CHECK)" "$(RETIRED_APPS_CHECK)" \
+		"$(SYMBOL_CHECK)" "$(RPATH_CHECK)" "$(PROMPTS_EMBEDDER)" "$(SCHEMA_FIXTURES_CHECK)" "$(TEMPLATES_CHECK)" \
 		"$(EXTENSIONS_PACKAGER)" "$(AGENT_TOOLS_BUILDER)" "$(DEVICE_TOOL)"; do \
 		test -x "$$script" || { echo "error: $${script#$(ROOT_DIR)/} is not executable" >&2; exit 66; }; \
 	done
@@ -297,6 +309,10 @@ check:
 		|| { echo "error: control must recommend exactly: $(DEV_RECOMMENDS)" >&2; exit 65; }
 	@! grep -nE '^(Pre-Depends|Depends):.*wiki\.qaq\.apelin\.|^(Recommends|Suggests):.*agent-tools' "$(CONTROL_TEMPLATE)" \
 		|| { echo "error: the IDE depends on an extension or recommends an agent tool (above)" >&2; exit 65; }
+	@# The terminal and the file browser are the app's own pages: no source
+	@# opens a Fila or iGhostVT URL or queries one, and the package depends on
+	@# neither. Attribution in a comment names no URL and passes.
+	@python3 "$(RETIRED_APPS_CHECK)" "$(ROOT_DIR)"
 	@for extension in $(DEV_EXTENSIONS); do \
 		test -f "$(ROOT_DIR)/Extensions/Development/$$extension/manifest.json" \
 			|| { echo "error: control recommends $$extension, which Extensions/Development does not have" >&2; exit 66; }; \
@@ -397,9 +413,16 @@ check:
 	@# One saved entry that does not decode never takes the others with it,
 	@# nor turns into an empty state the next save writes (issue #33).
 	@"$(PERSISTED_READS_CHECK)" "$(ROOT_DIR)"
+	@# The system prompt is edited in Prompts/*.md; the Swift it compiles to
+	@# is generated (CI regenerates it first, sync-prompts.sh), never by hand.
+	@"$(PROMPTS_EMBEDDER)" --check
 	@# Data through an @objc dynamic thunk stays in the autorelease pool on
 	@# older iOS: unpacking a toolchain reached 5.5 GB there, and none here.
 	@"$(OBJC_DATA_CHECK)" "$(ROOT_DIR)"
+	@# A conversation reaches the page and the sidebar's highlight through one
+	@# call (`open(_:picked:)`): a second way in moved the highlight and left
+	@# the page on the previous conversation.
+	@"$(CHAT_PAIRING_CHECK)" "$(ROOT_DIR)"
 
 # The Mac half of "where things get tested": what can run without a device.
 # RoothideRoot against libroothide's own name rule, ExecutableWatch against a
@@ -424,6 +447,9 @@ check:
 # module maps; passing those too redefines every C module, so they are left
 # out.
 harness:
+	@bash "$(ROOT_DIR)/Scripts/test-application-install.sh"
+	@bash "$(ROOT_DIR)/Scripts/test-file-browser.sh"
+	@bash "$(ROOT_DIR)/Tests/TerminalUI/run.sh"
 	@python3 -I -B "$(ROOT_DIR)/Tests/ToolchainAudit/test_inventory.py"
 	@harness_dir="$$(mktemp -d /private/tmp/apelin-harness.XXXXXX)"; \
 	trap 'rm -rf -- "$${harness_dir:?}"' EXIT; \
@@ -452,6 +478,11 @@ harness:
 		"$(ROOT_DIR)/Tests/ComposerDrop/main.swift" \
 		-o "$$harness_dir/composer-drop" && \
 	"$$harness_dir/composer-drop" && \
+	xcrun --sdk macosx swiftc -swift-version 5 \
+		"$(ROOT_DIR)/Apelin/Interface/Chats/Composer/Input/ComposerTips.swift" \
+		"$(ROOT_DIR)/Tests/ComposerTips/main.swift" \
+		-o "$$harness_dir/composer-tips" && \
+		"$$harness_dir/composer-tips" && \
 	xcrun --sdk macosx swiftc -swift-version 5 \
 		"$(ROOT_DIR)/Apelin/Interface/Settings/Logs/JournalFiles.swift" \
 		"$(ROOT_DIR)/Apelin/Interface/Settings/Logs/JournalLines.swift" \
@@ -531,6 +562,17 @@ harness:
 			|| { echo "error: $${worker#$(ROOT_DIR)/} does not typecheck for macOS" >&2; exit 1; }; \
 	done && echo "ok: the workers typecheck for macOS"
 
+# The loop's compile mode. Release builds whole-module: one edited Swift file
+# recompiles the app's every file, a minute at a time. INCREMENTAL=1 asks
+# xcodebuild for per-file compilation instead, still in Release and still
+# against the dependencies already built there, so a change rewrites only what
+# it touched — the fast loop while working on the app:
+#
+#   make vphone-app INCREMENTAL=1
+ifeq ($(INCREMENTAL),1)
+SWIFT_COMPILATION_MODE_SETTING = SWIFT_COMPILATION_MODE=incremental
+endif
+
 # The iPhoneOS build every package is made from, and the app's inner loop.
 IOS_BUILD = XCBUILD_LABEL=build-ios $(XCODEBUILD) \
 	-configuration "$(CONFIGURATION)" \
@@ -538,19 +580,32 @@ IOS_BUILD = XCBUILD_LABEL=build-ios $(XCODEBUILD) \
 	ARCHS=arm64 \
 	ONLY_ACTIVE_ARCH=YES \
 	ENABLE_DEBUG_DYLIB=NO \
+	$(SWIFT_COMPILATION_MODE_SETTING) \
+	$(if $(filter 1,$(FAST)),COMPILER_INDEX_STORE_ENABLE=NO) \
 	build
 
-ifeq ($(SKIP_HARNESS),1)
+# FAST=1 is the local loop with every gate and test taken out: the same build
+# and the same packager, and nothing else. The checklist, the greps and the
+# catalog gate stay commit-time work — CI runs `check` and `harness` on every
+# commit, and a release ships what CI built, never a second local build.
+ifeq ($(FAST),1)
+build: sdk-tier
+else ifeq ($(SKIP_HARNESS),1)
 build: sdk-tier check
 else
 build: sdk-tier check harness
 endif
 	$(IOS_BUILD)
+ifeq ($(FAST),1)
+	@# No catalog gate either: a string added mid-edit may not be in the
+	@# catalog yet, and that is a question for the commit, not the loop.
+else
 	@# xcodebuild never merges what the compiler extracted into a catalog, so a
 	@# new string is only there if someone put it there.
 	@"$(CATALOG_KEYS_CHECK)" \
 		"$(ROOT_DIR)/Apelin/Resources/Localizable.xcstrings" "$(TARGET_INTERMEDIATES)/Apelin.build" \
 		"$(ROOT_DIR)/Widgets/Extension/Resources/Localizable.xcstrings" "$(TARGET_INTERMEDIATES)/ApelinWidgets.build"
+endif
 
 # The packaging half of `deb`, without a build: CI and deb-all package one
 # build twice through it.
@@ -577,6 +632,18 @@ _package:
 
 deb: build
 	@$(MAKE) --no-print-directory _package FLAVOR="$(FLAVOR)" BUILD_NUMBER="$(BUILD_NUMBER)"
+
+# The fastest way from a source change to an installable package: build and
+# package with FAST=1, nothing else. `make vphone FAST=1` is the same straight
+# onto the vphone. Do not tag what this produces — CI builds and verifies what
+# a release ships.
+# The loop: the app built with per-file incremental Swift and put over the one
+# installed on the vphone. The same as `make vphone-app INCREMENTAL=1`, and the
+# one command to remember while working on the app. A package still takes
+# `make vphone FAST=1`, which skips the gates the same way and ships the daemon
+# and the workers with it.
+fast:
+	@$(MAKE) --no-print-directory vphone-app INCREMENTAL=1
 
 deb-roothide:
 	@$(MAKE) --no-print-directory FLAVOR=roothide deb

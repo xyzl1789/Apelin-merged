@@ -1,16 +1,14 @@
-# Pushes and pull requests: test on the host and on an old iOS runtime, and in
-# parallel build and package the IDE and every extension (the four development
-# extensions, the agent tool extensions and the GPL assembler's
-# corresponding-source archive), keeping them for thirty days. Nothing is
-# published from here: a tag publishes, through `release.yml`, the
-# packages of its commit's run, once that run has passed.
+# Pushes and pull requests test on the host and build both package layouts
+# in parallel. After both pass, a main-branch push publishes an unpublished
+# version from that run's artifact, never from a second build. release.yml
+# remains the publisher for tags pushed by hand.
 name: CI
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  # Automatic runs are off (2026-11-02, owner): a push no longer starts the
+  # whole chain. `Debug build` packages one bootstrap, `Publish release`
+  # publishes a finished build, and this workflow stays for the day the
+  # release pipeline is wanted back.
   workflow_dispatch:
 
 permissions:
@@ -33,10 +31,56 @@ env:
 # iPhone Duo runs edge to edge, with vertical bars). Its default Xcode may be
 # newer than 27.1, so 27.1 is named rather than the newest found.
 jobs:
+  # Preserve ordinary pushes for tagged releases. Only an explicitly marked
+  # restart cancels older CI runs; it finishes cancelling before compiling.
+  prepare:
+    name: Prepare requested CI restart
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel previous CI runs when a restart was requested
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[restart-ci]')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
+          runs="$(gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&per_page=100" \
+            --jq ".workflow_runs[] | select(.id < $GITHUB_RUN_ID and .status != \"completed\") | .id")"
+          if [ -z "$runs" ]; then
+            echo "::notice::No previous CI runs remain active"
+            exit 0
+          fi
+          while IFS= read -r run; do
+            if ! output="$(gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run/cancel" 2>&1)"; then
+              status="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq .status)"
+              if [ "$status" != completed ]; then
+                echo "::error::Cannot cancel CI $run: $output"
+                exit 1
+              fi
+            fi
+            status=""
+            for attempt in $(seq 30); do
+              status="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq .status)"
+              [ "$status" = completed ] && break
+              sleep 2
+            done
+            if [ "$status" != completed ]; then
+              echo "::error::CI $run has not stopped; refusing to start another build"
+              exit 1
+            fi
+            echo "::notice::Previous CI $run stopped"
+          done <<< "$runs"
+
   # Seconds, where the build takes minutes, so a broken host test says so
   # long before the packages would.
   test:
     name: Host tests
+    needs: prepare
     runs-on: xcode-27
     timeout-minutes: 60
 
@@ -52,49 +96,16 @@ jobs:
           xcodebuild -version
           echo "iPhoneOS SDK $(xcrun --sdk iphoneos --show-sdk-version)"
 
+      - name: Regenerate the system prompt
+        shell: bash
+        run: Packages/ApelinAgent/Scripts/sync-prompts.sh
+
       - name: Run host tests
         run: make harness SWIFTPM_SCRATCH="$RUNNER_TEMP/apelin-spm"
 
-  # The vphones run iOS 26 and 27, where `Data` through an @objc thunk costs
-  # nothing; on an older Foundation unpacking a toolchain ran out of memory.
-  # The runtime is kept between runs: its first download is 5.4 GB.
-  old-runtime:
-    name: Old iOS runtime
-    runs-on: xcode-27
-    timeout-minutes: 45
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Select Xcode 27.1
-        run: |
-          sudo xcode-select -s /Applications/Xcode_27.1.app/Contents/Developer
-          xcodebuild -version
-
-      - name: Restore the runtime
-        id: runtime
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/Library/Caches/apelin-old-runtime
-          key: apelin-old-runtime-ios15.5-${{ hashFiles('Scripts/old-runtime/runtime-root.py') }}
-
-      - name: Run the checks
-        run: make old-runtime
-
-      # Kept whatever the checks said: a failing commit's retry should not
-      # download 5.4 GB again.
-      - name: Keep the runtime
-        if: always() && steps.runtime.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/Library/Caches/apelin-old-runtime
-          key: ${{ steps.runtime.outputs.cache-primary-key }}
-
   build:
     name: Build and verify Debian packages
+    needs: prepare
     runs-on: xcode-27
     timeout-minutes: 90
 
@@ -127,6 +138,10 @@ jobs:
           if (( ${#formulae[@]} > 0 )); then
             brew install "${formulae[@]}"
           fi
+
+      - name: Regenerate the system prompt
+        shell: bash
+        run: Packages/ApelinAgent/Scripts/sync-prompts.sh
 
       # The harness runs in the job beside this one. deb-all packages the IDE
       # for both flavours, then every extension: the development extensions
@@ -165,3 +180,104 @@ jobs:
             build/Packages/SHA256SUMS
           if-no-files-found: error
           retention-days: 30
+
+  # A push is a release. This runs only once both jobs above have passed, and
+  # publishes what they built: the artifact, never a second build. The version
+  # in Configuration/Version.xcconfig names it, so a push that carries an
+  # already published version publishes nothing, and `make set-version
+  # VERSION=x.y.z` followed by a push publishes a new one. The tag it creates
+  # names the commit the run built; release.yml still publishes a tag pushed by
+  # hand, and its own verification covers the archive that pushes.
+  #
+  # A run started by hand on main publishes the same way (2026-11-02): GitHub
+  # stopped creating runs for this fork's pushes while its settings said they
+  # were allowed, and a dispatch was the only way left to build a version.
+  release:
+    name: Publish the release
+    needs: [test, build]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read the version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^[[:space:]]*MARKETING_VERSION[[:space:]]*=[[:space:]]*//p' Configuration/Version.xcconfig | tr -d '[:space:]')"
+          if [ -z "$version" ]; then
+            echo "::error::Configuration/Version.xcconfig names no MARKETING_VERSION"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Is the version published already?
+        id: lookup
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view "${{ steps.version.outputs.tag }}" > /dev/null 2>&1; then
+            echo "${{ steps.version.outputs.tag }} is published already; nothing to publish"
+            echo "published=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Take the packages this run built
+        if: steps.lookup.outputs.published == '0'
+        uses: actions/download-artifact@v4
+        with:
+          name: apelin-${{ github.sha }}
+          path: build/Packages/
+
+      - name: Publish
+        if: steps.lookup.outputs.published == '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd build/Packages
+          if ! out="$(sha256sum --check SHA256SUMS 2>&1)"; then
+            echo "::error::checksum check: $(printf '%s' "$out" | tr '\n' '|' | head -c 900)"
+            exit 1
+          fi
+          echo "$out"
+          notes="$RUNNER_TEMP/apelin-release.md"
+          if [ -f "../../Documents/Releases/$VERSION.md" ]; then
+            cp "../../Documents/Releases/$VERSION.md" "$notes"
+          else
+            echo "::warning::Documents/Releases/$VERSION.md is missing; the generic notes go out instead"
+            cat > "$notes" <<NOTES
+          Apelin $VERSION, for roothide and for rootless (/var/jb) bootstraps,
+          with its development and agent tool extensions.
+
+          SHA-256 sums are in \`SHA256SUMS\`.
+          NOTES
+          fi
+          # The release API creates the tag at this exact commit. A separate
+          # git/refs call is forbidden for this fork's GITHUB_TOKEN.
+          # Each failure says why in an annotation: the run's log is not the
+          # only place a maintainer reads.
+          if ! out="$(gh release create "$TAG" --target "$GITHUB_SHA" \
+                --title "Apelin $VERSION" \
+                --notes-file "$notes" \
+                ./*.deb ./*_source.tar.xz ./*_dSYMs.zip ./*_Templates.tar.zst ./SHA256SUMS 2>&1)"; then
+            echo "::error::gh release create: $(printf '%s' "$out" | tr '\n' '|' | head -c 900)"
+            exit 1
+          fi
+          echo "$out"

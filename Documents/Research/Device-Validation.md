@@ -198,6 +198,23 @@ console now goes on after a restart only past a successful respring.
 
 ## Still to run on the owner's devices
 
+- [ ] The terminal session list and the file browser's breadcrumb (2026-11-14,
+      AGENTS.md ▸ Open Terminal and Browse Files; only model and unit checks
+      have run — `Tests/TerminalUI` and `Tests/FileBrowser`, and the
+      catalog's format and stale-key checks — no screen of either has been
+      seen). On the iPhone and on an iPad or vphone: Terminal opens its
+      sessions as a sheet or a popover; a long press or a left swipe on an
+      ended row deletes it and removes only the record, its folder and saved
+      output still there; deleting the row on screen selects its neighbour,
+      and deleting the last shows "No Terminal Open" with New Terminal and
+      starts no shell. In Browse Files, each crumb opens its folder, the
+      strip scrolls sideways, reloading the same folder keeps the breadcrumb
+      strip's horizontal position, and neither changes the project the agent
+      works in. In either page's terminal, the prompt is the folder and a
+      `$` (the shell's login profile puts the whole path there), while a
+      shell opened from anywhere else keeps the prompt it had; a user's own
+      `PS1` still wins.
+
 - [ ] Trae, Trae CN and Raccoon with an account (2026-11-11, PR #40,
       AGENTS.md ▸ Agent sign-in; the record below has what ran without
       one). JanXiao signed in to all three and chatted on a device before
@@ -899,6 +916,16 @@ console now goes on after a restart only past a successful respring.
       Still to run: opening the conversation removes its banner; a fourth
       call in one turn refused by the tool and the host; a reopened
       session's replay posts nothing.
+- [ ] The agent's apelin_question_ask (2026-11-05): the card in the message
+      box's place with the question, each option and Other…; one tap
+      answers a single-choice question and the turn goes on with it;
+      several checks then Send for a multiple one, Send disabled until one
+      is checked; Other… with typed text, and with nothing typed sending
+      nothing; Skip; the "Answer Needed" banner with the question while
+      Apelin is in the background, its tap opening the conversation; the
+      card still there after Apelin is closed and opened again; Stop while
+      it waits; VoiceOver reading each option as one button, checked ones
+      selected; Arabic laying the checks out on the right.
 - [ ] The renamed tools (2026-10-24): a conversation recorded on build 37,
       before the rename, took a message through an OpenAI-compatible key
       with no provider error, and its old calls keep their titles, on

@@ -1,3 +1,4 @@
+import ApelinCore
 import Foundation
 
 /// `~/Documents/wiki.qaq.apelin` and the folders the agent uses inside it.
@@ -49,6 +50,12 @@ public struct ApelinDataRoot: Sendable, Hashable {
     /// Temporary conversations' folders, which belong to no project.
     public var temporary: URL {
         url.appendingPathComponent("Temporary")
+    }
+
+    /// `ModelData/models.json`: the model data the app updates and the agent
+    /// reads.
+    public var modelDataFile: URL {
+        ModelDataSnapshot.url(in: url)
     }
 
     public func project(named name: ProjectName) -> URL {

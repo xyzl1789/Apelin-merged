@@ -1,4 +1,4 @@
-import struct ApelinProtocol.GitSquashResponse
+import ApelinProtocol
 import Foundation
 
 /// Everything the agent asks of the session host.
@@ -64,6 +64,24 @@ public protocol AgentHostBackend: Sendable {
     func gitCommit(_ request: GitCommitToolRequest) async throws -> GitCommitToolResponse
     /// A repository on main for a project that has none.
     func gitInit(_ request: GitInitToolRequest) async throws -> GitInitToolResponse
+    func gitBranches(_ request: GitBranchesToolRequest) async throws -> GitBranchesResponse
+    func gitBranchCreate(_ request: GitBranchCreateToolRequest) async throws -> GitBranchCreateResponse
+    func gitBranchCheckout(_ request: GitBranchCheckoutToolRequest) async throws -> GitBranchCheckoutResponse
+    /// A local branch, or a branch on a remote, deleted.
+    func gitBranchDelete(_ request: GitBranchDeleteToolRequest) async throws -> GitBranchDeleteResponse
+    func gitBranchRename(_ request: GitBranchRenameToolRequest) async throws -> GitBranchRenameResponse
+    func gitMerge(_ request: GitMergeToolRequest) async throws -> GitMergeResponse
+    func gitMergeAbort(_ request: GitMergeAbortToolRequest) async throws -> GitMergeAbortResponse
+    func gitLog(_ request: GitLogToolRequest) async throws -> GitLogResponse
+    func gitCommitDetail(_ request: GitCommitDetailToolRequest) async throws -> GitCommitDetailResponse
+    /// A tag made, or deleted.
+    func gitTag(_ request: GitTagToolRequest) async throws -> GitTagToolResponse
+    /// The project's stashes: listed, saved, applied, dropped or cleared.
+    func gitStash(_ request: GitStashToolRequest) async throws -> GitStashToolResponse
+    /// Paths taken back from the index or HEAD, discarding their changes.
+    func gitRestore(_ request: GitRestoreToolRequest) async throws -> GitRestoreResponse
+    /// Untracked paths deleted.
+    func gitClean(_ request: GitCleanToolRequest) async throws -> GitDeletePathsResponse
     /// The remote's branches into remote-tracking refs, read to the end.
     func gitFetch(_ request: GitRemoteToolRequest) async throws -> GitTaskToolResponse
     /// Fetch, then fast-forward only, read to the end.
@@ -159,6 +177,18 @@ public protocol AgentHostBackend: Sendable {
     /// Builds' packages published to the linked package repository as they
     /// were built, read to the end; the host checks they were approved.
     func publishPackages(_ request: PackagePublishToolRequest) async throws -> PackagePublishToolResponse
+    /// Saves the project's work tree before message `messageID`'s run
+    /// (`gitCheckpointSave`), for the reader's Checkpoint & Rewind. Answers
+    /// whether it was saved: not for a project without a repository, nor
+    /// for a work tree too large to save.
+    func gitCheckpointSave(messageID: UUID) async throws -> Bool
+}
+
+/// A backend with no repository behind it saves no checkpoint.
+public extension AgentHostBackend {
+    func gitCheckpointSave(messageID _: UUID) async throws -> Bool {
+        false
+    }
 }
 
 /// A backend without the device's toolchains, SDKs, installations or other

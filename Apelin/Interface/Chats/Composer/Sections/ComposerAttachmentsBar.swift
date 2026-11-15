@@ -95,7 +95,29 @@ private final class AttachmentCell: UICollectionViewCell {
         for view in [imageView, nameLabel, textLabel, deleteButton] {
             contentView.addSubview(view)
         }
-        deleteButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        // A glass disc, as the system draws one on iOS 26: the mark sits on a
+        // photograph the app did not choose, so it needs a ground of its own
+        // that the photograph can be read through. Before 26 the same shape is
+        // a thin blur under a white glyph, which is what that photograph
+        // needed there.
+        var configuration: UIButton.Configuration
+        if #available(iOS 26, *) {
+            configuration = .glass()
+            configuration.baseForegroundColor = .label
+        } else {
+            configuration = .plain()
+            configuration.baseForegroundColor = .white
+            let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+            blur.isUserInteractionEnabled = false
+            configuration.background.customView = blur
+        }
+        configuration.image = UIImage(
+            systemName: "xmark",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .bold),
+        )
+        configuration.cornerStyle = .capsule
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 6, bottom: 6, trailing: 6)
+        deleteButton.configuration = configuration
         deleteButton.accessibilityLabel = String(localized: "Remove Attachment")
         deleteButton.addAction(UIAction { [weak self] _ in self?.remove?() }, for: .touchUpInside)
         isAccessibilityElement = true
@@ -136,8 +158,8 @@ private final class AttachmentCell: UICollectionViewCell {
         super.layoutSubviews()
         imageView.frame = contentView.bounds
         // the remove button at the trailing corner, the name before it
-        deleteButton.frame = contentView.directionalFrame(CGRect(x: bounds.width - 24, y: 4, width: 20, height: 20))
-        nameLabel.frame = contentView.directionalFrame(CGRect(x: 4, y: 4, width: bounds.width - 32, height: 20))
+        deleteButton.frame = contentView.directionalFrame(CGRect(x: bounds.width - 30, y: 4, width: 26, height: 26))
+        nameLabel.frame = contentView.directionalFrame(CGRect(x: 4, y: 6, width: bounds.width - 38, height: 20))
         textLabel.frame = CGRect(x: 4, y: 28, width: bounds.width - 8, height: bounds.height - 32)
     }
 }

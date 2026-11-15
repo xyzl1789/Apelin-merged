@@ -38,6 +38,10 @@ final class RootInterfaceController: UIViewController {
         page.onDelete = { [weak self, weak page] id in
             self?.sidebar.delete(id, from: .moreMenu, presenter: page)
         }
+        page.onOpenChat = { [weak self] summary in
+            // `open` moves the sidebar's highlight with the page
+            self?.open(summary, picked: true)
+        }
         return page
     }()
 
@@ -98,6 +102,9 @@ final class RootInterfaceController: UIViewController {
             sidebar.refresh()
             restoreChatIfReady()
             chatController.refreshRuntime()
+            // after everything above has read the new state: the page leaves a
+            // conversation the runtime no longer has
+            leaveGoneChat()
             ChatWidgetPublisher.shared.chatsChanged()
         }
         ChatWidgetPublisher.shared.attach(chatRuntime)
@@ -131,15 +138,38 @@ final class RootInterfaceController: UIViewController {
             guard Self.isImport(link) else { return }
         }
         guard !restoredChat else { return }
-        if let saved = Self.savedChatID, let summary = chatRuntime.records[saved]?.summary {
+        // What the reader chose in Settings ▸ Chat decides between the
+        // conversation they were last in and a new one.
+        if Preferences.launch == .newChat {
+            guard sidebar.hasLoadedProjects else { return }
             restoredChat = true
-            sidebar.select(summary)
+            sidebar.startNewChat(picked: false)
+            return
+        }
+        if let saved = Self.savedChatID, let summary = chatRuntime.summary(saved) {
+            restore(summary)
         } else if sidebar.hasLoadedProjects {
-            restoredChat = true
-            if isDrawer || traitCollection.userInterfaceIdiom == .phone || opensChatAfterWelcome {
-                sidebar.startNewChat(picked: false)
+            // Nothing was open last, or its record is gone: the conversation
+            // touched most recently is where the reader was.
+            if let recent = chatRuntime.records.values
+                .map(\.summary)
+                .max(by: { $0.lastInteraction < $1.lastInteraction })
+            {
+                restore(recent)
+            } else {
+                restoredChat = true
+                if isDrawer || traitCollection.userInterfaceIdiom == .phone || opensChatAfterWelcome {
+                    sidebar.startNewChat(picked: false)
+                }
             }
         }
+    }
+
+    /// The conversation at launch: `open` puts it on the page and moves the
+    /// sidebar's highlight with it, so neither is shown without the other.
+    private func restore(_ summary: ChatSummary) {
+        restoredChat = true
+        open(summary, picked: false)
     }
 
     /// The conversation shown last, to show again at launch.
@@ -221,6 +251,10 @@ final class RootInterfaceController: UIViewController {
     /// be written; space still short is said again only after a save worked.
     @objc private dynamic func enteredForeground() {
         chatRuntime.retryUnsaved()
+        // A run whose end the app never read — the app was killed in the
+        // middle of it, or the host restarted — ends here rather than only
+        // at the next launch.
+        Task { await chatRuntime.reconcileRuns() }
         StorageWarning.checkFreeSpace(from: self)
     }
 
@@ -258,7 +292,7 @@ final class RootInterfaceController: UIViewController {
             if let project {
                 restoredChat = true
                 sidebar.openCreatedProject(project)
-                // only an import link held through the welcome is left
+                // a link held through the welcome opens now, if there was one
                 restoreChatIfReady()
             } else {
                 opensChatAfterWelcome = true
@@ -426,13 +460,18 @@ final class RootInterfaceController: UIViewController {
 
     // MARK: - The detail column
 
-    /// The picked conversation on the one conversation page. With none
-    /// left picked, beside the sidebar the column shows the icon, and behind
-    /// a drawer a new conversation. The page is put back at the root only
-    /// when something else is there; otherwise it takes the conversation
-    /// where it is. Only a conversation the reader picked puts the drawer
-    /// away. What is shown is what the reader looks at, unless a drawer is
-    /// out over it (`syncViewedChat`).
+    /// The picked conversation on the one conversation page, and the sidebar
+    /// highlighting it: the two move together, so what the reader reads is
+    /// what the sidebar names. With none left picked, beside the sidebar the
+    /// column shows the icon, and behind a drawer a new conversation. The page
+    /// is put back at the root only when something else is there; otherwise it
+    /// takes the conversation where it is. Only a conversation the reader
+    /// picked puts the drawer away. What is shown is what the reader looks at,
+    /// unless a drawer is out over it (`syncViewedChat`).
+    ///
+    /// Every way to a conversation goes through here — a row, New Chat, the
+    /// launch, a fork, an `apelin://` link — so the page and the highlight
+    /// cannot end up naming different conversations.
     private func open(_ chat: ChatSummary?, picked: Bool) {
         defer { syncViewedChat() }
         guard let chat else {
@@ -443,6 +482,7 @@ final class RootInterfaceController: UIViewController {
             }
             return
         }
+        sidebar.highlight(chat)
         UserDefaults.standard.set(chat.id.uuidString, forKey: "chat.selectedID")
         chatController.use(chat)
         if navigator.viewControllers.first !== chatController {
@@ -455,22 +495,47 @@ final class RootInterfaceController: UIViewController {
         }
     }
 
+    /// The conversation on the page has gone from the runtime — its record
+    /// taken with its project's folder (`forgetDeletedProjects`), or a delete
+    /// that nothing picked the next one after. It is left the way a delete
+    /// leaves it: the sidebar moves to the newest conversation its workspace
+    /// still has and the page follows it (`open(_:picked:)`), or the column
+    /// goes back to the icon, so a conversation that is no longer there is
+    /// never left on screen as if it were. After this change has reached
+    /// everything else — the sidebar and the page have just read it — and
+    /// only while the page still shows the one that went.
+    private func leaveGoneChat() {
+        guard let shown = chatController.chat, chatRuntime.summary(shown.id) == nil else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  chatController.chat?.id == shown.id,
+                  chatRuntime.summary(shown.id) == nil
+            else { return }
+            sidebar.recovered(from: shown.id)
+            guard chatController.chat?.id == shown.id else { return }
+            // nothing highlighted to move: the page goes to the conversation
+            // the sidebar does name, or leaves the column with none
+            open(sidebar.selectedChat, picked: false)
+        }
+    }
+
     /// Opens an `apelin://` link: its conversation, in its project, as if
-    /// picked, which on an iPhone puts the drawer away. One that names
-    /// nothing leaves the page as it was and says so. A link before the
-    /// conversations are read waits for them, and the launch shows it
-    /// instead of the conversation saved; during the welcome it is dropped.
-    /// A prompt goes into a new General Chat's composer with the keyboard
-    /// up, and waits there for the reader's Send. An import is a sheet over
-    /// the page (`RepositoryImportFlow`); one that comes during the welcome
-    /// waits for it to finish rather than being dropped, since a tap on
-    /// Open in Apelin is what opened the app.
+    /// picked, which on an iPhone puts the drawer away. It is opened the one
+    /// way a conversation is (`open(_:picked:)`), so the page leaves the one
+    /// it showed rather than the sidebar's highlight moving alone. One that
+    /// names nothing leaves the page as it was and says so. A link before the
+    /// conversations are read waits for them, and the launch shows it instead
+    /// of the conversation saved; one that comes during the welcome waits for
+    /// it to finish too — a link tapped in a message, a notification or a
+    /// widget is what brought the reader here, so dropping it silently leaves
+    /// them on a conversation they did not ask for. A prompt goes into a new
+    /// General Chat's composer with the keyboard up, and waits there for the
+    /// reader's Send. An import is a sheet over the page
+    /// (`RepositoryImportFlow`).
     func open(_ link: ApelinLink) {
         guard link != .app else { return }
         guard !WelcomeFlow.shouldPresent else {
-            if Self.isImport(link) {
-                pendingLink = link
-            }
+            pendingLink = link
             return
         }
         guard chatRuntime.isLoaded else {
@@ -494,15 +559,15 @@ final class RootInterfaceController: UIViewController {
             restoredChat = true
             switch destination {
             case let .chat(summary):
-                sidebar.select(summary)
-                setDrawerOpen(false)
+                open(summary, picked: true)
             case let .newChat(project, draft):
                 let summary = chatRuntime.newChat(project: project, preferring: nil)
                 if let draft {
                     chatRuntime.saveDraft(ComposerDraft(text: draft), for: summary.id)
                 }
-                sidebar.select(summary)
-                setDrawerOpen(false)
+                // the page first: the draft and the keyboard are the
+                // conversation this link names, not the one it replaces
+                open(summary, picked: true)
                 guard draft != nil else { return }
                 // the conversation may have been on the page already, untouched
                 chatController.restoreDraft(for: summary.id)
@@ -573,19 +638,67 @@ final class RootInterfaceController: UIViewController {
             )
         }
         if isRoot, !isSidebarShown {
-            // the right bar's items run from the trailing edge in
-            trailing.insert(
-                RootBarItem(
-                    image: UIImage(systemName: "square.and.pencil"),
-                    primaryAction: UIAction { [weak self] _ in self?.sidebar.startNewChat() },
-                ).then {
-                    $0.accessibilityLabel = String(localized: "New Chat")
-                },
-                at: 0,
-            )
+            // Read from the trailing edge in: the page's own menu keeps the
+            // edge, and the two shortcuts sit inside it — Git first, then
+            // New Chat — so the bar reads, left to right, New Chat, Git,
+            // and the menu.
+            let git = UIAction { [weak self] _ in self?.openGit() }
+            let newChat = UIAction { [weak self] _ in self?.sidebar.startNewChat() }
+            if #available(iOS 26.0, *) {
+                // Liquid Glass puts the bar's own controls in one capsule,
+                // as close as they should be.
+                trailing.append(
+                    RootBarItem(
+                        image: UIImage(systemName: "arrow.triangle.branch"),
+                        primaryAction: git,
+                    ).then {
+                        $0.accessibilityLabel = String(localized: "Git")
+                    },
+                )
+                trailing.append(
+                    RootBarItem(
+                        image: UIImage(systemName: "square.and.pencil"),
+                        primaryAction: newChat,
+                    ).then {
+                        $0.accessibilityLabel = String(localized: "New Chat")
+                    },
+                )
+            } else {
+                // Before it, the bar sets a gap of its own between items, and
+                // three of them took the room the conversation's name needs:
+                // the two shortcuts share one item and sit a couple of
+                // points apart in it.
+                trailing.append(RootBarItem(customView: rootToolGroup(git: git, newChat: newChat)))
+            }
         }
         item.leftBarButtonItems = leading.isEmpty ? nil : leading
         item.rightBarButtonItems = trailing.isEmpty ? nil : trailing
+    }
+
+    // MARK: - Root tools
+
+    /// The root's two shortcuts as one bar item, their glyphs a couple of
+    /// points apart: the gap the bar sets between items of its own is wider
+    /// than the room the conversation's name beside them can spare.
+    private func rootToolGroup(git: UIAction, newChat: UIAction) -> UIView {
+        RootToolGroup(tools: [
+            (symbol: "arrow.triangle.branch", label: String(localized: "Git"), action: git),
+            (symbol: "square.and.pencil", label: String(localized: "New Chat"), action: newChat),
+        ])
+    }
+
+    /// The visual Git page for the conversation's project, full screen —
+    /// it is a place to work in, not a card. A conversation with no project
+    /// (a temporary one) has no repository to show.
+    private func openGit() {
+        guard let project = chatController.chat?.projectName else {
+            presentNotice(
+                title: "No Project",
+                message: String(localized: "This conversation is not in a project, so it has no repository."),
+            )
+            return
+        }
+        presentPageFullScreen(GitController(projectName: project))
     }
 
     override var childForStatusBarStyle: UIViewController? {
@@ -645,6 +758,53 @@ extension RootInterfaceController: UIGestureRecognizerDelegate {
 
 /// The bar items `RootInterfaceController` puts on a page and takes back.
 private final class RootBarItem: UIBarButtonItem {}
+
+/// The root's own shortcuts on the chat page, in one bar item: the bar lays
+/// separate items out with a gap of its own, and three of them took the room
+/// the conversation's name needs. Two glyphs share a frame this close
+/// instead, each still a button of its own to a reader and to VoiceOver.
+private final class RootToolGroup: UIView {
+    /// One button's square, and the points between two of them.
+    private static let buttonSize: CGFloat = 34
+    private static let gap: CGFloat = 2
+
+    init(tools: [(symbol: String, label: String, action: UIAction)]) {
+        super.init(frame: CGRect(origin: .zero, size: Self.size(for: tools.count)))
+        for (index, tool) in tools.enumerated() {
+            var configuration = UIButton.Configuration.plain()
+            configuration.image = UIImage(systemName: tool.symbol)
+            configuration.contentInsets = .zero
+            let button = UIButton(configuration: configuration)
+            button.frame = CGRect(
+                x: CGFloat(index) * (Self.buttonSize + Self.gap),
+                y: 0,
+                width: Self.buttonSize,
+                height: Self.buttonSize,
+            )
+            button.autoresizingMask = [.flexibleTopMargin, .flexibleBottomMargin]
+            button.accessibilityLabel = tool.label
+            button.addAction(tool.action, for: .touchUpInside)
+            addSubview(button)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("Use init(tools:)")
+    }
+
+    override var intrinsicContentSize: CGSize {
+        Self.size(for: subviews.count)
+    }
+
+    private static func size(for count: Int) -> CGSize {
+        guard count > 0 else { return .zero }
+        return CGSize(
+            width: CGFloat(count) * buttonSize + CGFloat(count - 1) * gap,
+            height: buttonSize,
+        )
+    }
+}
 
 private extension UIScrollView {
     /// Whether a pan to the right (or left) would scroll this sideways: to

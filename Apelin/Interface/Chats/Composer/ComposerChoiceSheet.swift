@@ -1,0 +1,383 @@
+import ApelinProtocol
+import SnapKit
+import UIKit
+
+/// A picker's choices in a sheet of the system's own: on iOS 26 its Liquid
+/// Glass shows through, the page's background being clear, and before that the
+/// grouped background, as the message's sheet does. Every picker opens at one
+/// height (owner, 2026-11-06) and the choices scroll inside it, so a provider
+/// listing twenty models opens the card a provider listing two does, and the
+/// row above the keyboard does not jump from one picker to the next.
+///
+/// A choice closes the sheet, then runs. Its rows are the composer's own: a
+/// label over its detail with the circle that says which one is set, on the
+/// fill the question's options use, so choosing a model reads like answering
+/// a question.
+final class ComposerChoiceSheet: UIViewController {
+    struct Choice {
+        var title: String
+        var subtitle: String?
+        /// The one the row is set to, marked with a filled circle and spoken
+        /// as selected.
+        var isSelected: Bool
+        /// Present a test without choosing the model or closing this picker.
+        var modelTest: AgentModelTestRequest? = nil
+        var handler: () -> Void
+    }
+
+    /// Choices under a heading of their own, such as one provider's models.
+    struct Group {
+        var title: String?
+        var choices: [Choice]
+    }
+
+    /// The height the connectivity report opens at, on a phone and on a card
+    /// alike. It is a grouped page of its own — the verdict, the stages it
+    /// stopped in the middle of, the reply and what was sent — so it stands
+    /// taller than the rows the picker itself draws.
+    static let height: CGFloat = 620
+
+    private let heading: String
+    private var groups: [Group]
+    @objc private dynamic var loading = false
+    @objc private dynamic var failure: String?
+    @objc dynamic var onRetry: (() -> Void)?
+    private let statusLabel = UILabel()
+    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let retryButton = UIButton(type: .system)
+    private let statusStack = UIStackView()
+    private let scrollView = UIScrollView()
+    private let stack = UIStackView()
+    /// Each row with the height it asks for: a row sizes itself to its text,
+    /// which needs the width it is given, and the stack asks before it has one.
+    private var rows: [(row: ChoiceRow, height: NSLayoutConstraint)] = []
+    private static let margin: CGFloat = 16
+
+    init(heading: String, groups: [Group]) {
+        self.heading = heading
+        self.groups = groups
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("Use init(heading:groups:)")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        if #available(iOS 26, *) {
+            view.backgroundColor = .clear
+        } else {
+            view.backgroundColor = .systemGroupedBackground
+        }
+
+        let titleLabel = UILabel()
+        titleLabel.text = heading
+        titleLabel.font = .preferredFont(forTextStyle: .headline)
+        titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.textColor = .label
+        titleLabel.numberOfLines = 0
+        titleLabel.accessibilityTraits = .header
+        view.addSubview(titleLabel)
+
+        stack.axis = .vertical
+        stack.spacing = 8
+        renderChoices()
+
+        scrollView.alwaysBounceVertical = false
+        view.addSubview(scrollView)
+        scrollView.addSubview(stack)
+        statusStack.axis = .vertical
+        statusStack.alignment = .center
+        statusStack.spacing = 8
+        statusLabel.font = .preferredFont(forTextStyle: .footnote)
+        statusLabel.adjustsFontForContentSizeCategory = true
+        statusLabel.textColor = .secondaryLabel
+        statusLabel.numberOfLines = 0
+        statusLabel.textAlignment = .center
+        retryButton.setTitle(String(localized: "Retry"), for: .normal)
+        retryButton.addAction(UIAction { [weak self] _ in self?.onRetry?() }, for: .touchUpInside)
+        for item in [spinner, statusLabel, retryButton] { statusStack.addArrangedSubview(item) }
+        view.addSubview(statusStack)
+        updateStatus()
+
+        titleLabel.snp.makeConstraints { make in
+            make.top.equalTo(view.safeAreaLayoutGuide).offset(Self.margin)
+            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(Self.margin)
+        }
+        statusStack.snp.makeConstraints { make in
+            make.top.equalTo(titleLabel.snp.bottom)
+            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(Self.margin)
+        }
+        scrollView.snp.makeConstraints { make in
+            make.top.equalTo(statusStack.snp.bottom).offset(12)
+            make.leading.trailing.bottom.equalTo(view.safeAreaLayoutGuide)
+        }
+        stack.snp.makeConstraints { make in
+            make.top.equalTo(scrollView.contentLayoutGuide)
+            make.bottom.equalTo(scrollView.contentLayoutGuide).offset(-Self.margin)
+            make.leading.trailing.equalTo(scrollView.frameLayoutGuide).inset(Self.margin)
+        }
+    }
+
+    /// Provisional rows stay read-only until their account and context window
+    /// have been checked. Updating this sheet never presents another one.
+    func update(groups: [Group], loading: Bool = false, failure: String? = nil) {
+        self.groups = groups
+        self.loading = loading
+        self.failure = failure
+        guard isViewLoaded else { return }
+        renderChoices()
+        updateStatus()
+        view.setNeedsLayout()
+    }
+
+    @objc private dynamic func updateStatus() {
+        statusLabel.text = failure ?? (loading ? String(localized: "Loading…") : nil)
+        statusLabel.isHidden = statusLabel.text == nil
+        retryButton.isHidden = failure == nil
+        if loading { spinner.startAnimating() } else { spinner.stopAnimating() }
+        spinner.isHidden = !loading
+    }
+
+    @objc private dynamic func renderChoices() {
+        for child in stack.arrangedSubviews {
+            stack.removeArrangedSubview(child)
+            child.removeFromSuperview()
+        }
+        rows.removeAll()
+        for group in groups {
+            // A heading stands closer to the choices it names than to the ones
+            // above it, so a provider's list reads as one block.
+            if let title = group.title, !title.isEmpty {
+                let label = UILabel()
+                label.text = title
+                label.font = .preferredFont(forTextStyle: .footnote)
+                label.adjustsFontForContentSizeCategory = true
+                label.textColor = .secondaryLabel
+                label.numberOfLines = 0
+                label.accessibilityTraits = .header
+                if let previous = stack.arrangedSubviews.last {
+                    stack.setCustomSpacing(16, after: previous)
+                }
+                stack.addArrangedSubview(label)
+                stack.setCustomSpacing(4, after: label)
+            }
+            for choice in group.choices {
+                let row = ChoiceRow(title: choice.title, detail: choice.subtitle, chosen: choice.isSelected)
+                row.isEnabled = !loading && failure == nil
+                if !row.isEnabled {
+                    row.alpha = 0.55
+                    row.accessibilityTraits.insert(.notEnabled)
+                }
+                if row.isEnabled, let request = choice.modelTest {
+                    row.configureTestAction { [weak self] in
+                        guard let self, presentedViewController == nil else { return }
+                        let report = SheetNavigationController(
+                            rootViewController: ModelConnectivityController(request: request),
+                        )
+                        // A page of this list rather than a place of its own:
+                        // a card over it, so the leading button or a pull down
+                        // goes back to the models rather than out of
+                        // everything.
+                        if view.window?.traitCollection.horizontalSizeClass == .compact {
+                            report.modalPresentationStyle = .pageSheet
+                            if let controller = report.sheetPresentationController {
+                                controller.detents = [.custom(identifier: .init("model-test")) { context in
+                                    min(context.maximumDetentValue, Self.height)
+                                }]
+                                controller.prefersGrabberVisible = true
+                                controller.prefersEdgeAttachedInCompactHeight = true
+                            }
+                        } else {
+                            report.modalPresentationStyle = .formSheet
+                            report.preferredContentSize = CGSize(width: 480, height: Self.height)
+                        }
+                        present(report, animated: true)
+                    }
+                }
+                let handler = choice.handler
+                row.addAction(UIAction { [weak self] _ in
+                    self?.dismiss(animated: true) { handler() }
+                }, for: .touchUpInside)
+                rows.append((row, fit(row)))
+                stack.addArrangedSubview(row)
+            }
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // The width a row is given is the scroll view's less the margins, and
+        // only the layout knows it.
+        let width = scrollView.bounds.width - Self.margin * 2
+        guard width > 0 else { return }
+        for entry in rows {
+            let height = ceil(entry.row.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
+            if abs(entry.height.constant - height) > 0.5 {
+                entry.height.constant = height
+            }
+        }
+    }
+
+    /// The height `row` is held to, which `viewDidLayoutSubviews` keeps up to
+    /// date: the stack asks for one before the row has a width to measure with.
+    private func fit(_ row: ChoiceRow) -> NSLayoutConstraint {
+        let height = row.heightAnchor.constraint(equalToConstant: 44)
+        height.priority = .required
+        height.isActive = true
+        return height
+    }
+
+    /// Presents `sheet` from `presenter`: a card of the sheet's own height on a
+    /// phone, a form sheet of it on a window wide enough for one.
+    static func present(_ sheet: ComposerChoiceSheet, from presenter: UIViewController) {
+        // The card needs the bottom of the screen, which the keyboard is on.
+        presenter.view.endEditing(true)
+        if presenter.viewIfLoaded?.window?.traitCollection.horizontalSizeClass == .compact {
+            sheet.modalPresentationStyle = .pageSheet
+            if let controller = sheet.sheetPresentationController {
+                controller.detents = [.custom(identifier: .init("choices")) { context in
+                    min(context.maximumDetentValue, height)
+                }]
+                controller.prefersGrabberVisible = true
+                controller.prefersEdgeAttachedInCompactHeight = true
+            }
+        } else {
+            sheet.modalPresentationStyle = .formSheet
+            sheet.preferredContentSize = CGSize(width: 480, height: height)
+        }
+        presenter.present(sheet, animated: true)
+    }
+}
+
+/// One choice of the sheet: its label over its detail, with the circle that
+/// says which one is set. A single element, read as its label and detail, a
+/// button, selected while chosen.
+private final class ChoiceRow: UIControl {
+    private let titleLabel = UILabel()
+    private let detailLabel = UILabel()
+    private let check = UIImageView()
+    private let testButton = UIButton(type: .system)
+    @objc private dynamic var testAction: (() -> Void)?
+    private static let inset = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
+    private static let checkSize: CGFloat = 22
+
+    init(title: String, detail: String?, chosen: Bool) {
+        super.init(frame: .zero)
+        backgroundColor = .tertiarySystemFill
+        layer.cornerRadius = 10
+        layer.cornerCurve = .continuous
+
+        titleLabel.text = title
+        titleLabel.font = .preferredFont(forTextStyle: .body)
+        titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.textColor = .label
+        titleLabel.numberOfLines = 0
+        detailLabel.text = detail
+        detailLabel.font = .preferredFont(forTextStyle: .footnote)
+        detailLabel.adjustsFontForContentSizeCategory = true
+        detailLabel.textColor = .secondaryLabel
+        detailLabel.numberOfLines = 0
+        detailLabel.isHidden = detail?.isEmpty ?? true
+        check.image = UIImage(systemName: chosen ? "checkmark.circle.fill" : "circle")
+        check.tintColor = chosen ? .label : .tertiaryLabel
+        check.contentMode = .scaleAspectFit
+        for view in [check, titleLabel, detailLabel] {
+            view.isUserInteractionEnabled = false
+            addSubview(view)
+        }
+
+        isAccessibilityElement = true
+        accessibilityLabel = [title, detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+        accessibilityTraits = chosen ? [.button, .selected] : .button
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("Use init(title:detail:chosen:)")
+    }
+
+    override var isHighlighted: Bool {
+        didSet { alpha = isHighlighted ? 0.6 : 1 }
+    }
+
+    /// The parent is one spoken choice. VoiceOver reaches the secondary
+    /// button through a custom action instead of hiding it behind that label.
+    @objc dynamic func configureTestAction(_ action: @escaping () -> Void) {
+        testAction = action
+        // An icon rather than a word: the row's own label is the model, and a
+        // word beside it read as a second choice. The antenna says "try this
+        // one", and the label names it for VoiceOver.
+        testButton.setImage(UIImage(systemName: "antenna.radiowaves.left.and.right"), for: .normal)
+        testButton.tintColor = .secondaryLabel
+        testButton.accessibilityLabel = String(localized: "Test Connectivity")
+        testButton.accessibilityElementsHidden = true
+        testButton.addAction(UIAction { [weak self] _ in self?.performTest() }, for: .touchUpInside)
+        addSubview(testButton)
+        accessibilityCustomActions = [UIAccessibilityCustomAction(
+            name: String(localized: "Test Connectivity"),
+            actionHandler: { [weak self] _ in
+                guard let self else { return false }
+                performTest()
+                return true
+            },
+        )]
+        setNeedsLayout()
+    }
+
+    @objc private dynamic func performTest() {
+        testAction?()
+    }
+
+    @objc private dynamic func testWidth(for width: CGFloat) -> CGFloat {
+        guard testAction != nil else { return 0 }
+        return max(44, min(width * 0.4, ceil(testButton.intrinsicContentSize.width) + 12))
+    }
+
+    @objc private dynamic func textWidth(for width: CGFloat) -> CGFloat {
+        let test = testWidth(for: width)
+        return max(1, width - Self.inset.left - Self.inset.right - Self.checkSize - 10 - (test > 0 ? test + 8 : 0))
+    }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        let width = textWidth(for: size.width)
+        var height = ceil(titleLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
+        if !detailLabel.isHidden {
+            height += 2 + ceil(detailLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
+        }
+        let testHeight = testAction == nil ? 0 : testButton.intrinsicContentSize.height + 16
+        return CGSize(width: size.width, height: max(44, testHeight, height + Self.inset.top + Self.inset.bottom))
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = textWidth(for: bounds.width)
+        var y = Self.inset.top
+        let titleHeight = ceil(titleLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
+        titleLabel.frame = CGRect(x: Self.inset.left + Self.checkSize + 10, y: y, width: width, height: titleHeight)
+        check.frame = CGRect(
+            x: Self.inset.left,
+            y: y + (titleHeight - Self.checkSize) / 2,
+            width: Self.checkSize,
+            height: Self.checkSize,
+        )
+        let testWidth = testWidth(for: bounds.width)
+        testButton.frame = CGRect(
+            x: bounds.width - Self.inset.right - testWidth,
+            y: 0, width: testWidth, height: bounds.height,
+        )
+        y += titleHeight
+        if !detailLabel.isHidden {
+            let detailHeight = ceil(detailLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
+            y += 2
+            detailLabel.frame = CGRect(x: titleLabel.frame.minX, y: y, width: width, height: detailHeight)
+        }
+        if effectiveUserInterfaceLayoutDirection == .rightToLeft {
+            for view in [check, titleLabel, detailLabel, testButton] {
+                view.frame.origin.x = bounds.width - view.frame.maxX
+            }
+        }
+    }
+}

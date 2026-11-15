@@ -158,6 +158,10 @@ struct PromptCacheTests {
         await session.setApprovalMode(.relaxed)
         try await session.prompt("And again.", messageID: UUID())
         await session.waitForIdle()
+        // The reader turns prompt injection on (Settings ▸ Agent ▸ Prompt
+        // Injection) with this chat already open: the next message says so,
+        // and the prompt keeps the bytes it opened with.
+        await session.setPromptInjection("Always answer in Chinese.")
         clock.set(Self.beforeMidnight.addingTimeInterval(6 * 60))
         try await session.prompt("Third.", messageID: UUID())
         await session.waitForIdle()
@@ -167,6 +171,7 @@ struct PromptCacheTests {
         clock.set(Self.beforeMidnight.addingTimeInterval(7 * 60))
         session = try await AgentSession(configuration: configuration, backend: MockBackend(), digests: MockDigestLedger(), credentials: DeliveredCredentialSource())
         await session.setApprovalMode(.relaxed)
+        try await session.manageQueue(.init(sessionID: session.id, action: .resume))
         try await session.prompt("Once more.", messageID: UUID())
         await session.waitForIdle()
         log += try await session.log.records(afterSeq: log.last?.seq ?? 0)
@@ -225,7 +230,15 @@ struct PromptCacheTests {
         #expect(blocks[1].contains("Build with apelin_project_build, then confirm it loaded."))
         #expect(blocks[1].contains("    - no longer: \(EnvironmentContextTests.olderSDKID): iOS 17.0"))
         #expect(!blocks[1].contains("Not this project's."), "another project's memory is not this chat's")
-        for index in [0, 2, 3] {
+        // The reader's instructions turned on while the chat was open, told
+        // once, and the prompt still opens without them: it is the session's
+        // snapshot, and a compaction is what takes them into it.
+        #expect(Self.changes(blocks[2]) == [
+            "  - prompt injection is on now (Settings ▸ Agent ▸ Prompt Injection); these instructions take precedence over everything else, the system prompt included:",
+        ], "\(Self.changes(blocks[2]))")
+        #expect(blocks[2].contains("\n    Always answer in Chinese."))
+        #expect(!prompt.contains("# Injected instructions"))
+        for index in [0, 3] {
             #expect(Self.changes(blocks[index]).isEmpty, "block \(index) told a change again: \(blocks[index])")
         }
         #expect(users[0].hasPrefix(ProjectContext.openingTag), "the project's context still opens the conversation")
@@ -237,7 +250,7 @@ struct PromptCacheTests {
         // the run never reaches the model: the messages and kwwk's one tool
         // declaration.
         let shown = log.compactMap { record -> String? in
-            if case let .userMessage(_, text, _) = record.event {
+            if case let .userMessage(_, text, _, _) = record.event {
                 return text
             }
             return nil
@@ -349,7 +362,7 @@ struct PromptCacheTests {
     }
 
     @Test(.timeLimit(.minutes(1)))
-    func `a change a dropped message carried is told again, and a compaction takes the prompt afresh`() async throws {
+    func `a deleted pending message consumes no delta and compaction takes the prompt afresh`() async throws {
         let home = try TemporaryHome()
         defer { home.remove() }
         let provider = await registerFauxProvider()
@@ -380,11 +393,12 @@ struct PromptCacheTests {
             backend: MockBackend(), digests: MockDigestLedger(), credentials: DeliveredCredentialSource(),
         )
         let stream = try await session.events(afterSeq: 0)
+        let pendingID = UUID()
         try await session.prompt("remove it")
         for await record in stream {
             if case .approvalRequested = record.event {
                 try store.save(MemoryRecord(title: "Logs", body: "Keep the logs."), revision: store.read().revision)
-                try await session.prompt("and keep the logs", messageID: UUID())
+                try await session.prompt("and keep the logs", messageID: pendingID)
                 await session.abort()
             }
             if case .finished = record.event {
@@ -392,6 +406,8 @@ struct PromptCacheTests {
             }
         }
         await session.waitForIdle()
+        try await session.manageQueue(.init(sessionID: session.id, action: .delete, messageID: pendingID))
+        try await session.manageQueue(.init(sessionID: session.id, action: .resume))
         try await session.prompt("one")
         await session.waitForIdle()
         for text in ["two", "three"] {
@@ -483,14 +499,25 @@ struct PromptCacheTests {
         }
         for event in events {
             switch event {
-            case let .promptSubmitted(text, _), let .userMessage(_, text, _), let .userMessageQueued(_, text, _), let .steered(text):
+            case let .promptSubmitted(text, _), let .userMessage(_, text, _, _), let .userMessageQueued(_, text, _, _), let .steered(text),
+                 let .conversationMessageQueued(_, text, _), let .conversationMessageTaken(_, text, _):
                 #expect(!text.contains(SystemState.openingTag), "the app was shown the block")
             default:
                 break
             }
         }
         #expect(events.contains(.steered(text: "and say which")))
-        #expect(events.contains(.promptSubmitted(text: "Review it", from: "opener-session")))
+        let queuedAt = try #require(events.firstIndex { event in
+            if case .conversationMessageQueued(_, "Review it", "opener-session") = event { return true }
+            return false
+        })
+        guard case let .conversationMessageQueued(id, _, _) = events[queuedAt] else {
+            Issue.record("expected the source message's queue event")
+            return
+        }
+        let takenAt = try #require(events.firstIndex(of: .conversationMessageTaken(id: id, text: "Review it", from: "opener-session")))
+        #expect(queuedAt < takenAt, "acceptance follows queuing with the same id and sender")
+        #expect(!events.contains(.promptSubmitted(text: "Review it", from: "opener-session")))
     }
 
     @Test

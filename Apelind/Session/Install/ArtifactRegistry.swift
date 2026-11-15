@@ -27,8 +27,14 @@ actor ArtifactRegistry {
         var buildID: String?
         var packagingDigest: String?
         var recordedAt: Date
+        /// `deb` or `ipa`; nil in a record from before an ipa could be built.
+        var format: String?
         /// The deb's files as dpkg lists them, for explaining a refused install.
         var packageFiles: [String]?
+
+        /// Whether this is an `.ipa`: an app no package manager installs, and
+        /// the one the bridge puts on the device itself.
+        var isIPA: Bool { format == BuildArtifact.ipaFormat }
     }
 
     static let maximumCount = 256
@@ -65,6 +71,7 @@ actor ArtifactRegistry {
             buildID: buildID.rawValue,
             packagingDigest: payload["packagingDigest"]?.stringValue,
             recordedAt: Date(),
+            format: payload["format"]?.stringValue,
             packageFiles: Self.packageFiles(payload["packageFiles"]),
         )
         artifacts.removeAll { $0.artifactID == artifactID }

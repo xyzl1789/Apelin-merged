@@ -7,6 +7,11 @@ struct ChatRecord: Codable, Sendable {
     var draft = ComposerDraft()
     var sessionID: String?
     var task: TaskHandle?
+    /// What the app knows about the run its last turn belongs to. The events
+    /// alone cannot say whether more is coming: a task that ended — or a
+    /// session the host no longer has — leaves a turn that looks as if it
+    /// were still going, with nothing left to stop, unless this says so.
+    var run: ChatRunState?
     /// Only ever appended to (`take`): the runtime's transcript of them reads
     /// on from the ones it has read (`ChatTranscriptCache`).
     var events: [TaskEvent] = []
@@ -17,6 +22,17 @@ struct ChatRecord: Codable, Sendable {
     /// Set while the task of a reopened session replays the history
     /// `events` already hold (`reopen(as:)`). Absent from older files.
     var replay: SessionReplay?
+}
+
+/// What the app knows about the run a conversation's last turn belongs to.
+/// Missing from older records, which read it from their events.
+enum ChatRunState: String, Codable, Sendable {
+    /// The host serves a run for this conversation.
+    case running
+    /// Stop was taken; the host has not said the run is over yet.
+    case stopping
+    /// Nothing more is coming for that turn.
+    case ended
 }
 
 /// The replay a reopened session's task starts with: every event of the
@@ -36,6 +52,10 @@ struct ChatRecord: Codable, Sendable {
 struct SessionReplay: Codable, Sendable {
     private static let userMessageKinds: Set<String> = ["prompt", "steer"]
     private static let compactionKind = "compactionStarted"
+    /// The reader's changes to the history (`agentRewind` and the rest),
+    /// which a stopped session reopened for them records with no message
+    /// after it, as Compact… does.
+    private static let historyKinds: Set<String> = ["historyRewound", "messageEdited", "replyEdited", "replyDeleted"]
 
     /// How far the task has been read.
     var cursor = EventSeq.start
@@ -46,9 +66,15 @@ struct SessionReplay: Codable, Sendable {
     /// The compactions still to come again. Absent from older files, which
     /// have none.
     private var compactions: Int?
+    /// The history's changes still to come again, by kind. Absent from
+    /// older files, which have none.
+    private var historyChanges: [String: Int]?
     /// The approvals the history asked and never saw resolved. Absent from
     /// older files, which take none.
     private var waitingApprovals: Set<String>?
+    /// Queue snapshots already shown by the app. A recovery or a queue-only
+    /// edit can be the first new event after reopening, with no prompt.
+    private var pendingSnapshots: Int?
 
     /// The replay of a session whose history is `events`.
     init(of events: [TaskEvent]) {
@@ -67,7 +93,13 @@ struct SessionReplay: Codable, Sendable {
             }
         }
         compactions = events.count { $0.kind == Self.compactionKind }
+        var changes: [String: Int] = [:]
+        for event in events where Self.historyKinds.contains(event.kind) {
+            changes[event.kind, default: 0] += 1
+        }
+        historyChanges = changes
         waitingApprovals = waiting
+        pendingSnapshots = events.count { $0.kind == "pendingQueue" }
     }
 
     /// Whether `event` resolves an approval the history left waiting, which
@@ -90,9 +122,19 @@ struct SessionReplay: Codable, Sendable {
         if ChatTranscript.endsTask(event) {
             return false
         }
+        if event.kind == "pendingQueue" {
+            guard let remaining = pendingSnapshots, remaining > 0 else { return false }
+            pendingSnapshots = remaining - 1
+            return true
+        }
         if event.kind == Self.compactionKind {
             guard let remaining = compactions, remaining > 0 else { return false }
             compactions = remaining - 1
+            return true
+        }
+        if Self.historyKinds.contains(event.kind) {
+            guard let remaining = historyChanges?[event.kind], remaining > 0 else { return false }
+            historyChanges?[event.kind] = remaining - 1
             return true
         }
         guard Self.userMessageKinds.contains(event.kind) else { return true }
@@ -125,7 +167,8 @@ extension ChatRecord {
     /// text was changed since.
     mutating func takeEchoed(by events: [TaskEvent]) -> [(draft: ComposerDraft, event: TaskEvent)] {
         var echoed: [(draft: ComposerDraft, event: TaskEvent)] = []
-        for event in events {
+        let acknowledgements = events.flatMap(ChatTranscript.acceptedMessages)
+        for event in acknowledgements {
             guard let id = ChatTranscript.userMessageID(of: event) else { continue }
             if let index = sending?.firstIndex(where: { $0.id == id }), let draft = sending?.remove(at: index) {
                 echoed.append((draft, event))
@@ -148,7 +191,9 @@ extension ChatRecord {
         if sending?.isEmpty == true {
             sending = nil
         }
-        let recorded = events.contains { ChatTranscript.userMessageID(of: $0) == message.id }
+        let recorded = events.contains { event in
+            ChatTranscript.acceptedMessages(in: event).contains { ChatTranscript.userMessageID(of: $0) == message.id }
+        }
         guard !recorded, draft.text.isEmpty, draft.attachments.isEmpty else { return false }
         draft = message
         return true
@@ -161,9 +206,18 @@ extension ChatRecord {
     /// there is nothing to read past: a first task's events are all new,
     /// an error before its first prompt included.
     mutating func reopen(as task: TaskHandle) {
+        // A task is followed again, so whatever turn it is in is going until
+        // the host or its events say otherwise.
+        run = .running
         guard self.task != task else { return }
         self.task = task
         replay = events.isEmpty ? nil : SessionReplay(of: events)
+    }
+
+    /// The task this replay belongs to has ended, so the rest of the history
+    /// it was reading past is never coming: what arrives next is new.
+    mutating func dropReplay() {
+        replay = nil
     }
 
     /// Where reading the session's task goes on from.

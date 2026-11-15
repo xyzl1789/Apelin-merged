@@ -1,0 +1,216 @@
+# Publishes the package a finished debug build made: it downloads that run's
+# artifact, writes SHA256SUMS and creates the GitHub release the Pages site
+# builds the Sileo source from. Nothing is compiled here, so what goes out is
+# exactly what the run verified.
+#
+# The release is made in three calls — a draft, its assets, then publishing —
+# because that is the order the API allows and it says which one failed. A
+# failure writes itself into an issue, which is readable without a sign-in.
+name: Publish release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: The Debug build run whose packages to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+  issues: write
+
+jobs:
+  publish:
+    name: Publish the run's packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read the run
+        id: run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run="${{ inputs.run_id }}"
+          info="$(gh run view "$run" --json headSha,conclusion)"
+          conclusion="$(printf '%s' "$info" | jq -r .conclusion)"
+          sha="$(printf '%s' "$info" | jq -r .headSha)"
+          # A run that passed and carries a deb is all this needs: the name
+          # `gh` reports is the workflow's path, not the one it shows.
+          if [[ "$conclusion" != "success" ]]; then
+            echo "::error::run $run concluded '$conclusion'; only a run that passed is published"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "::notice::publishing $sha from run $run"
+
+      - name: Read the version of that commit
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "${{ steps.run.outputs.sha }}"
+          version="$(git show "${{ steps.run.outputs.sha }}:Configuration/Version.xcconfig" \
+            | sed -n 's/^[[:space:]]*MARKETING_VERSION[[:space:]]*=[[:space:]]*//p' | tr -d '[:space:]')"
+          if [[ -z "$version" ]]; then
+            echo "::error::that commit's Configuration/Version.xcconfig names no MARKETING_VERSION"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "::notice::version $version, tag v$version"
+
+      - name: Is it published already?
+        id: lookup
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          code="$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$GH_REPO/releases/tags/${{ steps.version.outputs.tag }}")"
+          case "$code" in
+            200)
+              echo "::notice::${{ steps.version.outputs.tag }} is published already; nothing to do"
+              echo "published=1" >> "$GITHUB_OUTPUT"
+              ;;
+            404)
+              echo "published=0" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::looking the release up answered HTTP $code"
+              exit 1
+              ;;
+          esac
+
+      - name: Take the packages that run built
+        if: steps.lookup.outputs.published == '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/Packages "$RUNNER_TEMP/dl"
+          gh run download "${{ inputs.run_id }}" --dir "$RUNNER_TEMP/dl"
+          find "$RUNNER_TEMP/dl" -name '*.deb' -exec cp {} build/Packages/ \;
+          if [[ -z "$(ls -A build/Packages)" ]]; then
+            echo "::error::run ${{ inputs.run_id }} carries no deb to publish"
+            exit 1
+          fi
+          cd build/Packages
+          shasum -a 256 ./*.deb > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Write the notes
+        if: steps.lookup.outputs.published == '0'
+        id: notes
+        shell: bash
+        env:
+          SHA: ${{ steps.run.outputs.sha }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/apelin-release.md"
+          if git show "$SHA:Documents/Releases/$VERSION.md" > "$notes" 2>/dev/null; then
+            :
+          else
+            echo "::warning::Documents/Releases/$VERSION.md is missing; the generic notes go out instead"
+            {
+              printf 'Apelin %s, from the build of %s.\n\n' "$VERSION" "$SHA"
+              printf 'SHA-256 sums are in `SHA256SUMS`.\n'
+            } > "$notes"
+          fi
+          echo "file=$notes" >> "$GITHUB_OUTPUT"
+
+      # The three calls the release takes, each on its own, so a refusal names
+      # the one that was refused: the draft the token-check proved the token
+      # can make, the assets, then the release out of its draft state.
+      - name: Create the draft
+        if: steps.lookup.outputs.published == '0'
+        id: draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA: ${{ steps.run.outputs.sha }}
+          NOTES: ${{ steps.notes.outputs.file }}
+        run: |
+          set -uo pipefail
+          rc=0
+          out="$(gh api -X POST "repos/$GH_REPO/releases" \
+            -f tag_name="$TAG" \
+            -f target_commitish="$SHA" \
+            -f name="Apelin $VERSION" \
+            -f body=@"$NOTES" \
+            -F draft=true 2>&1)" || rc=$?
+          if [[ "$rc" != 0 ]]; then
+            echo "::error::creating the draft was refused (exit $rc): $(printf '%s' "$out" | tr '\n' ' ' | head -c 400)"
+            exit 1
+          fi
+          id="$(printf '%s' "$out" | jq -r '.id // empty')"
+          echo "::notice::draft release $id"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the packages
+        if: steps.lookup.outputs.published == '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -uo pipefail
+          rc=0
+          out="$(gh release upload "$TAG" build/Packages/*.deb build/Packages/SHA256SUMS --clobber 2>&1)" || rc=$?
+          if [[ "$rc" != 0 ]]; then
+            echo "::error::uploading the packages was refused (exit $rc): $(printf '%s' "$out" | tr '\n' ' ' | head -c 400)"
+            exit 1
+          fi
+          echo "$out"
+
+      - name: Publish it
+        if: steps.lookup.outputs.published == '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          NOTES: ${{ steps.notes.outputs.file }}
+        run: |
+          set -uo pipefail
+          rc=0
+          out="$(gh api -X PATCH "repos/$GH_REPO/releases/${{ steps.draft.outputs.id }}" \
+            -f draft=false -f name="Apelin $VERSION" -f body=@"$NOTES" 2>&1)" || rc=$?
+          if [[ "$rc" != 0 ]]; then
+            echo "::error::publishing the release was refused (exit $rc): $(printf '%s' "$out" | tr '\n' ' ' | head -c 400)"
+            exit 1
+          fi
+          echo "::notice::published $TAG"
+
+      - name: Report a failure
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          gh issue create \
+            --title "Publish of run ${{ inputs.run_id }} failed" \
+            --body "The release for run ${{ inputs.run_id }} was not published. See $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID — each step's red line names the call GitHub refused." \
+            > /dev/null 2>&1 || true

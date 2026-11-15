@@ -1,103 +1,231 @@
-// Lakr233's Inhouse Code, from FlowDown.
-// I CAN DO WHAT THE FUCK I WANT.
-
 import ApelinProtocol
 import UIKit
 
-/// FlowDown's model control above the text band, hidden while imports are open.
+/// The row under the draft: what the run may do, which model answers it, how
+/// hard that model thinks, and how full the context is — all on the left, in
+/// reading order; the plus and the send on the right.
+///
+/// The left controls are icons rather than words, because the row is read at a
+/// glance between typing and sending: a mark says whose model it is faster than
+/// its name does, and the pill is the only one that needs a word.
 final class ComposerModelBar: ComposerSectionView {
-    let button = ComposerBlockButton(text: String(localized: "Select Model"), image: UIImage(named: "ComposerModel"))
-    private let effortButton = ComposerBlockButton(text: String(localized: "High"), image: UIImage(systemName: "brain"))
-    private let tierButton = ComposerBlockButton(text: String(localized: "Standard"), image: UIImage(systemName: "bolt"))
-    private let stopButton = ComposerBlockButton(
-        text: String(localized: "Stop"),
-        image: UIImage(systemName: "stop.fill"),
-    )
-    var onEffortChanged: ((AgentReasoningEffort) -> Void)?
-    var onTierChanged: ((AgentServiceTier?) -> Void)?
-    @objc dynamic private var cancelOutput: (() -> Void)?
+    /// What this run may do, first on the row: it is the setting read before
+    /// a message is sent, and the others are read for it.
+    let modePill = ComposerModePill()
 
-    @objc override dynamic func initializeViews() {
+    /// The provider's own mark, tapped to choose a model. No name beside it:
+    /// the row's room belongs to the draft above.
+    let modelButton = ComposerIconButton(symbolName: "cpu", label: String(localized: "Select Model"))
+
+    /// The reasoning effort, as a brain in the colour of the level it is set
+    /// to, tapped to change it. The level is drawn, never written: the row has
+    /// no room for a word, and the colour says which of the settings is on.
+    private let effortButton = ComposerIconButton(symbolName: "sparkles", label: String(localized: "Reasoning Effort"))
+
+    /// The speed the model answers at, for the ones that offer a faster tier
+    /// than standard: the letters say which, a tap changes it. Absent for a
+    /// model with one tier, as most have.
+    private let tierButton = ComposerIconButton(symbolName: "hare", label: String(localized: "Speed"))
+
+    /// How full the context is, tapped to open or fold the panel that says by
+    /// how much. The ring is the only control here whose state is a figure.
+    let usageButton = ContextUsageButton()
+
+    /// Attachments: the plus that opens the camera, photos, files and the web,
+    /// and closes them again.
+    let addButton = ComposerIconButton(symbolName: "plus", label: String(localized: "Add Attachment"))
+
+    /// The send, and the stop it becomes while a run is going.
+    let sendButton = ComposerIconButton(iconName: "ComposerSend", label: String(localized: "Send"))
+
+    /// The effort was tapped: the owner opens the sheet of levels the model
+    /// offers and writes the pick, which comes back through
+    /// `composerModelSelectionChanged`.
+    var onEffortTapped: (() -> Void)?
+    var onModeChanged: ((ComposerMode) -> Void)?
+    /// The speed was tapped: the same, for the tiers this model offers.
+    var onTierTapped: (() -> Void)?
+    /// The mark was tapped: the owner opens its model picker, which reads the
+    /// accounts live. This row only reports the tap.
+    var onModelTapped: (() -> Void)?
+    /// The ring was tapped: open the context panel, or fold it again.
+    var onContextTapped: (() -> Void)?
+    var onAddTapped: (() -> Void)?
+    var onSendTapped: (() -> Void)?
+    var onStopTapped: (() -> Void)?
+    /// The wand was tapped, with the draft as it stands: the owner asks for
+    /// the rewrite and reports back with `setRewriting`.
+    var onRewriteRequested: ((String) -> Void)?
+    /// The stop was tapped while a rewrite ran.
+    var onRewriteCancelled: (() -> Void)?
+
+    /// The run is going: with nothing typed the send becomes a stop.
+    private var sendIsStop = false
+
+    override func initializeViews() {
         super.initializeViews()
-        for control in [button, effortButton, tierButton, stopButton] {
+
+        for control in [modePill, modelButton, effortButton, tierButton, usageButton, addButton, sendButton] {
             addSubview(control)
         }
-        effortButton.showsMenuAsPrimaryAction = true
-        setControl(effortButton, visible: false)
-        tierButton.showsMenuAsPrimaryAction = true
-        setControl(tierButton, visible: false)
-        stopButton.tintColor = .systemRed
-        stopButton.borderColor = .systemRed.withAlphaComponent(0.5)
-        stopButton.accessibilityLabel = String(localized: "Stop Generating")
-        setControl(stopButton, visible: false)
-        stopButton.addAction(UIAction { [weak self] _ in self?.cancelOutput?() }, for: .touchUpInside)
-        setModelName(nil)
+
+        modePill.onChange = { [weak self] mode in
+            self?.onModeChanged?(mode)
+            // The pill's own word changes with it, and the row's left side
+            // starts at the pill's width: relaid out at once, or the mark
+            // behind it stays where the old word left it.
+            self?.setNeedsLayout()
+        }
+        usageButton.tapAction = { [weak self] in self?.onContextTapped?() }
+        modelButton.tapAction = { [weak self] in self?.onModelTapped?() }
+        addButton.tapAction = { [weak self] in self?.onAddTapped?() }
+        sendButton.tapAction = { [weak self] in self?.tapSend() }
+        effortButton.tapAction = { [weak self] in self?.onEffortTapped?() }
+        tierButton.tapAction = { [weak self] in self?.onTierTapped?() }
+
+        // The disc is the reach and the mark is what is drawn on it: both
+        // follow the one measure, so a smaller row keeps them apart.
+        sendButton.iconInset = (ComposerMetrics.Send.diameter - ComposerMetrics.Send.iconSize) / 2
+        addButton.iconInset = sendButton.iconInset
+        sendButton.fillColor = ComposerPalette.inert
+        sendButton.iconView.tintColor = .secondaryLabel
+
+        // A brain's folds turn to mud at a row's size; a pair of sparks keeps
+        // its shape at any of them, and the colour says the level anyway.
+        effortButton.iconView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
+            pointSize: 23,
+            weight: .medium,
+        )
+
+        setEfforts([], selected: nil)
         setVisible(true)
     }
 
-    @objc dynamic func setModelName(_ name: String?) {
+    // MARK: - State
+
+    /// The mark of the model that will answer: whose model the name says it is,
+    /// and the provider's own where the name says nothing — its artwork, or a
+    /// plain symbol for a provider the bundle has none for.
+    func setModel(_ provider: AgentProvider?, model: String?) {
         updateControls { [self] in
-            button.setText(name ?? String(localized: "Select Model"))
-            button.accessibilityLabel = String(localized: "Select Model")
-            button.accessibilityValue = name
+            // A mark keeps the colours it was drawn with: as a template it
+            // would be one flat silhouette, and a black one in light mode. Only
+            // the fallback symbol follows the label's colour.
+            let mark = model.flatMap(ModelBrand.brand(for:))?.icon ?? provider?.icon
+            if let mark {
+                modelButton.iconView.image = mark.withRenderingMode(.alwaysOriginal)
+            } else {
+                modelButton.iconView.image = UIImage(systemName: "cpu")?.withRenderingMode(.alwaysTemplate)
+            }
+            modelButton.accessibilityLabel = String(localized: "Select Model")
+            modelButton.accessibilityValue = [provider?.displayName, model]
+                .compactMap { $0 }
+                .joined(separator: " · ")
         }
     }
 
     /// The import panel takes this row's place, so the row hands over to it.
-    @objc dynamic func setVisible(_ visible: Bool) {
+    func setVisible(_ visible: Bool) {
         handOver(visible: visible)
         updateControls { [self] in
             isUserInteractionEnabled = visible
             accessibilityElementsHidden = !visible
-            heightPublisher.send(visible ? button.intrinsicContentSize.height : 0)
+            heightPublisher.send(visible ? preferredHeight : 0)
         }
     }
 
     func setEfforts(_ efforts: [AgentReasoningEffort], selected: AgentReasoningEffort?) {
         updateControls { [self] in
-            setControl(effortButton, visible: !efforts.isEmpty)
-            effortButton.setText(Self.title(for: selected ?? .high))
-            effortButton.accessibilityLabel = String(localized: "Reasoning Effort")
+            let shown = !efforts.isEmpty
+            effortButton.alpha = shown ? 1 : 0
+            effortButton.isUserInteractionEnabled = shown
+            effortButton.accessibilityElementsHidden = !shown
+            // The colour is the level; the spoken value is the word for it.
+            effortButton.iconView.tintColor = ComposerPalette.effort(selected ?? .high)
             effortButton.accessibilityValue = Self.title(for: selected ?? .high)
         }
-        effortButton.menu = UIMenu(children: efforts.map { effort in
-            UIAction(title: Self.title(for: effort), state: effort == selected ? .on : .off) { [weak self] _ in
-                self?.setEfforts(efforts, selected: effort)
-                self?.onEffortChanged?(effort)
-            }
-        })
     }
 
-    /// The standard tier first, then the faster ones the model offers;
-    /// hidden for a model that offers none.
+    /// The tiers the model offers: none of them is the standard one, so an
+    /// empty list hides the control.
     func setTiers(_ tiers: [AgentServiceTier], selected: AgentServiceTier?) {
         updateControls { [self] in
-            setControl(tierButton, visible: !tiers.isEmpty)
-            tierButton.setText(Self.title(for: selected))
-            tierButton.accessibilityLabel = String(localized: "Speed")
+            let shown = !tiers.isEmpty
+            tierButton.alpha = shown ? 1 : 0
+            tierButton.isUserInteractionEnabled = shown
+            tierButton.accessibilityElementsHidden = !shown
             tierButton.accessibilityValue = Self.title(for: selected)
         }
-        tierButton.menu = UIMenu(children: ([nil] + tiers).map { tier in
-            UIAction(title: Self.title(for: tier), state: tier == selected ? .on : .off) { [weak self] _ in
-                self?.setTiers(tiers, selected: tier)
-                self?.onTierChanged?(tier)
-            }
-        })
     }
 
-    /// The owner supplies its live run's cancellation; absent means no output to stop.
-    @objc dynamic func setOutputCancellation(_ cancel: (() -> Void)?) {
-        cancelOutput = cancel
-        updateControls { [self] in setControl(stopButton, visible: cancel != nil) }
+    /// Nothing to send: the disc greys; a run going and nothing typed: it is
+    /// the stop.
+    func setSendState(isBusy: Bool, hasContent: Bool) {
+        // Sent while the state is unchanged too: the disc is drawn here, and the
+        // first call after the row is built is the one that decides its colour.
+        let stop = isBusy && !hasContent
+        sendIsStop = stop
+        let able = stop || hasContent
+        sendButton.iconView.image = UIImage(systemName: stop ? "stop.fill" : "arrow.up")?
+            .withRenderingMode(.alwaysTemplate)
+        sendButton.fillColor = stop
+            ? ComposerPalette.stop
+            : (hasContent ? (isBusy ? ComposerPalette.queued : ComposerPalette.send) : ComposerPalette.inert)
+        sendButton.iconView.tintColor = able
+            ? ComposerPalette.label(on: sendButton.fillColor ?? ComposerPalette.inert)
+            : .secondaryLabel
+        sendButton.isUserInteractionEnabled = able
+        sendButton.accessibilityLabel = stop
+            ? String(localized: "Stop Generating")
+            : String(localized: "Send")
     }
 
-    @objc dynamic private func setControl(_ control: UIButton, visible: Bool) {
-        control.alpha = visible ? 1 : 0
-        control.isUserInteractionEnabled = visible
-        control.accessibilityElementsHidden = !visible
+    /// The context's fill, from the agent's last record of it; nothing to
+    /// show until it has recorded one. Tappable only between runs.
+    func setContextUsage(_ usage: ChatContextUsage?, compactable: Bool) {
+        usageButton.isAvailable = compactable
+        guard usageButton.usage != usage else { return }
+        updateControls { [self] in
+            usageButton.set(usage)
+            heightPublisher.send(isUserInteractionEnabled ? preferredHeight : 0)
+        }
     }
 
-    @objc dynamic private func updateControls(_ changes: @escaping () -> Void) {
+    /// The panel under the row is open: the ring says so, and says a tap folds
+    /// it again.
+    func setContextExpanded(_ expanded: Bool) {
+        usageButton.setExpanded(expanded)
+    }
+
+    /// The import panel is open: the plus draws as a close, so the same tap
+    /// that opened it folds it away.
+    func setPanelOpen(_ open: Bool) {
+        updateControls { [self] in
+            addButton.change(symbolName: open ? "xmark" : "plus")
+            addButton.accessibilityLabel = open
+                ? String(localized: "Close")
+                : String(localized: "Add Attachment")
+        }
+    }
+
+    // MARK: - Picking
+
+    private func tapSend() {
+        if sendIsStop {
+            onStopTapped?()
+        } else {
+            onSendTapped?()
+        }
+    }
+
+    // MARK: - Layout
+
+    /// As tall as the tallest thing on the row.
+    private var preferredHeight: CGFloat {
+        max(modePill.intrinsicContentSize.height, ComposerMetrics.Send.diameter)
+    }
+
+    private func updateControls(_ changes: @escaping () -> Void) {
         let update = { [self] in
             changes()
             setNeedsLayout()
@@ -110,7 +238,8 @@ final class ComposerModelBar: ComposerSectionView {
         }
     }
 
-    private static func title(for effort: AgentReasoningEffort) -> String {
+    /// The word for a level, as the sheet of levels lists it.
+    static func title(for effort: AgentReasoningEffort) -> String {
         switch effort {
         case .off: String(localized: "Off")
         case .minimal: String(localized: "Minimal")
@@ -122,7 +251,8 @@ final class ComposerModelBar: ComposerSectionView {
         }
     }
 
-    private static func title(for tier: AgentServiceTier?) -> String {
+    /// The speed's name; nil is the standard tier, which every model has.
+    static func title(for tier: AgentServiceTier?) -> String {
         switch tier {
         case nil: String(localized: "Standard")
         case .priority: String(localized: "Fast")
@@ -132,20 +262,73 @@ final class ComposerModelBar: ComposerSectionView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let controls = [button, effortButton, tierButton, stopButton].filter(\.isUserInteractionEnabled)
-        let spacing: CGFloat = 10
-        let otherWidth = controls.dropFirst().reduce(CGFloat.zero) { $0 + $1.intrinsicContentSize.width + spacing }
-        let modelWidth = min(button.intrinsicContentSize.width, max(44, bounds.width - otherWidth))
-        var x = max(0, (bounds.width - modelWidth - otherWidth) / 2)
-        // model, effort, speed, Stop in reading order: right to left, from the right
-        for control in [button, effortButton, tierButton, stopButton] {
-            let width = control === button ? modelWidth : control.intrinsicContentSize.width
-            control.frame = directionalFrame(
-                CGRect(x: x, y: 0, width: width, height: control.intrinsicContentSize.height),
-            )
-            if control.isUserInteractionEnabled {
-                x += width + spacing
-            }
+        let height = preferredHeight
+        let mid = (bounds.height - height) / 2
+        let spacing = ComposerMetrics.Spacing.xs
+
+        // The right pair keeps the row's end: the plus, then the send, in the
+        // order they are pressed — a draft is finished before it leaves.
+        let sendSize = ComposerMetrics.Send.diameter
+        let sendFrame = CGRect(
+            x: bounds.width - sendSize,
+            y: (bounds.height - sendSize) / 2,
+            width: sendSize,
+            height: sendSize,
+        )
+        sendButton.frame = directionalFrame(sendFrame)
+        addButton.frame = directionalFrame(CGRect(
+            x: sendFrame.minX - spacing - sendSize,
+            y: sendFrame.minY,
+            width: sendSize,
+            height: sendSize,
+        ))
+
+        // The left side reads in the order it is decided in: what the run may
+        // do, which model answers, how hard it thinks, how full the context is.
+        var x: CGFloat = 0
+        let pillSize = modePill.intrinsicContentSize
+        modePill.frame = directionalFrame(CGRect(
+            x: x,
+            y: (bounds.height - pillSize.height) / 2,
+            width: pillSize.width,
+            height: pillSize.height,
+        ))
+        x += pillSize.width + ComposerMetrics.Spacing.sm
+
+        let iconSize = sendSize
+        let markSize = ComposerMetrics.Send.iconSize + 6
+        modelButton.iconInset = (iconSize - markSize) / 2
+        modelButton.frame = directionalFrame(CGRect(
+            x: x, y: mid, width: iconSize, height: iconSize,
+        ))
+        x += iconSize + spacing
+
+        // The lightning is one control again: its colour says which level is
+        // set, so it takes a slot of its own and no room for a word. The brain
+        // is the one mark here a reader looks for by shape, so it fills that
+        // slot rather than floating small inside it.
+        let lightning = iconSize * 0.75
+        effortButton.iconInset = 0
+        effortButton.frame = directionalFrame(CGRect(
+            x: x, y: (bounds.height - lightning) / 2, width: lightning, height: lightning,
+        ))
+        x += lightning + spacing
+
+        // The speed, where the model offers one, sits between the effort and
+        // the ring; hidden, it takes no room.
+        if tierButton.alpha > 0 {
+            tierButton.frame = directionalFrame(CGRect(
+                x: x, y: mid, width: iconSize, height: iconSize,
+            ))
+            x += iconSize + spacing
         }
+
+        let ringSize = ContextUsageButton.size
+        usageButton.frame = directionalFrame(CGRect(
+            x: x,
+            y: (bounds.height - ringSize) / 2,
+            width: ringSize,
+            height: ringSize,
+        ))
     }
 }

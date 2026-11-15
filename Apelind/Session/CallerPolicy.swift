@@ -63,6 +63,17 @@ enum CallerPolicy {
         // Its own project's remotes, listed, added, pointed elsewhere or
         // removed; a push that later uses one still asks, naming its URL.
         .gitRemoteList, .gitRemoteSet, .gitRemoteRemove,
+        // Branch/history tools remain scoped to this session's project.
+        // Branch mutations also spend a per-call approval in Strict mode;
+        // a deletion, here or on a remote, asks in every mode
+        // (AgentGitBranchRules covers it too). A tag, a discarded path and
+        // the files a clean takes go through the same rule.
+        .gitBranches, .gitBranchCreate, .gitBranchCheckout, .gitBranchDelete, .gitBranchRename,
+        .gitMerge, .gitMergeAbort, .gitLog, .gitCommitDetail,
+        .gitTagCreate, .gitTagDelete, .gitRestore, .gitDeletePaths,
+        // The project's stash: listed freely, and saved, applied, dropped or
+        // cleared only as the user approved that call.
+        .gitStashList, .gitStashSave, .gitStashApply, .gitStashDrop, .gitStashClear,
         // Its own project made exactly a remote's branch, in every mode only
         // as the user approved exactly that reset (AgentResetToRemoteRules);
         // what it would lose is read first.
@@ -89,8 +100,12 @@ enum CallerPolicy {
         .agentRunCode,
         // The project's other conversations (AgentConversations): AgentHandler
         // keeps an agent to its own project, and to the sessions it opened
-        // for abort and close. Approving, steering and compacting stay the app's.
+        // for abort and close. Approving, steering, agentQueue and compacting stay the app's.
         .agentOpen, .agentPrompt, .agentList, .agentAttach, .agentAbort, .agentClose,
+        // Its own project's work tree saved before a run, for the reader's
+        // Checkpoint & Rewind; putting one back, and every change to a
+        // conversation's history, stay the app's.
+        .gitCheckpointSave,
     ]
 
     /// The diagnostics worker asks the host for a protected crash report by

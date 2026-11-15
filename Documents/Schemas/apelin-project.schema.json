@@ -39,7 +39,7 @@
       }
     },
     "language": {
-      "description": "The main language. A product may still contain C sources beside Objective-C ones; Swift and C-family sources are never mixed in one product in v1.",
+      "description": "The main language, for the editor and the templates. A product is not limited to it: .c, .m, .cpp, .cc, .cxx, .C, .mm and .swift sources may share one product, each compiled as its extension says. Swift reaches the C family's declarations through the product's bridgingHeader.",
       "enum": ["c", "objc", "swift"]
     },
     "deploymentTarget": { "$ref": "#/$defs/iosVersion" },
@@ -67,6 +67,13 @@
       "minItems": 1,
       "maxItems": 8,
       "items": { "$ref": "#/$defs/product" }
+    },
+    "swiftModules": {
+      "description": "Swift modules built out of the project's own files — one target of a vendored package, say — each one .swiftmodule and one object. A product that compiles Swift names the ones it compiles against and links in its own swiftModules. SwiftPM never runs and no Package.swift is read: the project says where each module's sources are and which modules it imports.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/swiftModule" }
     },
     "build": {
       "type": "object",
@@ -117,6 +124,20 @@
       "then": {
         "properties": {
           "products": { "contains": { "properties": { "type": { "const": "bundle" } }, "required": ["type"] } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "package": { "required": ["format"], "properties": { "format": { "const": "ipa" } } } } },
+      "then": {
+        "properties": {
+          "kind": { "const": "app" },
+          "products": {
+            "minItems": 1,
+            "maxItems": 8,
+            "items": { "required": ["type"], "properties": { "type": { "enum": ["app", "appex"] } } },
+            "contains": { "required": ["type"], "properties": { "type": { "const": "app" } } }
+          }
         }
       }
     }
@@ -213,6 +234,13 @@
       "uniqueItems": true,
       "items": { "enum": ["arm64", "arm64e"] }
     },
+    "cxxStandard": {
+      "description": "A C++ language standard, passed to clang as -std=<value> for the C++ and Objective-C++ sources of the product that names it.",
+      "enum": [
+        "c++11", "c++14", "c++17", "c++20", "c++23",
+        "gnu++11", "gnu++14", "gnu++17", "gnu++20", "gnu++23"
+      ]
+    },
     "binding": {
       "description": "A registered toolchain or SDK, pinned by the id it was registered under and the content digest recorded at registration. Changing either is an explicit operation.",
       "type": "object",
@@ -268,6 +296,12 @@
           }
         },
         "cFlags": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/flag" } },
+        "cxxFlags": {
+          "description": "C++ and Objective-C++ sources only, applied after cFlags.",
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/flag" }
+        },
         "swiftFlags": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/flag" } },
         "linkFlags": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/flag" } }
       }
@@ -285,6 +319,42 @@
         }
       }
     },
+    "swiftModule": {
+      "description": "A module the project's own sources make, such as one target of a vendored Swift package: the sources it is compiled from, and the modules it imports.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sources"],
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/relativeGlob" }
+        },
+        "dependencies": {
+          "description": "Modules this one imports: built before it, and linked with the products that use either.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "cxxInterop": {
+          "description": "Swift's direct C++ interop for this module: its Swift sources import C++ declarations, not just a C facade. Off unless named. A module that names it turns interop on for every product that compiles against this one and for the modules this one imports; `false` beside an enabled module it depends on is refused.",
+          "type": "boolean"
+        },
+        "headerSearchPaths": {
+          "description": "Directories holding the C++ headers this module's Swift sources import, given to the clang importer and to the native C++ files of the products that compile against it.",
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "cxxStandard": {
+          "description": "The C++ standard this module's interop closure sees: c++14 or newer, one value for the whole closure, c++17 when nothing names one.",
+          "$ref": "#/$defs/cxxStandard"
+        }
+      }
+    },
     "product": {
       "type": "object",
       "additionalProperties": false,
@@ -294,9 +364,9 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]{0,31}$"
         },
-        "type": { "enum": ["app", "dylib", "bundle", "executable"] },
+        "type": { "enum": ["app", "appex", "dylib", "bundle", "executable"] },
         "name": {
-          "description": "The Mach-O file name, and the bundle name without its extension for app and bundle.",
+          "description": "The Mach-O file name, and the bundle name without its extension for app, appex and bundle.",
           "type": "string",
           "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.+-]{0,63}$"
         },
@@ -312,19 +382,31 @@
           "items": { "$ref": "#/$defs/relativePath" }
         },
         "resources": {
-          "description": "Files bundle-resources copies into an app or bundle, flattened to their file names. A .plist is written as XML after a lint.",
+          "description": "Files bundle-resources copies into an app, an appex or a bundle, flattened to their file names. A .plist is written as XML after a lint.",
           "type": "array",
           "maxItems": 64,
           "items": { "$ref": "#/$defs/relativeGlob" }
         },
         "infoPlist": { "$ref": "#/$defs/relativePath" },
         "entitlements": { "$ref": "#/$defs/relativePath" },
+        "bridgingHeader": {
+          "description": "The header the Swift compiler imports into this product's Swift files, giving Swift the C family's declarations. A regular file inside the project; the product must compile at least one .swift source.",
+          "$ref": "#/$defs/relativePath"
+        },
         "installName": {
           "type": "string",
           "maxLength": 512,
           "pattern": "^(@rpath|@loader_path|@executable_path|/)[^\\u0000\\n\\r]*$"
         },
         "objcARC": { "type": "boolean" },
+        "cxxStandard": {
+          "description": "The C++ standard for this product's .cpp, .cc, .cxx, .C and .mm sources, passed as -std=<value>. With cxxInterop on it is also the importer's standard, so it must be c++14 or newer and agree with every module in the closure.",
+          "$ref": "#/$defs/cxxStandard"
+        },
+        "cxxInterop": {
+          "description": "Swift's direct C++ interop for this product: its .swift sources import C++ declarations instead of going through a C facade, and the importer sees the product's headerSearchPaths, cxxFlags and defines. Off unless named; a swiftModules entry in its closure turns it on too, and then `false` here is refused. Needs Command Line Tools 15.0 (Swift 5.9) or newer.",
+          "type": "boolean"
+        },
         "frameworks": {
           "type": "array",
           "uniqueItems": true,
@@ -358,11 +440,18 @@
           "type": "array",
           "maxItems": 8,
           "items": { "$ref": "#/$defs/extensionSupport" }
+        },
+        "swiftModules": {
+          "description": "The project's swiftModules this product compiles against and links, each with the modules it depends on.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/identifier" }
         }
       },
       "allOf": [
         {
-          "if": { "properties": { "type": { "enum": ["app", "bundle"] } } },
+          "if": { "properties": { "type": { "enum": ["app", "appex", "bundle"] } } },
           "then": { "required": ["infoPlist"] },
           "else": { "not": { "anyOf": [{ "required": ["infoPlist"] }, { "required": ["resources"] }] } }
         },
@@ -408,7 +497,7 @@
       }
     },
     "stepLink": {
-      "description": "One Mach-O per architecture: MH_EXECUTE for app and executable, MH_DYLIB for dylib, MH_BUNDLE for bundle.",
+      "description": "One Mach-O per architecture: MH_EXECUTE for app, appex and executable, MH_DYLIB for dylib, MH_BUNDLE for bundle. An appex is linked with Foundation's NSExtensionMain as its entry point.",
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "product"],
@@ -419,7 +508,7 @@
       }
     },
     "stepBundleResources": {
-      "description": "Assemble the .app or .bundle directory: the product's Info.plist, with CFBundleExecutable, CFBundleShortVersionString, CFBundleVersion and MinimumOSVersion set by the build, and its resources.",
+      "description": "Assemble the .app, .appex or .bundle directory: the product's Info.plist, with CFBundleExecutable, CFBundleShortVersionString, CFBundleVersion and MinimumOSVersion set by the build, and its resources.",
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "product"],
@@ -502,7 +591,7 @@
       "required": ["path"],
       "oneOf": [
         {
-          "description": "A built product: the merged, signed Mach-O, or the whole .app/.bundle directory.",
+          "description": "A built product: the merged, signed Mach-O, or the whole .app/.appex/.bundle directory.",
           "type": "object",
           "additionalProperties": false,
           "required": ["path", "product"],
@@ -560,7 +649,7 @@
     "package": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "version", "description", "author", "section", "layout"],
+      "required": ["id", "name", "version", "description", "author", "section"],
       "properties": {
         "id": { "$ref": "#/$defs/packageID" },
         "name": { "$ref": "#/$defs/singleLine" },
@@ -614,9 +703,12 @@
         "provides": { "$ref": "#/$defs/relationList" },
         "layout": {
           "type": "array",
-          "minItems": 1,
           "maxItems": 64,
           "items": { "$ref": "#/$defs/layoutEntry" }
+        },
+        "format": {
+          "description": "What the build hands back: a Debian package a package manager installs (the default), or an .ipa — the app project's built .app in Payload/, with each appex product it has at .app/PlugIns/<name>.appex, zipped with the bytes the sign step wrote, for a signing tool of one's own. An .ipa carries one app and the extensions it hosts, installs as an app, never through a package manager, so it has an empty layout and no relations, tweak filter or maintainer scripts.",
+          "enum": ["deb", "ipa"]
         },
         "maintainerScripts": {
           "description": "Shown in full on the install card. @PREFIX@ and @ROOTFS@ are substituted; nothing else is.",
@@ -631,7 +723,36 @@
           }
         },
         "tweakFilter": { "$ref": "#/$defs/tweakFilter" }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["format"],
+            "properties": { "format": { "const": "ipa" } }
+          },
+          "then": {
+            "properties": { "layout": { "maxItems": 0 } },
+            "not": {
+              "anyOf": [
+                { "required": ["tweakFilter"] },
+                { "required": ["maintainerScripts"] },
+                { "required": ["depends"] },
+                { "required": ["dependsByBootstrap"] },
+                { "required": ["recommends"] },
+                { "required": ["suggests"] },
+                { "required": ["conflicts"] },
+                { "required": ["breaks"] },
+                { "required": ["replaces"] },
+                { "required": ["provides"] }
+              ]
+            }
+          },
+          "else": {
+            "required": ["layout"],
+            "properties": { "layout": { "minItems": 1 } }
+          }
+        }
+      ]
     }
   }
 }

@@ -1,3 +1,4 @@
+import ApelinProtocol
 import Foundation
 import KWWKAI
 
@@ -36,6 +37,40 @@ public enum ProviderConfiguration: Sendable, Hashable, Codable {
         }
     }
 
+    /// Converts the protocol's provider choice for an auxiliary operation.
+    /// Auxiliary defaults always carry a concrete model identifier.
+    public static func auxiliary(provider: AgentProvider, model: String) -> Self {
+        switch provider {
+        case .githubCopilot: .githubCopilot(model: model)
+        case .anthropic: .anthropic(model: model, oauth: false)
+        case .anthropicOAuth: .anthropic(model: model, oauth: true)
+        case .openAICompatible: .openAICompatible(model: model)
+        case .openAICodex: .stored(storeID: "openai-codex", model: model)
+        case .cursor: .stored(storeID: "cursor", model: model)
+        case .devin: .stored(storeID: "devin", model: model)
+        case .kiro: .stored(storeID: "kiro", model: model)
+        case .antigravity: .stored(storeID: "antigravity", model: model)
+        case .qoder: .stored(storeID: "qoder", model: model)
+        case .qoderCN: .stored(storeID: "qoder-cn", model: model)
+        case .workBuddy: .stored(storeID: "workbuddy", model: model)
+        case .workBuddyAI: .stored(storeID: "workbuddy-ai", model: model)
+        case .trae: .stored(storeID: TraeSite.china.id, model: model)
+        case .traeIntl: .stored(storeID: TraeSite.international.id, model: model)
+        case .raccoon: .stored(storeID: RaccoonOAuth.providerId, model: model)
+        case .kimiCoding: .stored(storeID: "kimi-coding", model: model)
+        case .kimiCodingGlobal: .stored(storeID: "kimi-coding-ai", model: model)
+        case .xai: .stored(storeID: "xai", model: model)
+        case .zai: .stored(storeID: "zai", model: model)
+        case .zaiCodingCN: .stored(storeID: "zai-coding-cn", model: model)
+        case .openRouter: .stored(storeID: "openrouter", model: model)
+        case .openAI: .stored(storeID: "openai-api-key", model: model)
+        case .google: .stored(storeID: "google-api-key", model: model)
+        case .deepSeek: .stored(storeID: "deepseek-api-key", model: model)
+        case .openCodeGo: .stored(storeID: "opencode-go", model: model)
+        case .openCodeZen: .stored(storeID: "opencode", model: model)
+        }
+    }
+
     var modelID: String? {
         switch self {
         case let .anthropic(model, _), let .openAICompatible(model), let .githubCopilot(model): model
@@ -57,21 +92,56 @@ public enum ProviderResolutionError: Error, Equatable, LocalizedError {
     }
 }
 
-struct ResolvedProvider: Sendable {
-    var model: Model
-    var authResolver: (@Sendable (Model, String?) async throws -> ResolvedProviderAuth?)?
+public struct ResolvedProvider: Sendable {
+    public var model: Model
+    public var authResolver: (@Sendable (Model, String?) async throws -> ResolvedProviderAuth?)?
     /// The stored sign-in it was resolved from; nil for one that needs none.
-    var credentials: OAuthCredentials?
+    public var credentials: OAuthCredentials?
+
+    public init(
+        model: Model,
+        authResolver: (@Sendable (Model, String?) async throws -> ResolvedProviderAuth?)?,
+        credentials: OAuthCredentials? = nil,
+    ) {
+        self.model = model
+        self.authResolver = authResolver
+        self.credentials = credentials
+    }
 }
 
-enum ProviderResolver {
+public enum ProviderResolver {
+    /// What the app's model settings override on the model's own record. A
+    /// figure that is not positive leaves the record's alone; a switch that is
+    /// absent leaves what the catalogs read; `followsCatalog` is decided when
+    /// the provider is registered (`ModelResolver.resolving`), before this.
+    public static func applying(_ parameters: AgentModelParameters, to model: Model) -> Model {
+        var model = model
+        if let window = parameters.contextWindow, window > 0 {
+            model.contextWindow = window
+        }
+        if let tokens = parameters.maxTokens, tokens > 0 {
+            model.maxTokens = tokens
+        }
+        if let acceptsImages = parameters.acceptsImages {
+            model.input = acceptsImages ? [.text, .image] : [.text]
+        }
+        if let reasoning = parameters.reasoning {
+            model.reasoning = reasoning
+        }
+        return model
+    }
+
     /// Registers the provider on kwwk's registry from `credentials`, with
     /// the same model capabilities used when verifying the account.
-    static func resolve(
+    public static func resolve(
         _ configuration: ProviderConfiguration,
         credentials: any CredentialSource,
+        modelParameters: AgentModelParameters? = nil,
+        diagnostic: @Sendable (String) -> Void = { _ in },
     ) async throws -> ResolvedProvider {
+        let reading = Date()
         let stored = try await storedCredentials(configuration, in: credentials)
+        diagnostic("provider credentials read in \(elapsed(since: reading))")
         guard let storeID = configuration.storeID else {
             if case let .registered(model) = configuration {
                 return ResolvedProvider(model: model, authResolver: nil)
@@ -79,17 +149,26 @@ enum ProviderResolver {
             preconditionFailure("unreachable")
         }
         // OAuthManager(source:) keeps refreshed tokens in its own memory and
-        // never writes them anywhere. Its refreshers are kwwk's own, with
-        // Kimi's given an identity so that it never reaches for ~/.kwwk.
-        let manager = OAuthManager(source: credentials, providers: KimiIdentity.refreshers())
+        // never writes them anywhere. Only this account's refresher is made;
+        // API keys need none, and Kimi's identity never reaches for ~/.kwwk.
+        let preparing = Date()
+        let manager = OAuthManager(source: credentials, providers: KimiIdentity.refreshers(for: storeID))
+        diagnostic("provider refreshers prepared in \(elapsed(since: preparing))")
+        let registering = Date()
         guard let resolved = try await ProviderRegistration.resolve(
             storeID: storeID,
             manager: manager,
             modelOverride: configuration.modelID,
+            parameters: modelParameters,
         ) else {
             throw ProviderResolutionError.missingCredentials(storeID)
         }
+        diagnostic("provider registered in \(elapsed(since: registering))")
         return ResolvedProvider(model: resolved.model, authResolver: resolved.authResolver, credentials: stored)
+    }
+
+    private static func elapsed(since start: Date) -> String {
+        "\(Int(Date().timeIntervalSince(start) * 1000)) ms"
     }
 
     /// The stored sign-in `configuration` needs, nil for one that needs

@@ -9,9 +9,9 @@
 # how often it asks, the order the sidebar lists conversations in, which
 # projects the project menu lists at its top, which conversations offer
 # Delete and when it asks first, which replies leave a conversation
-# unread, what a forced push's and a squash's approval cards show, and how
-# a sign-in page says it is finished from another device, against the
-# harness modules.
+# unread, what a forced push's, a squash's and a question's approval cards
+# show, and how a sign-in page says it is finished from another device,
+# against the harness modules.
 # Usage: test-chat-transcript.sh <ApelinKit modules directory>
 set -euo pipefail
 
@@ -24,14 +24,22 @@ sources=(
     "$root/Apelin/Interface/Chats/ChatSummary.swift"
     "$root/Apelin/Interface/Chats/ChatUnread.swift"
     "$root/Apelin/Interface/Chats/Composer/ComposerDraft.swift"
+    "$root/Apelin/Interface/Chats/Composer/ComposerMode.swift"
     "$root/Apelin/Interface/Chats/Messages/ChatMessage.swift"
     "$root/Apelin/Interface/Chats/Messages/ApprovalCardText.swift"
     "$root/Apelin/Interface/Chats/Messages/ToolCallBanner.swift"
     "$root/Apelin/Interface/Chats/Messages/ToolCallDetail.swift"
     "$root/Apelin/Interface/Chats/Messages/TraceStep.swift"
     "$root/Apelin/Interface/Chats/ChatTranscript.swift"
+    "$root/Apelin/Interface/Chats/ChatProcessPresentation.swift"
+    "$root/Apelin/Interface/Chats/Messages/ChatHeaderLayout.swift"
+    "$root/Apelin/Interface/Chats/Messages/ChatActivityLayout.swift"
+    "$root/Apelin/Interface/Chats/Messages/ToolCallSections.swift"
+    "$root/Apelin/Interface/Git/GitUntrackedGroup.swift"
     "$root/Apelin/Interface/Chats/ChatTranscriptCache.swift"
+    "$root/Apelin/Interface/Chats/ModelSwitchFit.swift"
     "$root/Apelin/Interface/Chats/ChatStore.swift"
+    "$root/Apelin/Interface/Chats/ChatFork.swift"
     "$root/Apelin/Interface/Chats/ChatAdoption.swift"
     "$root/Apelin/Interface/Chats/DroppedMessages.swift"
     "$root/Apelin/Interface/Chats/DeletedProjects.swift"
@@ -39,6 +47,7 @@ sources=(
     "$root/Apelin/Interface/Chats/ChatDeletion.swift"
     "$root/Apelin/Interface/Chats/TurnFollowing.swift"
     "$root/Apelin/Interface/Root/SidebarOrder.swift"
+    "$root/Apelin/Interface/Root/SidebarTree.swift"
     "$root/Apelin/Interface/Root/ProjectMenuOrder.swift"
     "$root/Apelin/Interface/Root/ChatRowAction.swift"
     "$root/Apelin/Interface/Feedback/CompletedBuilds.swift"
@@ -47,6 +56,11 @@ sources=(
     "$root/Tests/ChatTranscript/TranscriptFold.swift"
     "$root/Tests/ChatTranscript/ToolCallDetailCheck.swift"
     "$root/Tests/ChatTranscript/TraceStepCheck.swift"
+    "$root/Tests/ChatTranscript/ProcessPresentationCheck.swift"
+    "$root/Tests/ChatTranscript/StreamPresentationCheck.swift"
+    "$root/Tests/ChatTranscript/PendingQueueCheck.swift"
+    "$root/Tests/ChatTranscript/ToolCallSectionsCheck.swift"
+    "$root/Tests/ChatTranscript/GitUntrackedGroupCheck.swift"
     "$root/Tests/ChatTranscript/ReplayEndCheck.swift"
     "$root/Tests/ChatTranscript/AbandonedApprovalCheck.swift"
     "$root/Tests/ChatTranscript/DroppedMessagesCheck.swift"
@@ -55,12 +69,18 @@ sources=(
     "$root/Tests/ChatTranscript/CompletedBuildsCheck.swift"
     "$root/Tests/ChatTranscript/StarPromptStateCheck.swift"
     "$root/Tests/ChatTranscript/SidebarOrderCheck.swift"
+    "$root/Tests/ChatTranscript/SidebarTreeCheck.swift"
+    "$root/Tests/ChatTranscript/ChatLineageCheck.swift"
     "$root/Tests/ChatTranscript/ProjectMenuOrderCheck.swift"
     "$root/Tests/ChatTranscript/ChatDeletionCheck.swift"
     "$root/Tests/ChatTranscript/ChatUnreadCheck.swift"
+    "$root/Tests/ChatTranscript/ChatForkCheck.swift"
+    "$root/Tests/ChatTranscript/ConversationSourceCheck.swift"
     "$root/Tests/ChatTranscript/ForcePushCardCheck.swift"
     "$root/Tests/ChatTranscript/SquashCardCheck.swift"
+    "$root/Tests/ChatTranscript/QuestionCardCheck.swift"
     "$root/Tests/ChatTranscript/SignInElsewhereCheck.swift"
+    "$root/Tests/ChatTranscript/ModelSwitchFitCheck.swift"
     "$root/Tests/ChatTranscript/main.swift"
 )
 
@@ -79,3 +99,10 @@ xcrun --sdk macosx swiftc -swift-version 5 -target arm64-apple-macos13.0 \
     -I "$root/Shared/XPCShim" -I "$modules" \
     "${objects[@]}" "${sources[@]}" -o "$work/chat-transcript"
 "$work/chat-transcript"
+
+# The model picker shares its first read with the automatic selection check.
+# This harness needs Foundation alone and also runs on-device with swiftc.
+xcrun --sdk macosx swiftc -swift-version 5 -parse-as-library -target arm64-apple-macos13.0 \
+    "$root/Apelin/Service/SharedModelLoad.swift" \
+    "$root/Tests/ModelPicker/SharedModelLoadCheck.swift" -o "$work/model-picker"
+"$work/model-picker"

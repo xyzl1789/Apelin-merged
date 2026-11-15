@@ -121,9 +121,7 @@ public struct BuildInputs: Sendable {
                 "the project does not build for \(target.rawValue), which was requested; add \(target.rawValue) to the project's architectures",
             )
         }
-        let work = store.buildsDirectory
-            .appendingPathComponent(projectID, isDirectory: true)
-            .appendingPathComponent(buildID, isDirectory: true)
+        let work = BuildLayout.work(inBuilds: store.buildsDirectory, projectID: projectID, buildID: buildID)
         return BuildInputs(
             buildID: buildID,
             projectRoot: located.root,
@@ -153,9 +151,9 @@ public struct BuildProducts: Codable, Sendable, Equatable {
     public struct Product: Codable, Sendable, Equatable {
         public var id: String
         public var type: ProductType
-        /// The signed Mach-O, or the `.app`/`.bundle` directory.
+        /// The signed Mach-O, or the `.app`/`.appex`/`.bundle` directory.
         public var path: String
-        /// The signed Mach-O itself (inside the bundle for app and bundle).
+        /// The signed Mach-O itself (inside the bundle for app, appex and bundle).
         public var executable: String
         /// SHA-256 of `executable`.
         public var digest: String

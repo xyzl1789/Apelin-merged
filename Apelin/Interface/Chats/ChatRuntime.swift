@@ -36,6 +36,8 @@ final class ChatRuntime {
     @objc dynamic private var revision = 0
     private var readers: [UUID: Task<Void, Never>] = [:]
     private var opening: [UUID: Task<AgentOpenResponse, Error>] = [:]
+    /// A newer Stop or Rewind supersedes an earlier Stop's queue continuation.
+    @objc dynamic private var stopContinuations: [UUID: UUID] = [:]
     private var attachmentCache: [String: ComposerAttachment] = [:]
     private var transcripts = ChatTranscriptCache()
     /// Conversations whose latest state is in memory only.
@@ -63,7 +65,19 @@ final class ChatRuntime {
     private var compactions: [UUID: CheckedContinuation<AgentCompactionResult, Error>] = [:]
 
     var summaries: [ChatSummary] {
-        records.values.map(\.summary)
+        ChatLineage.projected(records.values.map(\.summary))
+    }
+
+    /// Only the presentation changes; each branch keeps its creation-time
+    /// title on disk in case its direct parent is later deleted.
+    func summary(_ id: UUID) -> ChatSummary? {
+        summaries.first { $0.id == id }
+    }
+
+    private func restoreLineage(sessions: [AgentSessionSummary] = []) {
+        for id in ChatAdoption.restoreLineage(in: &records, sessions: sessions) {
+            persist(id, urgent: true)
+        }
     }
 
     /// The conversation the reader is looking at, nil while they look at
@@ -102,33 +116,81 @@ final class ChatRuntime {
         for record in records.values where isUntouched(record) && record.summary.id != selected {
             try? await removeRecord(record.summary.id)
             if record.summary.projectName == nil {
-                // the folder the menu's Open in iGhostVT or Fila made, if
-                // it was left empty; rmdir takes nothing else
+                // the folder the menu's Open Terminal or Browse Files made,
+                // if it was left empty; rmdir takes nothing else
                 rmdir(DataFolder.app.root.appendingPathComponent("Temporary/" + record.summary.id.uuidString).path)
             }
         }
         // a project deleted while the app was away
         await forget(DeletedProjects.gone(from: summaries, in: .app))
+        restoreLineage()
         isLoaded = true
         onChange?()
         // A host that does not answer yet is not an error, and runs
         // nothing this app could follow: every saved row stops working.
+        //
+        // A saved row's `isWorking` is what the last launch saw, not what is
+        // running now: the app was quit, so the run it showed ended with the
+        // process. The row waits here rather than claiming a turn is going —
+        // a chat shown working with no way to stop it is worse than one that
+        // takes a moment to come back, and the host's answer is what puts a
+        // live one back (`reopen`).
         let live = await (try? ApelinService.app.agentList().sessions) ?? []
+        reconcile(with: live)
+        // What agents opened while the app was not following their openers.
+        // Resolve parents before children without relying on the host's order.
+        var remaining = live
+        while !remaining.isEmpty {
+            let count = records.count
+            remaining.removeAll { session in
+                // A chat an agent opened, or one a phone holds: neither is
+                // the app's, and both are listed here.
+                guard let record = ChatAdoption.record(session: session, records: Array(records.values))
+                    ?? ChatAdoption.record(channel: session, records: Array(records.values))
+                else { return false }
+                adopt(record)
+                return true
+            }
+            if records.count == count { break }
+        }
+        restoreLineage(sessions: live)
+        isReconciled = true
+        onChange?()
+    }
+
+    /// Puts every saved row in step with what the host reports now: a run it
+    /// serves is followed, and one nothing is left to follow ends — a task
+    /// that ended while the app was away, a session the host no longer has.
+    /// Run whenever the app comes back in front, so a row that lost its run
+    /// stops saying it is without a relaunch.
+    func reconcileRuns() async {
+        reconcile(with: await (try? ApelinService.app.agentList().sessions) ?? [])
+    }
+
+    private func reconcile(with live: [AgentSessionSummary]) {
         for record in records.values {
             if let session = live.first(where: { $0.sessionID == record.sessionID }) {
                 records[record.summary.id]?.reopen(as: session.task)
+                // A task the host reports ended is read to its end too: the
+                // reply, and the run's own end, are in the events after this
+                // row's cursor when the app was killed in the middle of the
+                // turn, and a conversation left saying it is working — with
+                // nothing left to stop — is what not reading them leaves.
                 follow(record.summary.id, task: session.task)
-            } else if record.summary.isWorking {
+                if session.state.isTerminal {
+                    if records[record.summary.id]?.run != .ended {
+                        records[record.summary.id]?.summary.isWorking = false
+                        records[record.summary.id]?.run = .ended
+                        changed(record.summary.id)
+                    }
+                }
+            } else if record.summary.isWorking || record.run == .running || record.run == .stopping {
+                // The host has no such session: whatever turn this row shows
+                // as going ended with the process that ran it.
                 records[record.summary.id]?.summary.isWorking = false
+                records[record.summary.id]?.run = .ended
                 changed(record.summary.id)
             }
-        }
-        isReconciled = true
-        onChange?()
-        // What agents opened while the app was not following their
-        // openers; the list is oldest first, so an opener comes first.
-        for session in live {
-            adopt(ChatAdoption.record(session: session, records: Array(records.values)))
         }
     }
 
@@ -137,6 +199,13 @@ final class ChatRuntime {
     private func adopt(_ record: ChatRecord?) {
         guard let record, let task = record.task else { return }
         records[record.summary.id] = record
+        // A delegated chat starts on the model Settings ▸ Default Models
+        // gives it, the one its opener's session was opened with; the
+        // composer must show the model that turn ran on.
+        if record.summary.relationship == .derived {
+            ComposerModelSelection.seedDelegated(for: record.summary.id)
+        }
+        restoreLineage()
         changed(record.summary.id)
         follow(record.summary.id, task: task)
     }
@@ -156,6 +225,11 @@ final class ChatRuntime {
         let reused = untouched.first { $0.summary.id == current }
             ?? untouched.max { $0.summary.lastInteraction < $1.summary.lastInteraction }
         let summary = reused?.summary ?? ChatSummary.untitled(lastInteraction: Date(), projectName: project)
+        // A row that was shown and left empty starts as a new chat again: on
+        // the model the reader last picked, not the one it was shown with.
+        if let reused {
+            ComposerModelSelection.forget(reused.summary.id)
+        }
         if reused == nil {
             records[summary.id] = ChatRecord(summary: summary)
         }
@@ -185,6 +259,9 @@ final class ChatRuntime {
     /// `name` as the conversation's title from now on: the agent's titles
     /// no longer replace it (`ChatSummary.rename(to:)`).
     @objc dynamic func rename(_ id: UUID, to name: String) {
+        if let chat = records[id]?.summary, chat.relationship == .branch,
+           let parentID = chat.parentChatID, let parent = records[parentID]?.summary,
+           parent.projectName == chat.projectName { return }
         guard records[id]?.summary.rename(to: name) == true else { return }
         changed(id)
     }
@@ -249,6 +326,7 @@ final class ChatRuntime {
     }
 
     private func closeSession(_ id: UUID) async throws {
+        stopContinuations[id] = nil
         // A send may still be opening the session when Delete is tapped.
         var sessionID = records[id]?.sessionID
         if let pending = opening[id], let opened = try? await pending.value {
@@ -274,6 +352,8 @@ final class ChatRuntime {
         savedAt[id] = nil
         records.removeValue(forKey: id)
         transcripts.remove(id)
+        historyTurns[id] = nil
+        promptCache[id] = nil
     }
 
     /// The conversation's rows, brought up to date only when its events, the
@@ -285,16 +365,87 @@ final class ChatRuntime {
         }
         return transcripts.transcript(
             of: record,
+            from: historyStart(of: id),
             now: Date(),
             isFollowed: { readers[$0] != nil },
             conversationTitle: { title(ofSession: $0) },
         ) { [self] item in attachment(item, in: id) }
     }
 
+    /// How many turns of each conversation are folded when it is opened:
+    /// its last ones, and another page each time the reader asks.
+    private var historyTurns: [UUID: Int] = [:]
+
+    /// The event a conversation's fold starts at.
+    private func historyStart(of id: UUID) -> Int {
+        guard let record = records[id] else { return 0 }
+        return ChatHistory.start(of: record.events, keeping: historyTurns[id] ?? ChatHistory.turns)
+    }
+
+    /// Whether `id` holds events before the ones it is showing.
+    func hasEarlierHistory(_ id: UUID) -> Bool {
+        historyStart(of: id) > 0
+    }
+
+    /// Folds another page of `id`'s earlier turns in, and answers whether
+    /// there was one to fold: the page shows when its transcript is asked for
+    /// again.
+    @discardableResult
+    func loadEarlierHistory(_ id: UUID) -> Bool {
+        guard hasEarlierHistory(id) else { return false }
+        historyTurns[id] = (historyTurns[id] ?? ChatHistory.turns) + ChatHistory.step
+        return true
+    }
+
+    /// Each of the conversation's prompts, in order, as the rail lists them:
+    /// read from the record, so the rail covers turns the page has not folded
+    /// in. Only the events that arrived since are read again — a stream asks
+    /// for this on every one of them.
+    func promptRows(of id: UUID) -> [ChatMessageRuler.Entry] {
+        guard let record = records[id] else { return [] }
+        let cached = promptCache[id].flatMap { $0.events <= record.events.count ? $0 : nil }
+        let from = cached?.events ?? 0
+        var entries = cached?.entries ?? []
+        if from < record.events.count {
+            for index in from ..< record.events.count where record.events[index].kind == "prompt" {
+                let event = record.events[index]
+                entries.append(ChatMessageRuler.Entry(
+                    id: ChatTranscript.userMessageID(of: event) ?? ChatTranscript.rowID(forEventAt: index),
+                    text: event.payload?["text"]?.stringValue ?? "",
+                    sentAt: event.time,
+                ))
+            }
+        }
+        promptCache[id] = (record.events.count, entries)
+        return entries
+    }
+
+    /// Folds `conversationID` back to the turn the row `rowID` belongs to, in
+    /// one fold rather than a page at a time — the rail can pick a message far
+    /// outside what the page was showing — and answers whether it had to.
+    @discardableResult
+    func showHistory(_ conversationID: UUID, from rowID: UUID) -> Bool {
+        guard let record = records[conversationID] else { return false }
+        var prompts: [UUID] = []
+        for (index, event) in record.events.enumerated() where event.kind == "prompt" {
+            prompts.append(ChatTranscript.userMessageID(of: event) ?? ChatTranscript.rowID(forEventAt: index))
+        }
+        guard let position = prompts.firstIndex(of: rowID) else { return false }
+        let needed = prompts.count - position
+        guard needed > (historyTurns[conversationID] ?? ChatHistory.turns) else { return false }
+        historyTurns[conversationID] = needed
+        return true
+    }
+
+    /// The prompts a rail was last built from, by conversation, and how many
+    /// events they were read from.
+    private var promptCache: [UUID: (events: Int, entries: [ChatMessageRuler.Entry])] = [:]
+
     /// The title of the conversation `sessionID` is, which names a message
     /// its agent sent, and its journal in Settings ▸ Logs.
     @objc dynamic func title(ofSession sessionID: String) -> String? {
-        records.values.first { $0.sessionID == sessionID }?.summary.displayTitle
+        guard let id = records.values.first(where: { $0.sessionID == sessionID })?.summary.id else { return nil }
+        return summary(id)?.displayTitle
     }
 
     /// A message's attachment, read from its file once and kept. One that
@@ -343,11 +494,12 @@ final class ChatRuntime {
     /// composer before the task throws.
     func submit(_ draft: ComposerDraft, to id: UUID) -> Task<Void, Error> {
         guard records[id] != nil else { return Task {} }
+        let selection = ComposerModelSelection.selection(for: id)
         records[id]?.submit(draft)
         changed(id)
         return Task {
             do {
-                try await send(draft, to: id)
+                try await send(draft, to: id, selection: selection)
             } catch {
                 takeBack(draft, from: id)
                 throw error
@@ -365,9 +517,9 @@ final class ChatRuntime {
         }
     }
 
-    private func send(_ draft: ComposerDraft, to id: UUID) async throws {
+    private func send(_ draft: ComposerDraft, to id: UUID, selection: ComposerModelSelection?) async throws {
         guard records[id] != nil else { return }
-        let opened = try await open(id)
+        let opened = try await open(id, selection: selection)
         guard records[id] != nil else { return }
         var descriptors: [OwnedDescriptor] = []
         var inputs: [AgentInputAttachment] = []
@@ -395,19 +547,23 @@ final class ChatRuntime {
             ))
             descriptors.append(OwnedDescriptor(adopting: fd))
         }
-        let selection = ComposerModelSelection.current
+        let selected = selection ?? ComposerModelSelection.selection(for: id)
         _ = try await ApelinService.app.send(
             AgentPromptRequest(
                 sessionID: opened.sessionID,
                 text: draft.text,
                 messageID: draft.id,
                 attachments: inputs,
-                provider: selection?.provider,
-                model: selection?.model,
-                reasoningEffort: selection?.effort,
-                serviceTier: selection?.tier,
+                provider: selected?.provider,
+                model: selected?.model,
+                modelDefaults: Preferences.DefaultModels.wire,
+                reasoningEffort: selected?.effort,
+                serviceTier: selected?.tier,
                 approvalMode: AgentPermissions.mode,
                 asksBeforeScreen: AgentPermissions.asksBeforeScreen,
+                runMode: ComposerModeStore.mode(for: id).runMode,
+                promptInjection: Preferences.PromptInjection.forPrompt,
+                modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,
             ),
             descriptors: descriptors,
         )
@@ -415,9 +571,24 @@ final class ChatRuntime {
         changed(id)
     }
 
+    func manageQueue(in id: UUID, action: AgentQueueAction, messageID: UUID? = nil,
+                     text: String? = nil, order: [UUID]? = nil) async throws {
+        let opened = try await open(id)
+        _ = try await ApelinService.app.agentQueue(AgentQueueRequest(
+            sessionID: opened.sessionID, action: action, messageID: messageID, text: text, order: order
+        ))
+    }
+
     /// `ownerVerified`: the reader passed the device owner's check for this
     /// decision, which the host requires to approve a command as root.
-    func approve(_ messageID: UUID, in id: UUID, decision: ApprovalDecision, ownerVerified: Bool? = nil) async throws {
+    /// `answer`: the reader's answer, with approve, to a question.
+    func approve(
+        _ messageID: UUID,
+        in id: UUID,
+        decision: ApprovalDecision,
+        ownerVerified: Bool? = nil,
+        answer: AgentQuestionAnswer? = nil,
+    ) async throws {
         guard let sessionID = records[id]?.sessionID,
               let approvalID = transcript(id).approvalIDs[messageID]
         else { return }
@@ -426,12 +597,148 @@ final class ChatRuntime {
             approvalID: approvalID,
             decision: decision,
             ownerVerified: ownerVerified,
+            answer: answer,
         )
     }
 
-    func stop(_ id: UUID) async throws {
+    func stop(_ id: UUID, continueQueue: Bool = true) async throws {
         guard let sessionID = records[id]?.sessionID else { return }
-        try await ApelinService.app.agentAbort(sessionID: sessionID)
+        let continuation = UUID()
+        stopContinuations[id] = continuation
+        defer {
+            if stopContinuations[id] == continuation { stopContinuations[id] = nil }
+        }
+        do {
+            try await ApelinService.app.agentAbort(sessionID: sessionID)
+            guard stopContinuations[id] == continuation,
+                  records[id]?.sessionID == sessionID else { return }
+            // The host has now cancelled the old run's shell calls. Only
+            // then request FIFO continuation; the session waits for cleanup.
+            if records[id]?.summary.isWorking == true {
+                records[id]?.run = .stopping
+                changed(id)
+            }
+            if continueQueue {
+                _ = try await ApelinService.app.agentQueue(AgentQueueRequest(sessionID: sessionID, action: .resume))
+            }
+        } catch let error as ApelinError where error.code == .notFound {
+            guard stopContinuations[id] == continuation else { return }
+            // The session ended with the process that ran it (the app was
+            // quit, or the host restarted): there is no run left to stop, and
+            // the row must not keep saying it is. Waiting on a host that has
+            // nothing to stop is what made Stop look broken.
+            records[id]?.summary.isWorking = false
+            records[id]?.run = .ended
+            changed(id, urgent: true)
+            return
+        } catch {
+            guard stopContinuations[id] == continuation else { return }
+            // A current request's failure stays visible. A superseded Stop
+            // must not report a conflict over the Rewind that replaced it.
+            throw error
+        }
+    }
+
+    // MARK: The history's changes (Checkpoint & Rewind, a message's menu)
+
+    /// Takes message `messageID` back: the run going stops first, and with
+    /// `truncate` the message and everything after it leave the
+    /// conversation. The session is opened again for it when it has ended.
+    func rewind(_ messageID: UUID, in id: UUID, truncate: Bool) async throws {
+        stopContinuations[id] = nil
+        let opened = try await open(id)
+        try await ApelinService.app.agentRewind(sessionID: opened.sessionID, messageID: messageID, truncate: truncate)
+    }
+
+    /// Puts the project's code back as it was before message `messageID`'s
+    /// run. A run going is stopped first; the conversation stays.
+    func restoreCode(before messageID: UUID, in id: UUID) async throws -> GitCheckpointRestoreResponse {
+        guard let project = records[id]?.summary.projectName else {
+            throw ApelinError(.notFound, String(localized: "No code was saved before this message."))
+        }
+        if records[id]?.summary.isWorking == true {
+            try await rewind(messageID, in: id, truncate: false)
+        }
+        return try await ApelinService.app.gitCheckpointRestore(projectID: project, messageID: messageID)
+    }
+
+    /// Gives message `messageID`, or with `reply` the reply that ends its
+    /// turn, the text `text`; `expected` is the reply's text as shown.
+    func edit(_ messageID: UUID, in id: UUID, reply: Bool, text: String, expected: String?) async throws {
+        let opened = try await open(id)
+        try await ApelinService.app.agentEditMessage(
+            sessionID: opened.sessionID,
+            messageID: messageID,
+            reply: reply,
+            text: text,
+            expected: expected,
+        )
+    }
+
+    /// Deletes the reply that ends message `messageID`'s turn.
+    func deleteReply(of messageID: UUID, in id: UUID, expected: String?) async throws {
+        let opened = try await open(id)
+        try await ApelinService.app.agentDeleteReply(sessionID: opened.sessionID, messageID: messageID, expected: expected)
+    }
+
+    /// A project's conversation can be forked; a temporary one, whose
+    /// folder is its own, cannot.
+    func canFork(_ id: UUID) -> Bool {
+        records[id]?.summary.projectName != nil
+    }
+
+    /// A new conversation holding `id`'s model history through the turn of
+    /// message `messageID`, named after it and listed first. Its new session
+    /// is opened when its page is selected; a failed open leaves the same row to retry.
+    func fork(_ id: UUID, through messageID: UUID) async throws -> ChatSummary? {
+        guard records[id] != nil, canFork(id) else { return nil }
+        // The session log is the source of truth for a fork. Its worker
+        // replays the sealed model snapshot and marks those events historical;
+        // the UI must not copy the source's possibly edited event list.
+        let opened = try await open(id)
+        guard let number = try await reserveBranchNumber(id), records[id] != nil else { return nil }
+        let newSessionID = UUID().uuidString.lowercased()
+        try await ApelinService.app.agentFork(sessionID: opened.sessionID, newSessionID: newSessionID, messageID: messageID)
+        guard let current = summary(id) else { return nil }
+        var summary = ChatSummary.untitled(lastInteraction: Date(), projectName: current.projectName)
+        summary.title = current.title
+        summary.parentChatID = id
+        summary.relationship = .branch
+        summary.branchNumber = number
+        let newID = summary.id
+        records[newID] = ChatRecord(summary: summary, sessionID: newSessionID)
+        // A branch goes on with the parent's model, effort and speed: the
+        // reader picked them for this conversation, and a branch of it is
+        // the same conversation continued, not a new chat with the defaults.
+        ComposerModelSelection.inherit(from: id, into: newID)
+        // Opening the page starts (or retries) its replay. No model prompt is
+        // sent, and failure stays visible instead of leaving a silent blank.
+        changed(newID)
+        return self.summary(newID)
+    }
+
+    /// Durably reserve on the parent before asking the host to fork. A
+    /// best-effort child save must not let a deleted branch's number be reused
+    /// after a restart. Store revisions prevent an older queued save from
+    /// replacing this snapshot; concurrent forks reserve on the main actor
+    /// before either suspends. Failed reservations/forks never roll it back.
+    private func reserveBranchNumber(_ id: UUID) async throws -> Int? {
+        guard var record = records[id],
+              let number = ChatLineage.reserveBranchNumber(in: &record.summary, summaries: records.values.map(\.summary))
+        else { return nil }
+        records[id]?.summary.lastBranchNumber = number
+        revision += 1
+        let reservationRevision = revision
+        do {
+            try await store.save(record, revision: reservationRevision)
+            saved(id)
+        } catch {
+            unsaved.insert(id)
+            onSaveFailure?(error)
+            throw error
+        }
+        guard records[id] != nil else { throw CancellationError() }
+        return number
     }
 
     /// Between runs only: a session to compact, nothing running, waiting
@@ -448,7 +755,10 @@ final class ChatRuntime {
         let opened = try await open(id)
         // what the reader takes from here on, which may answer before the request does
         let seen = records[id]?.events.count ?? 0
-        try await ApelinService.app.agentCompact(sessionID: opened.sessionID)
+        try await ApelinService.app.agentCompact(
+            sessionID: opened.sessionID,
+            modelDefaults: Preferences.DefaultModels.wire,
+        )
         if let event = records[id]?.events.dropFirst(seen).last(where: { $0.kind == "compactionFinished" }) {
             return Self.compactionResult(event)
         }
@@ -476,7 +786,41 @@ final class ChatRuntime {
         (try? event.payload?.decode(AgentCompactionResult.self)) ?? AgentCompactionResult(outcome: .failed)
     }
 
-    private func open(_ id: UUID) async throws -> AgentOpenResponse {
+    /// Tells the open session which model the next message will use, so the
+    /// total the ring draws is that model's before anything is sent. Answers
+    /// the figure the session measured, or nil when there is no session to
+    /// tell or a run was going — the next prompt carries the choice then.
+    @discardableResult
+    func configureModel(
+        _ id: UUID,
+        selection: ComposerModelSelection,
+    ) async -> (tokens: Int, window: Int)? {
+        guard let sessionID = records[id]?.sessionID else { return nil }
+        do {
+            let answer = try await ApelinService.app.agentConfigure(AgentConfigureRequest(
+                sessionID: sessionID,
+                provider: selection.provider,
+                model: selection.model,
+                reasoningEffort: selection.effort,
+                serviceTier: selection.tier,
+                modelParameters: ModelParameters.values(for: selection.provider, model: selection.model).wire,
+            ))
+            guard answer.applied, let tokens = answer.tokens, let window = answer.window else { return nil }
+            return (tokens: tokens, window: window)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Follow a saved session when the reader opens its page, without sending
+    /// a prompt. In particular an empty fork must retry a failed first open.
+    func loadHistory(_ id: UUID) async throws {
+        guard let record = records[id],
+              ChatFork.needsHistoryLoad(record, isFollowed: readers[id] != nil) else { return }
+        _ = try await open(id)
+    }
+
+    private func open(_ id: UUID, selection: ComposerModelSelection? = nil) async throws -> AgentOpenResponse {
         if let pending = opening[id] {
             return try await pending.value
         }
@@ -484,7 +828,7 @@ final class ChatRuntime {
         if let sessionID = record.sessionID, let task = record.task, readers[id] != nil {
             return AgentOpenResponse(sessionID: sessionID, task: task)
         }
-        let selected = ComposerModelSelection.current
+        let selected = selection ?? ComposerModelSelection.selection(for: id)
         let mode = AgentPermissions.mode
         let request = AgentOpenRequest(
             projectName: record.summary.projectName,
@@ -492,10 +836,13 @@ final class ChatRuntime {
             sessionID: record.sessionID,
             provider: selected?.provider,
             model: selected?.model,
+            modelDefaults: Preferences.DefaultModels.wire,
             approvalMode: mode,
             asksBeforeScreen: AgentPermissions.asksBeforeScreen,
             reasoningEffort: selected?.effort,
             serviceTier: selected?.tier,
+            modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,
+            promptInjection: Preferences.PromptInjection.wire,
         )
         if request.temporaryID != nil {
             try DataFolder.app.makeLevels(to: DataFolder.app.root.appendingPathComponent("Temporary/" + id.uuidString))
@@ -533,15 +880,17 @@ final class ChatRuntime {
                     let batch = try await ApelinService.app.attach(task, afterSeq: cursor)
                     guard !Task.isCancelled, records[id]?.task == task else { return }
                     let fresh = records[id]?.take(batch.events) ?? []
-                    // never the replay, which `take` reads past
-                    records[id]?.summary.noteReplies(in: fresh, isViewed: id == viewedChat)
-                    ConversationJournal.note(fresh, session: records[id]?.sessionID)
-                    settleSending(in: id, against: fresh)
-                    let builds = CompletedBuilds.count(in: fresh)
+                    let realtime = fresh.filter { !ChatFork.isHistorical($0) }
+                    // Historical replay belongs in the transcript and cursor,
+                    // but must not replay reader-visible side effects.
+                    records[id]?.summary.noteReplies(in: realtime, isViewed: id == viewedChat)
+                    ConversationJournal.note(realtime, session: records[id]?.sessionID)
+                    settleSending(in: id, against: realtime)
+                    let builds = CompletedBuilds.count(in: realtime)
                     if builds > 0 {
                         onBuildsCompleted?(builds)
                     }
-                    for event in fresh where event.kind == AgentConversations.openedEventKind {
+                    for event in realtime where event.kind == AgentConversations.openedEventKind {
                         if let parent = records[id] {
                             adopt(ChatAdoption.record(
                                 opened: event.payload,
@@ -550,16 +899,21 @@ final class ChatRuntime {
                             ))
                         }
                     }
-                    let dropped = fresh.filter { $0.kind == "queueDropped" }
+                    if realtime.contains(where: { $0.kind == AgentConversations.openedEventKind }) {
+                        // The child may already have been adopted from a link
+                        // or agentList, so a duplicate open still supplies an edge.
+                        restoreLineage()
+                    }
+                    let dropped = realtime.filter { $0.kind == "queueDropped" }
                         // persisted-read: one event's field, nothing written back from it
                         .flatMap { (try? $0.payload?["ids"]?.decode([UUID].self)) ?? [] }
                     if !dropped.isEmpty {
                         restoreDropped(Set(dropped), in: id)
                     }
-                    if let title = batch.events.last(where: { $0.kind == "title" })?.payload?["text"]?.stringValue {
+                    if let title = realtime.last(where: { $0.kind == "title" })?.payload?["text"]?.stringValue {
                         records[id]?.summary.suggestTitle(title)
                     }
-                    if let proposed = batch.events
+                    if let proposed = realtime
                         .last(where: { $0.kind == "projectNameSuggested" })?.payload?["name"]?.stringValue,
                        let project = records[id]?.summary.projectName,
                        let name = ProjectDisplayName.candidate(proposed)
@@ -572,7 +926,7 @@ final class ChatRuntime {
                             }
                         }
                     }
-                    if let finished = fresh.last(where: { $0.kind == "compactionFinished" }) {
+                    if let finished = realtime.last(where: { $0.kind == "compactionFinished" }) {
                         endCompaction(id, with: .success(Self.compactionResult(finished)))
                     }
                     let wasWorking = records[id]?.summary.isWorking
@@ -594,10 +948,17 @@ final class ChatRuntime {
                         if let end = records[id]?.missedEnd(of: batch, isWorking: isWorking) {
                             await takeMissedEnd(at: end, of: task, from: batch, in: id)
                         }
+                        // The task is over: nothing more comes for this turn,
+                        // so it stops looking as if it were going.
+                        records[id]?.run = .ended
+                        records[id]?.summary.isWorking = false
+                        records[id]?.dropReplay()
+                        changed(id)
                         return
                     }
                 } catch let error as ApelinError where error.code == .notFound {
                     records[id]?.summary.isWorking = false
+                    records[id]?.run = .ended
                     changed(id)
                     return
                 } catch is CancellationError { return }

@@ -52,28 +52,142 @@ other hidden configuration.
 | `kind` | `app`, `tweak`, `cli` or `preferences`. Requires a product of type `app`, `dylib` (plus `package.tweakFilter`), `executable` or `bundle` respectively. Only `tweak` may carry `tweakFilter`. |
 | `template` | `{extensionID, templateID, version, digest}`: the extension, its version and the template digest (below) the project was generated from. The Confirm baseline. |
 | `environment` | `{toolchain, sdk}`, each `{id, digest}`: the registered toolchain and SDK the project is pinned to. Changing either is an explicit operation (the agent's `apelin_project_set_environment`, checked first by `projectCheck` with `environment`); a new default never moves a project. |
-| `language` | `c`, `objc` or `swift`. A C-family project compiles `.c` and `.m`; a Swift one `.swift` only (beyond the schema). No mixing in v1. |
+| `language` | `c`, `objc` or `swift`: the main language, for the editor and the templates. A product is not limited to it (below). |
 | `deploymentTarget` | `16.0` or later, as a string. |
 | `architectures` | `{rootless?, roothide?}` → `arm64`/`arm64e` lists. The keys present are the bootstraps the project packages for. Templates default to rootless `[arm64, arm64e]`, roothide `[arm64e]`. |
-| `configurations` | `Debug` and `Release`, each `{optimization: "0"…"3"/"s"/"z", debugInfo, defines?, cFlags?, swiftFlags?, linkFlags?}`. A define's name may not start with `APELIN_`. A flag is one argv element starting with `-`; nothing here is ever given to a shell. |
-| `products` | 1–8 of `{id, type, name, sources, headerSearchPaths?, resources?, infoPlist?, entitlements?, installName?, objcARC?, frameworks?, weakFrameworks?, libraries?, frameworkSearchPaths?, librarySearchPaths?, extensionSupport?}`. `app` and `bundle` require `infoPlist`; only they may have `resources`; only `dylib` may set `installName` (default `@rpath/<name>.dylib`). `extensionSupport` names `{extension, component}` from an installed extension's manifest; the build adds that component's include directories, link-stub directories for the bootstrap being built and rpaths. Ids and names are unique (beyond the schema). |
+| `configurations` | `Debug` and `Release`, each `{optimization: "0"…"3"/"s"/"z", debugInfo, defines?, cFlags?, cxxFlags?, swiftFlags?, linkFlags?}`. A define's name may not start with `APELIN_`. A flag is one argv element starting with `-`; nothing here is ever given to a shell. `cxxFlags` reach only the C++ and Objective-C++ files, after `cFlags`. |
+| `products` | 1–8 of `{id, type, name, sources, headerSearchPaths?, resources?, infoPlist?, entitlements?, bridgingHeader?, installName?, objcARC?, cxxStandard?, cxxInterop?, frameworks?, weakFrameworks?, libraries?, frameworkSearchPaths?, librarySearchPaths?, extensionSupport?, swiftModules?}`. `type` is `app`, `appex`, `bundle`, `dylib` or `executable`. `app`, `appex` and `bundle` require `infoPlist`; only they may have `resources`; only `dylib` may set `installName` (default `@rpath/<name>.dylib`). `extensionSupport` names `{extension, component}` from an installed extension's manifest; the build adds that component's include directories, link-stub directories for the bootstrap being built and rpaths. `bridgingHeader`, `cxxStandard` and `cxxInterop` are the mixed-language members below. `swiftModules` names the project's modules this product compiles against and links (below). Ids and names are unique (beyond the schema). |
+| `swiftModules` | 1–32 when present, of `{name, sources, dependencies?, cxxInterop?, headerSearchPaths?, cxxStandard?}`, each a Swift module built out of the project's own files — one target of a vendored package, say. `name` is the name its Swift sources import; `sources` are its `.swift` files (Swift only: a module never carries C or C++ sources); `dependencies` names the modules it imports, which are built before it. `cxxInterop`, `headerSearchPaths` and `cxxStandard` are the module's side of Swift and C++, below. Each module becomes one `.swiftmodule` and one object, per architecture, which a product that names it (or names a module that imports it) compiles against with `-I` and links. **Nothing is resolved, fetched or downloaded**: SwiftPM never runs, a vendored package is a folder of the project like any other, and its own `Package.swift` is never read, so its resources and `Bundle.module` are not supported in v1. Any project may carry modules whatever its `language`; names are unique and never a product's name, a module never depends on itself, every dependency is declared, and the modules may not depend on each other in a cycle (all beyond the schema). |
 | `build.steps` | The typed steps, below. |
-| `package` | `{id, name, version, description, longDescription?, icon?, depiction?, sileoDepiction?, author, maintainer?, section, depends?, dependsByBootstrap?, recommends?, suggests?, conflicts?, breaks?, replaces?, provides?, layout, maintainerScripts?, tweakFilter?}`. |
+| `package` | `{id, name, version, description, longDescription?, icon?, depiction?, sileoDepiction?, author, maintainer?, section, format?, depends?, dependsByBootstrap?, recommends?, suggests?, conflicts?, breaks?, replaces?, provides?, layout, maintainerScripts?, tweakFilter?}`. |
+
+### Mixed-language products
+
+A product is not one language: every source is compiled as its extension
+says, so C, Objective-C, C++, Objective-C++ and Swift may share it.
+
+| Extension | Compiled as | Applies |
+|---|---|---|
+| `.c` | C | `cFlags` |
+| `.m` | Objective-C | `cFlags`, `objcARC` |
+| `.cpp`, `.cc`, `.cxx`, `.C` | C++ | `cFlags`, then `cxxFlags`, with `cxxStandard` |
+| `.mm` | Objective-C++ | `cFlags`, then `cxxFlags`, with `cxxStandard`; `objcARC` |
+| `.swift` | Swift | `swiftFlags`, the product's `bridgingHeader` |
+
+`SourceLanguage` is the rule, in the app and the host alike; `.C` is C++,
+as clang compiles it.
+
+- A `sources` entry may be a glob. A definite extension must be one of the
+  table's; a pattern may spell one (`Sources/*.mm`) or none at all
+  (`Sources/*`), and `projectCheck` then classifies each file it expands to.
+  A file whose extension is not one of them is
+  `project.source.unsupported` for that file, and building stops.
+- `cxxStandard` (`c++11`…`c++23`, `gnu++11`…`gnu++23`) is the product's C++
+  standard, passed as `-std=<value>` for its C++ and Objective-C++ files.
+  `cxxFlags` is per configuration and reaches only those files, after
+  `cFlags`; a C or Objective-C file never sees either.
+- `bridgingHeader` is one regular file inside the project that the Swift
+  compiler imports into each Swift file of the product, which is how Swift
+  reaches the C family's declarations. A product that names one must compile
+  at least one `.swift` source (`project.bridgingHeader.unused`), and the
+  file must exist, be regular and resolve inside the project
+  (`project.bridgingHeader.missing`). Swift sees the header as C or
+  Objective-C: C++ declarations need an `extern "C"` facade. A bridging
+  header cannot be combined with `cxxInterop` below — the importer stops
+  reading it the moment interop is on, without a diagnostic — so the C
+  declarations go in a module of a `module.modulemap` instead.
+- A project compiles Swift when a product's sources include a `.swift` file
+  or the project carries `swiftModules`; that, not `language`, is what
+  requires the toolchain's `swiftc` and its Swift component and what the
+  Swift SDK checks apply to.
+
+### Swift and C++
+
+Swift's direct C++ interop is a product member, `cxxInterop`, and a
+`swiftModules` member. It is **off** unless named — the everyday answer — and
+when it is on the product's Swift sources import C++ declarations themselves
+(`-cxx-interoperability-mode=default`) instead of going through a C facade.
+
+- **A dependency turns it on.** A module that names `cxxInterop: true` turns
+  interop on for every product that names it, directly or through a module
+  that imports it, and for the modules it imports. `cxxInterop: false` on
+  such a product or module is refused, whichever reaches the compiler first:
+  it says no while something it builds with says yes.
+- **Headers.** The importer and the product's native C++ files see the
+  product's own `headerSearchPaths`, and the `headerSearchPaths` of every
+  enabled module in the closure, each module's own first. A module's paths
+  reach the products that compile against it, so a header lives once.
+- **One standard.** Nothing named means `c++17`, and an enabled product
+  compiles its Swift and its C++ files with the same `-std`, so the layouts
+  the importer sees and the ones clang builds agree. The closure may name one
+  standard, in the product's `cxxStandard` or a module's; two different ones
+  are refused (`names more than one standard`). One explicit standard is
+  accepted from any member and reaches the whole closure; a module is also
+  compiled on its own, so a module inside a closure that compiles as other
+  than `c++17` must name that standard itself — the check refuses the
+  mismatch instead of importing the same headers with different layouts.
+  `c++11` and `gnu++11` are refused once interop is on (the importer is
+  C++14); a project's own C++ files may keep them while it is off.
+- **No bridging header.** With interop on, Swift's importer does not read
+  the product's `bridgingHeader` at all and says nothing about it: every
+  declaration in it is simply missing, whatever the standard. A
+  `bridgingHeader` beside an enabled `cxxInterop` is refused
+  (`project.cxxInterop.bridgingHeader`, whether interop is the product's own
+  or comes from a `swiftModules` entry). C declarations the Swift code needs
+  go in a C module instead, under `headerSearchPaths`:
+
+  ```
+  Headers/CAPI/module.modulemap:
+    module CAPI [extern_c] { header "API.h" export * }
+
+  products: [{ "headerSearchPaths": ["Headers/CAPI"], "cxxInterop": true, … }]
+  Sources/Probe.swift:  import CAPI   // beside any import of a C++ module
+  ```
+
+  A C module and a C++ module may sit in the same product and the same
+  `headerSearchPaths`; `-std` reaches both. The `[extern_c]` attribute — or
+  the header's own `extern "C"` guards — is not optional: with interop on,
+  the importer reads that header as C++, and without it `c_value` is
+  exported as `__Z7c_valuev` with no diagnostic, failing only at link.
+- **Flags and defines.** The product's `cFlags` and `cxxFlags` reach the
+  importer as `-Xcc` after the `-std`, and the configuration's `defines` as
+  `-Xcc -D…`, so a header's macro-selected layout is the same on both sides.
+  `APELIN_PRODUCT_NAME` is a product's own and is not given to a module.
+- **What it needs.** Command Line Tools 15.0 (Swift 5.9) or newer
+  (`environment.toolchain.cxxInterop`), and a CPU that can run clang's module
+  machinery, because the importer builds each imported header as a clang
+  module (`environment.device.clangModules`: FEAT_SHA3, the A13 on). A
+  product that turns it on compiles at least one `.swift` source or names a
+  swift module (`project.cxxInterop.noSwift`).
+- A module still compiles `.swift` sources only: the C++ is in the headers
+  it imports, never in its `sources`.
+
+```json
+"products": [{
+  "id": "tool", "type": "executable", "name": "cxxprobe",
+  "sources": ["Sources/*.swift"], "headerSearchPaths": ["Vendor/CxxKit/include"],
+  "cxxInterop": true, "cxxStandard": "c++20", "swiftModules": ["CxxKit"]
+}],
+"swiftModules": [{
+  "name": "CxxKit", "sources": ["Vendor/CxxKit/Sources/*.swift"],
+  "cxxInterop": true, "headerSearchPaths": ["Vendor/CxxKit/include"], "cxxStandard": "c++20"
+}]
+```
 
 ### Build steps
 
 Each product goes through, in this order, `compile` → `link` →
-`bundle-resources` (app and bundle only) → `lipo` → `dsym` → `strip` →
+`bundle-resources` (app, appex and bundle only) → `lipo` → `dsym` → `strip` →
 `sign`. `compile`, `link`, `lipo` and `sign` are required; each appears at
 most once per product; `sign` is the last step for its product (beyond the
 schema). Steps of different products may interleave.
 
 | Step | Does |
 |---|---|
-| `compile {product, flags?}` | Every source, once per architecture, to an object kept for `dsym`. Swift compiles the module whole, one object per architecture. |
-| `link {product, flags?}` | One Mach-O per architecture: `MH_EXECUTE` for app and executable, `MH_DYLIB` for dylib, `MH_BUNDLE` for bundle. |
-| `bundle-resources {product}` | Builds the `.app`/`.bundle` directory: the product's Info.plist with `CFBundleExecutable`, `CFBundleShortVersionString`, `CFBundleVersion` and `MinimumOSVersion` set by the build, then each resource flattened to its file name; a `.plist` is linted and written as XML. |
-| `lipo {product}` | Merges the slices into the product (inside the bundle for app/bundle). |
+| `compile {product, flags?}` | Every source, once per architecture, to an object kept for `dsym`. Swift compiles the module whole, one object per architecture; an `appex` compiles with `-parse-as-library`. |
+| `link {product, flags?}` | One Mach-O per architecture: `MH_EXECUTE` for app and executable, `MH_DYLIB` for dylib, `MH_BUNDLE` for bundle. An `appex` is `MH_EXECUTE` whose entry point is `_NSExtensionMain`, which the build links for (`-framework Foundation`). |
+| `bundle-resources {product}` | Builds the `.app`/`.appex`/`.bundle` directory: the product's Info.plist with `CFBundleExecutable`, `CFBundleShortVersionString`, `CFBundleVersion` and `MinimumOSVersion` set by the build, then each resource flattened to its file name; a `.plist` is linted and written as XML. An `.appex` must name a `CFBundleIdentifier` and an `NSExtension.NSExtensionPointIdentifier`. |
+| `lipo {product}` | Merges the slices into the product (inside the bundle for app, appex and bundle). |
 | `dsym {product}` | `dsymutil` while the objects exist. Fails on any warning, a dSYM without `__debug_info`, or UUIDs that differ from the product's. |
 | `strip {product, style?}` | `non-global` (`strip -x`, default) or `debug` (`strip -S`). Exported symbols stay. |
 | `sign {product, identity?}` | Ad-hoc (`identity: "adhoc"`, the only value), with the product's `entitlements` if any. |
@@ -94,6 +208,60 @@ with the SDK's physical path, `-mios-version-min` / `-target` from
 | `APELIN_CONFIGURATION_DEBUG` or `APELIN_CONFIGURATION_RELEASE` | `1`. |
 
 Swift gets the bootstrap and configuration names as `-D` conditions.
+With `cxxInterop` on, Swift also compiles with
+`-cxx-interoperability-mode=default`; the importer is told the closure's
+`-std=<standard>` and receives the configuration's `cFlags` and `cxxFlags`
+as `-Xcc` after it, and its `defines` as `-Xcc -D<name>=<value>`, so a C++
+header sees the same macros on both sides. `APELIN_PRODUCT_NAME` is a
+product's own and is not given to a module.
+
+#### Compiled code kept between builds
+
+A build's work directory is wiped when the build starts (`BuildService`), so
+nothing in it survives to the next one. What a compile made is kept beside
+the builds instead, content addressed:
+`Builds/.build-cache/<projectID>/` (`BuildCache` in `ApelinBuild`). A unit —
+one Swift module for one architecture, a product's own Swift compile, or one
+C-family file — is compiled again only when its key differs from the one an
+entry was stored with. The key covers the toolchain's and the SDK's digests,
+`-target`, `optimization`, `debugInfo`, the flags and defines that compile is
+given, the SHA-256 of every source file, the SHA-256 of every regular file
+under the declared `headerSearchPaths` and of a `bridgingHeader`, and the
+keys of the Swift modules it imports. It is never a modification time,
+`APELIN_BUILD_ID` (Swift is not given it; a C-family compile is, so a C-family
+object's key carries the whole define list and those objects are compiled on
+every build), the work directory or a path under the project or the install
+root, which the key spells relative — a renamed jbroot keeps what the last
+boot compiled.
+
+Every file read back is checked against the digest it was stored with: an
+entry that does not read, a file that is missing or a digest that differs is
+a miss, and the unit is compiled again with the entry replaced. A cache that
+cannot be written never fails a build; it only makes it slower. Entries are
+written in a temporary directory and renamed into place, so a build killed
+mid-write leaves nothing that reads. Two entries are kept per unit, 1 GiB in
+all, the least recently used going first, and a project's cache is removed
+with the project.
+
+Link, `lipo`, `bundle-resources`, `dsym`, `strip`, `sign` and packaging run
+on every build: the linked image carries a new `LC_UUID` each time, so there
+is nothing to reuse. The log says, per unit, how long it took or that it was
+reused, and ends with `compile cache: N unit(s) reused, M compiled`.
+
+#### Build folders are kept to the newest few
+
+Every build leaves its own folder, `Builds/<projectID>/<buildID>/`: the
+module objects, the linked slices, the `.app` and its dSYM, the package —
+about 94 MB for a Swift app, and sixty-five builds of one project had come to
+six gigabytes. Nothing reads an old folder, and it is not the compile cache
+(that is `Builds/.build-cache/`), so before a build starts `BuildCleanup`
+removes the project's older ones. The newest two stay — the package most
+likely installed, and the dSYM a crash of that installed build is read with —
+and a folder written in the last hour stays too, since a build in another
+worker may still be writing it. The removal is one line of the build's log.
+Publish a release when it is made: after two more builds its package is gone.
+Artifact records stay where they are; the Distribute page lists only the
+packages whose file still exists.
 
 ### Packaging
 
@@ -128,6 +296,28 @@ Swift gets the bootstrap and configuration names as `-D` conditions.
 - `maintainerScripts` are project files; the packager substitutes `@PREFIX@`
   and `@ROOTFS@` and nothing else, requires `sh -n` to pass, and the install
   card shows them in full.
+- `format` is `deb` (absent or `deb`) or `ipa`. An `ipa` package is an app
+  project's build handing back an `.ipa` — the one app product it built,
+  inside `Payload/<name>.app/`, zipped with the bytes the `sign` step
+  wrote, and each `appex` product it built at
+  `Payload/<name>.app/PlugIns/<extension>.appex`, where iOS looks for a
+  widget, a share sheet or another extension — and no package manager
+  installs it, so it carries exactly one `app` product, at most eight
+  `appex` ones and an empty `layout`, and no relations, `tweakFilter` or
+  `maintainerScripts` (the check says which). The build writes
+  `<id>_<version>.ipa` into the build's folder and records it with
+  `format: "ipa"`; `apelin_package_install` installs one as an app — unpacked
+  under `<install root>/Applications`, each Mach-O inside it signed with
+  `ldid`, registered with `uicache -p`, and taken off again by
+  `apelin_package_remove` — no package
+  repository takes one, and Distribute… offers Share `.ipa` alone. The
+  archive is read back after writing: every member under `Payload/<name>.app/`,
+  an `Info.plist` among them, nothing absolute or leading outside, and each
+  extension with an `Info.plist` naming an executable it holds, an
+  `NSExtensionPointIdentifier`, and a `CFBundleIdentifier` under the app's.
+  Members are
+  sorted by name and carry the build's start as their time, so the same bytes
+  write the same archive.
 - `tweakFilter {dylib, bundles?, executables?, classes?}` (at least one list)
   is written as `<dylib file name without .dylib>.plist`, an XML plist with a
   single `Filter` dictionary, beside the dylib's layout path, which must be
@@ -155,17 +345,25 @@ the digests, and the description documents themselves to render a diff.
 
 `project` holds exactly these members of `apelin-project.json`, each only if
 present: `kind`, `language`, `deploymentTarget`, `architectures`,
-`configurations`, `products` (every product, every member **except**
-`sources`, `headerSearchPaths` and `resources`), and `build`.
+`configurations`, `swiftModules`, `products` (every product, every member
+**except** `sources`, `headerSearchPaths` and `resources`), and `build`.
 
 `files` holds every product's `entitlements` file and every `script` step's
 `file`.
 
 So a compile or link flag, a define, an optimisation level, a step, a
 framework, a library, an extension support component, an install name, an
-entitlement or a build script's content each moves the build digest. Editing,
-adding or removing a source, header or resource under the existing globs does
-not, nor does `template`, `environment`, `projectID` or `package`.
+entitlement, a build script's content, a product's `cxxInterop` or
+`cxxStandard`, or a Swift module's source patterns, dependencies,
+`cxxInterop`, `headerSearchPaths` or `cxxStandard`, or a product naming
+another module each moves the build digest.
+Editing, adding or removing a source, header or resource under the existing
+globs does not — a module's own files are sources like any other, and so is
+the product's bridging header: naming `bridgingHeader` moves the digest,
+editing the header's bytes does not, and neither does editing a C++ header or
+a `module.modulemap` a Swift module's `headerSearchPaths` makes the importer
+read: their content is a source edit — nor does `template`, `environment`,
+`projectID` or `package`.
 
 ### Packaging description
 

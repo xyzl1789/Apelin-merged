@@ -12,9 +12,20 @@ import Foundation
 /// built from all of them at once, at that `now`, would.
 struct ChatTranscript {
     var messages: [ChatMessage] = []
+    /// Durable input waiting for its own run, separate from injected steering.
+    var pendingMessages: [ChatMessage] = []
+    var pendingPaused = false
+    var pendingHeld: Set<UUID> = []
     var isWorking = false
     /// Compacting between runs, as the app asked (`agentCompact`).
     var isCompacting = false
+    /// How full the conversation's context is, from the last `contextUsage`
+    /// the agent recorded: the figure the ring beside the composer shows.
+    var contextUsage: ChatContextUsage?
+    /// The run mode the agent last changed this conversation to itself
+    /// (`apelin_run_mode`): the page writes it where the pill reads it, so a
+    /// change made while the app was away is not lost.
+    var runMode: ComposerMode?
     var approvalIDs: [UUID: String] = [:]
     /// While the turn runs and its last row is a reply with nothing after
     /// it: when, with no event before then, a running summary stands in
@@ -22,6 +33,14 @@ struct ChatTranscript {
     private(set) var quietDeadline: Date?
     /// How many events it has read.
     private(set) var eventCount = 0
+    /// Where the event it read first sits among the record's: a long
+    /// conversation is folded from its last turns back, and earlier ones
+    /// join the fold when the reader asks (`ChatHistory`). Rows are named by
+    /// that position, so the same event keeps its row however many turns are
+    /// folded in.
+    private(set) var firstEvent = 0
+    /// The record's index just past the last event it has read.
+    var endEvent: Int { firstEvent + eventCount }
     /// How long a running turn goes without an event before a summary
     /// stands in under its reply: the model may be writing a call it has
     /// not announced yet, or the provider has stalled.
@@ -49,6 +68,20 @@ struct ChatTranscript {
     private var unanswered: UUID?
     /// The run's output so far, from its latest `received`.
     private var receivedTokens: Int?
+    private var processingSource: String?
+    /// Each turn the events started, in order: from a `prompt` to the next
+    /// one or to its run's end, with what its replies cost.
+    private var turns: [Turn] = []
+
+    private struct Turn {
+        /// Where its message is among `rows`.
+        var start: Int
+        /// The message's own id, when it has one.
+        var messageID: UUID?
+        var began: Date
+        var ended: Date?
+        var stats = ChatTurnStats()
+    }
     /// Where the message streaming now began among `rows`, and the row it
     /// answered then, from its `messageStarted` until anything but its
     /// stream comes: a `messageDiscarded` (kwwk asks for it again) takes
@@ -70,16 +103,30 @@ struct ChatTranscript {
     /// session ID, for a message its agent sent. `sending` are messages sent
     /// and not echoed yet: each shows last, under its draft's id, until the
     /// host's `prompt` or `queued` event with that id takes its place.
-    /// `now` judges whether a running turn has been quiet for
+    /// `runEnded` says the app knows the turn is over, whatever end its
+    /// events are missing: a task that ended, or a session the host no
+    /// longer has. `now` judges whether a running turn has been quiet for
     /// `quietInterval`; without it no summary stands in for the quiet.
     init(
         events: [TaskEvent],
+        firstEvent: Int = 0,
+        pendingSnapshot: TaskEvent? = nil,
         sending: [ComposerDraft] = [],
+        runEnded: Bool = false,
         conversationTitle: (String) -> String? = { _ in nil },
         now: Date? = nil,
         attachment: (AgentAttachment) -> ComposerAttachment?,
     ) {
-        append(events, sending: sending, conversationTitle: conversationTitle, now: now, attachment: attachment)
+        self.firstEvent = firstEvent
+        if let pendingSnapshot { readPending(pendingSnapshot.payload, conversationTitle: conversationTitle, attachment: attachment) }
+        append(
+            events,
+            sending: sending,
+            runEnded: runEnded,
+            conversationTitle: conversationTitle,
+            now: now,
+            attachment: attachment,
+        )
     }
 
     /// Reads `events`, the ones that follow those read so far, and shows the
@@ -88,6 +135,7 @@ struct ChatTranscript {
     mutating func append(
         _ events: some Collection<TaskEvent>,
         sending: [ComposerDraft] = [],
+        runEnded: Bool = false,
         conversationTitle: (String) -> String? = { _ in nil },
         now: Date? = nil,
         attachment: (AgentAttachment) -> ComposerAttachment?,
@@ -95,9 +143,17 @@ struct ChatTranscript {
         // By position: a reopened session's events go on after the earlier
         // task's under a numbering that starts again (`ChatRecord.reopen`).
         for (index, event) in zip(eventCount..., events) {
+            // A conversation read back — a fork's whole history, or a
+            // session reopened — is relayed in one burst, so the host's stamp
+            // says when it was replayed rather than when it happened: `at`
+            // carries the log's own time, and the turn's length with it.
+            var event = event
+            if let at = event.payload?["at"]?.doubleValue {
+                event.time = Date(timeIntervalSince1970: at)
+            }
             let payload = event.payload
             let text = payload?["text"]?.stringValue ?? ""
-            let id = Self.rowID("event:\(index)")
+            let id = Self.rowID(forEventAt: firstEvent + index)
             lastEventTime = event.time
             if Self.endsAttempt.contains(event.kind) {
                 attempt = nil
@@ -110,6 +166,7 @@ struct ChatTranscript {
                 finishThinking(at: event.time)
                 assistant = nil
                 let messageID = Self.userMessageID(of: event) ?? id
+                processingSource = payload?["from"]?.stringValue.map { Self.processingLine(conversationTitle($0)) }
                 let files = Self.attachments(in: payload?["attachments"])
                 queued.removeAll { $0.id == messageID }
                 if firstRows[messageID] == nil {
@@ -119,11 +176,22 @@ struct ChatTranscript {
                         text: text,
                         attachments: files.compactMap(attachment),
                     )
-                    message.sender = payload?["from"]?.stringValue.map { Self.senderLine(conversationTitle($0)) }
+                    message.sender = Self.sourceLine(payload?["source"]?.stringValue)
+                        ?? payload?["from"]?.stringValue.map { Self.senderLine(conversationTitle($0)) }
+                    message.sentAt = event.time
+                    if event.kind == "prompt" {
+                        receivedTokens = nil
+                        let named = payload?["from"]?.stringValue == nil ? Self.userMessageID(of: event) : nil
+                        message.turnMessageID = named
+                        endTurn(at: event.time)
+                        turns.append(Turn(start: rows.count, messageID: named, began: event.time))
+                    }
                     add(message)
                 }
                 unanswered = messageID
                 isWorking = true
+            case "pendingQueue":
+                readPending(payload, conversationTitle: conversationTitle, attachment: attachment)
             case "queued":
                 guard let messageID = Self.userMessageID(of: event),
                       firstRows[messageID] == nil, !queued.contains(where: { $0.id == messageID })
@@ -136,6 +204,8 @@ struct ChatTranscript {
                     attachments: files.compactMap(attachment),
                 )
                 message.isQueued = true
+                message.sender = Self.sourceLine(payload?["source"]?.stringValue)
+                    ?? payload?["from"]?.stringValue.map { Self.senderLine(conversationTitle($0)) }
                 queued.append(message)
             case "queueDropped":
                 let ids = Self.identifiers(in: payload?["ids"])
@@ -180,7 +250,10 @@ struct ChatTranscript {
                 unanswered = nil
                 if assistant == nil {
                     assistant = rows.count
-                    add(ChatMessage(id: id, role: .assistant, text: ""))
+                    var reply = ChatMessage(id: id, role: .assistant, text: "")
+                    reply.isReply = true
+                    reply.turnMessageID = turns.last?.messageID
+                    add(reply)
                 }
                 if let assistant {
                     if event.kind == "message" {
@@ -203,6 +276,7 @@ struct ChatTranscript {
                     let name = payload?["tool"]?.stringValue ?? ""
                     let arguments = payload?["arguments"]?.stringValue
                     var row = ChatMessage(id: id, role: .tool, text: Self.toolTitle(name, arguments: arguments))
+                    row.tool = name
                     row.detail = arguments ?? ""
                     row.banner = ToolCallBanner(tool: name, arguments: arguments, title: row.text)
                     row.awaitsResult = true
@@ -245,10 +319,21 @@ struct ChatTranscript {
                     )
                     var request = ChatMessage(id: rowID, role: .approval(nil), text: title + "\n\n" + detail)
                     request.runsAsRoot = ApprovalCardText.isRoot(payload)
-                    request.approvalSections = ApprovalCardText.sections(
+                    request.question = ApprovalCardText.question(payload)
+                    let modeSwitch = ApprovalCardText.runModeSwitch(payload)
+                    // A question's card is its options, and a mode switch's
+                    // is its reason: the call's arguments, which name them
+                    // again, are not shown.
+                    request.approvalSections = request.question != nil || modeSwitch != nil ? [] : ApprovalCardText.sections(
                         payload, title: title,
                         callReason: payload?["toolCallID"]?.stringValue.flatMap { callReasons[$0] },
                     )
+                    if let question = request.question {
+                        request.text = title + "\n\n" + question.options.map(\.label).joined(separator: "\n")
+                    }
+                    if let modeSwitch {
+                        request.text = title + "\n\n" + modeSwitch.reason
+                    }
                     add(request)
                 }
             case "approvalResolved":
@@ -263,11 +348,52 @@ struct ChatTranscript {
                 add(ChatMessage(id: id, role: .assistant, text: message ?? ""))
             case "received":
                 receivedTokens = payload?["tokens"]?.doubleValue.map { Int($0) }
+            case "contextUsage":
+                // Outlives the run it was recorded in: it describes the
+                // conversation, and only a compaction brings it down.
+                if let usage = ChatContextUsage(payload) {
+                    contextUsage = usage
+                }
+            case "runModeChanged":
+                // The last one wins: the mode the conversation is in now.
+                if let raw = payload?["mode"]?.stringValue, let mode = ComposerMode(rawValue: raw) {
+                    runMode = mode
+                }
             case "finished":
                 finishThinking(at: event.time)
                 assistant = nil
                 isWorking = false
+                processingSource = nil
                 receivedTokens = nil
+                endTurn(at: event.time)
+            case "usage":
+                let count = { (key: String) in payload?[key]?.doubleValue.map { Int($0) } ?? 0 }
+                if !turns.isEmpty {
+                    turns[turns.count - 1].stats.inputTokens += count("input")
+                    turns[turns.count - 1].stats.outputTokens += count("output")
+                    turns[turns.count - 1].stats.cacheReadTokens += count("cacheRead")
+                    turns[turns.count - 1].stats.cacheWriteTokens += count("cacheWrite")
+                }
+            case "checkpoint":
+                if let messageID = Self.payloadID(payload), let index = firstRows[messageID] {
+                    rows[index].hasCheckpoint = true
+                }
+            case "messageEdited":
+                if let messageID = Self.payloadID(payload), let index = firstRows[messageID], rows[index].role == .user {
+                    rows[index].text = text
+                }
+            case "replyEdited":
+                if let messageID = Self.payloadID(payload), let index = lastReply(ofTurn: messageID) {
+                    rows[index].text = text
+                }
+            case "replyDeleted":
+                if let messageID = Self.payloadID(payload), let index = lastReply(ofTurn: messageID) {
+                    rows[index].isRemoved = true
+                }
+            case "historyRewound":
+                if let messageID = Self.payloadID(payload), let index = firstRows[messageID] {
+                    rewind(to: index)
+                }
             case "compactionStarted":
                 isCompacting = true
             case "compactionFinished":
@@ -281,20 +407,29 @@ struct ChatTranscript {
                 if Self.endsTask(event) {
                     finishThinking(at: event.time)
                     isWorking = false
+                    processingSource = nil
                     isCompacting = false
                     receivedTokens = nil
+                    endTurn(at: event.time)
                 }
             default: break
             }
         }
         eventCount += events.count
+        if runEnded, isWorking {
+            // The app knows this run is over and nothing more is coming, so
+            // the turn stops looking as if it were going — whatever end the
+            // process that ran it left unread.
+            isWorking = false
+            endTurn(at: now ?? lastEventTime ?? Date())
+        }
         show(sending: sending, now: now)
     }
 
     /// The rows as shown, made afresh from the fold's: what it holds and
     /// `sending` and `now` decide them, never what was shown before.
     private mutating func show(sending: [ComposerDraft], now: Date?) {
-        messages = Self.presentationRows(rows)
+        messages = Self.presentationRows(rowsWithTurns().filter { !$0.isRemoved })
         quietDeadline = nil
         if isWorking {
             if let unanswered, messages.last?.id == unanswered {
@@ -310,13 +445,60 @@ struct ChatTranscript {
                 }
             }
             Self.keepTrailingSummaryRunning(&messages, receivedTokens: receivedTokens, reconnecting: reconnecting)
+            if let summary = messages.lastIndex(where: { $0.role.isThinking }) {
+                messages[summary].processingSource = processingSource
+            }
+        }
+        // One header per turn, under the prompt that began it: the run's
+        // state said once for the whole turn, never once per stretch inside
+        // it. A turn that writes a reply and then works on is the same turn.
+        messages = Self.withTurnHeaders(
+            messages,
+            running: isWorking ? turns.last?.messageID : nil,
+            durations: turnDurations,
+            began: turnBegan,
+            now: lastEventTime ?? Date(),
+        )
+        // The count belongs to the turn, even when its newest model segment
+        // has no thought or call to draw. Never route it through an optional
+        // summary: that made plain-text deltas hide and restart the counter.
+        if isWorking, let turn = turns.last?.messageID,
+           let header = messages.firstIndex(where: {
+               if case .turn = $0.role { return $0.turnMessageID == turn }
+               return false
+           })
+        {
+            messages[header].headerReceivedTokens = receivedTokens
+            messages[header].headerReceivedSettles = assistant != nil
         }
         messages += queued
-        for draft in sending where !messages.contains(where: { $0.id == draft.id }) {
+        for draft in sending where !messages.contains(where: { $0.id == draft.id })
+            && !pendingMessages.contains(where: { $0.id == draft.id }) {
             var message = ChatMessage(id: draft.id, role: .user, text: draft.text, attachments: draft.attachments)
             // A running turn takes it at its next step, as the host will say.
             message.isQueued = isWorking
             messages.append(message)
+        }
+    }
+
+    private mutating func readPending(_ payload: JSONValue?, conversationTitle: (String) -> String?, attachment: (AgentAttachment) -> ComposerAttachment?) {
+        pendingPaused = payload?["paused"]?.boolValue ?? false
+        pendingHeld = []
+        let values: [JSONValue]
+        if case let .array(items)? = payload?["messages"] { values = items } else { values = [] }
+        pendingMessages = values.compactMap { value in
+            guard let id = value["id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return nil }
+            if value["editing"]?.boolValue == true { pendingHeld.insert(id) }
+            var message = ChatMessage(
+                id: id, role: .user, text: value["text"]?.stringValue ?? "",
+                attachments: Self.attachments(in: value["attachments"]).compactMap(attachment)
+            )
+            message.isQueued = true
+            if let sender = value["sender"]?["sessionID"]?.stringValue {
+                message.sender = Self.senderLine(conversationTitle(sender) ?? value["sender"]?["title"]?.stringValue)
+            }
+            message.queueDelivery = value["delivery"]?.stringValue
+            return message
         }
     }
 
@@ -326,6 +508,152 @@ struct ChatTranscript {
             firstRows[row.id] = rows.count
         }
         rows.append(row)
+    }
+
+    /// How long each turn took, and when each began, by the message that
+    /// began it.
+    private var turnDurations: [UUID: Int] {
+        var durations: [UUID: Int] = [:]
+        for turn in turns {
+            guard let id = turn.messageID, let ended = turn.ended else { continue }
+            durations[id] = max(0, Int(ended.timeIntervalSince(turn.began).rounded()))
+        }
+        return durations
+    }
+
+    private var turnBegan: [UUID: Date] {
+        var began: [UUID: Date] = [:]
+        for turn in turns {
+            guard let id = turn.messageID else { continue }
+            began[id] = turn.began
+        }
+        return began
+    }
+
+    /// Each turn's header under the prompt that began it: the run's state,
+    /// once for the whole turn, and — while it runs — what the turn has done
+    /// so far. Every row the turn made is named with its id, so the page can
+    /// leave the process out until the reader opens the header; a turn with
+    /// nothing but its reply gets no header.
+    private static func withTurnHeaders(
+        _ rows: [ChatMessage],
+        running: UUID?,
+        durations: [UUID: Int],
+        began: [UUID: Date],
+        now: Date,
+    ) -> [ChatMessage] {
+        var result: [ChatMessage] = []
+        result.reserveCapacity(rows.count + 1)
+        var index = 0
+        while index < rows.count {
+            let row = rows[index]
+            guard row.role == .user, !row.isQueued, let turnID = row.turnMessageID else {
+                result.append(row)
+                index += 1
+                continue
+            }
+            let end = (index + 1 ..< rows.count).first { rows[$0].role == .user } ?? rows.count
+            let range = (index + 1) ..< end
+            let isRunning = running == turnID
+            result.append(row)
+            if isRunning || range.contains(where: { rows[$0].role.isActivity }) {
+                let seconds = isRunning
+                    ? began[turnID].map { max(0, Int(now.timeIntervalSince($0).rounded())) }
+                    : durations[turnID]
+                // The header says the turn's state alone: what it has done so
+                // far, and how long it took, is not its line to say.
+                var header = ChatMessage(
+                    id: rowID("turn:\(turnID)"),
+                    role: .turn(running: isRunning, seconds: seconds),
+                    text: "",
+                )
+                header.turnMessageID = turnID
+                result.append(header)
+            }
+            for offset in range {
+                var member = rows[offset]
+                member.turnMessageID = turnID
+                result.append(member)
+            }
+            index = end
+        }
+        return result
+    }
+
+    /// Ends the turn still open, at `date`.
+    private mutating func endTurn(at date: Date) {
+        guard let last = turns.indices.last, turns[last].ended == nil else { return }
+        turns[last].ended = date
+    }
+
+    /// The last reply shown in the turn of message `id`, deleted ones left out.
+    private func lastReply(ofTurn id: UUID) -> Int? {
+        guard let turn = turns.lastIndex(where: { $0.messageID == id }) else { return nil }
+        let end = turns.indices.contains(turn + 1) ? turns[turn + 1].start : rows.count
+        let range = turns[turn].start ..< min(end, rows.count)
+        return range.last { rows[$0].isReply && !rows[$0].isRemoved && !rows[$0].text.isEmpty }
+    }
+
+    /// Message `rows[index]` taken back: it and every row after it go, and
+    /// whatever the fold kept of them.
+    private mutating func rewind(to index: Int) {
+        guard index < rows.count else { return }
+        rows.removeSubrange(index...)
+        firstRows = firstRows.filter { $0.value < index }
+        toolRows = toolRows.filter { $0.value < index }
+        turns = turns.filter { $0.start < index }
+        if let row = assistant, row >= index {
+            assistant = nil
+        }
+        if let row = thinking, row >= index {
+            thinking = nil
+            thinkingStarted = nil
+        }
+        if let current = attempt, current.rows >= index {
+            attempt = nil
+        }
+        if let row = unanswered, firstRows[row] == nil {
+            unanswered = nil
+        }
+    }
+
+    /// The rows with each turn's cost on its last reply, and Copy and More
+    /// there too, as aimini's chat has them: on every turn that ended, and
+    /// on the last one only once no run goes; until then the figures are not
+    /// the turn's yet, and the reply is still being written.
+    private func rowsWithTurns() -> [ChatMessage] {
+        var shown = rows
+        for (position, turn) in turns.enumerated() {
+            guard position < turns.count - 1 || !isWorking else { continue }
+            let end = turns.indices.contains(position + 1) ? turns[position + 1].start : shown.count
+            let range = turn.start ..< min(end, shown.count)
+            guard let reply = range.last(where: { shown[$0].isReply && !shown[$0].isRemoved }) else { continue }
+            // The reply the history's changes act on: the turn's last with
+            // text, as the agent finds it.
+            if let target = range.last(where: { shown[$0].isReply && !shown[$0].isRemoved && !shown[$0].text.isEmpty }),
+               shown[target].turnMessageID != nil
+            {
+                shown[target].offersActions = true
+            }
+            var stats = turn.stats
+            stats.seconds = turn.ended.map { max(0, Int($0.timeIntervalSince(turn.began).rounded())) }
+            if stats.hasTokens || stats.seconds != nil {
+                shown[reply].turnStats = stats
+            }
+        }
+        // A reply before the first turn (another conversation's, or one
+        // made before turns were kept) offers them as the newest reply.
+        if !isWorking, let newest = shown.lastIndex(where: { $0.isReply && !$0.isRemoved }),
+           shown[newest].turnMessageID != nil, !shown[newest].text.isEmpty
+        {
+            shown[newest].offersActions = true
+        }
+        return shown
+    }
+
+    /// The message id an event of the history's changes names.
+    private static func payloadID(_ payload: JSONValue?) -> UUID? {
+        payload?["id"]?.stringValue.flatMap(UUID.init(uuidString:))
     }
 
     /// The attachments an event lists, read off its payload as decoding
@@ -355,6 +683,30 @@ struct ChatTranscript {
         return ids
     }
 
+    /// The row a folded turn draws its process in: one row for the whole turn,
+    /// so the next stretch's summary replaces the one before it in place
+    /// rather than arriving as another row under it.
+    static func rowID(forProcess of: UUID) -> UUID {
+        rowID("process:\(of.uuidString)")
+    }
+
+    /// The row an event at `index` among the record's own is named by: the
+    /// same name whether the fold started at that event or after it, so a
+    /// rail can name a message the page has not folded in yet.
+    static func rowID(forEventAt index: Int) -> UUID {
+        rowID("event:\(index)")
+    }
+
+    /// Queue snapshots also acknowledge input and its saved attachments. These
+    /// synthetic receipts are never appended to history.
+    static func acceptedMessages(in event: TaskEvent) -> [TaskEvent] {
+        guard event.kind == "pendingQueue" else { return [event] }
+        guard case let .array(values)? = event.payload?["messages"] else { return [] }
+        return values.map {
+            TaskEvent(seq: event.seq, kind: "queued", time: event.time, payload: $0)
+        }
+    }
+
     /// The id of the user message an event shows: a `prompt`, `steer` or
     /// `queued` that carries one.
     static func userMessageID(of event: TaskEvent) -> UUID? {
@@ -369,31 +721,44 @@ struct ChatTranscript {
         return event.payload?["state"]?.stringValue.flatMap(TaskState.init(rawValue:))?.isTerminal == true
     }
 
-    /// While the turn runs, its last summary stays unfinished across tool
-    /// calls and approvals. Each thought ends when a tool starts, so without
-    /// this the title would flip between "Thought for…" and the running one.
-    /// It carries the run's output so far, the newest call in its trace and
-    /// whether a failed request is being made again.
+    /// While the run goes, its newest summary says so — it heads the run,
+    /// even when a reply is being written under it or a card waits below.
+    /// Each thought ends when a tool starts, so without this the header
+    /// would say "Completed" over a run still working, with the reply it is
+    /// writing arriving underneath. It carries the run's output so far, the
+    /// newest call in its trace and whether a failed request is being made
+    /// again.
     private static func keepTrailingSummaryRunning(
         _ rows: inout [ChatMessage],
         receivedTokens: Int?,
         reconnecting: Bool,
     ) {
-        guard let index = rows.lastIndex(where: { !$0.role.needsApproval }) else { return }
-        guard case let .thinking(_, tools) = rows[index].role else {
-            settleCount(&rows, reply: index, receivedTokens: receivedTokens)
-            return
+        guard let index = rows.lastIndex(where: { Self.isSummary($0.role) }),
+              case let .thinking(_, tools) = rows[index].role
+        else { return }
+        // A reply being written after the summary takes the count: it
+        // settles there once the run is writing, rather than climbing slowly.
+        if let last = rows.indices.last, rows[last].role == .assistant {
+            settleCount(&rows, reply: last, receivedTokens: receivedTokens)
         }
         rows[index].role = .thinking(seconds: nil, tools: tools)
-        rows[index].runningTools = rows[index].trace.count(where: \.awaitsResult)
         rows[index].receivedTokens = receivedTokens
         rows[index].banner = rows[index].trace.last { $0.role == .tool }?.banner
         rows[index].isReconnecting = reconnecting
     }
 
-    /// While the run writes a reply, the summary just above it is finished
-    /// and keeps the run's count, which settles there; never a summary above
-    /// the turn's own message.
+    /// Whether a row is one of the summaries the transcript folds a run's
+    /// thoughts, calls and approvals into — running or finished.
+    private static func isSummary(_ role: ChatMessage.Role) -> Bool {
+        if case .thinking = role {
+            return true
+        }
+        return false
+    }
+
+    /// While the run writes a reply, the summary above it keeps the run's
+    /// count, which settles there — its header still says the run is going;
+    /// never a summary above the turn's own message.
     private static func settleCount(_ rows: inout [ChatMessage], reply: Int, receivedTokens: Int?) {
         guard receivedTokens != nil, rows[reply].role == .assistant,
               let summary = rows[..<reply].lastIndex(where: { $0.role != .assistant }),
@@ -454,6 +819,10 @@ struct ChatTranscript {
                 if message.role.needsApproval {
                     combined.append(message)
                 }
+            case .turn:
+                // A turn's header is made after the fold, from the turn
+                // itself; one that arrives here only passes through.
+                combined.append(message)
             case .user, .assistant, .compaction:
                 summary = nil
                 combined.append(message)
@@ -517,6 +886,25 @@ struct ChatTranscript {
         return String(localized: "From \(title)")
     }
 
+    /// What a message sent from a chat channel says over its bubble: the
+    /// channel's name, as the reader knows it. Nil for the app's own
+    /// messages and for a channel this build does not know.
+    static func sourceLine(_ source: String?) -> String? {
+        guard let source else { return nil }
+        switch source {
+        case ChatChannel.weChat: return senderLine(String(localized: "WeChat"))
+        default: return nil
+        }
+    }
+
+    /// Above the active summary, distinct from the bubble's attribution.
+    static func processingLine(_ title: String?) -> String {
+        guard let title, !title.isEmpty else {
+            return String(localized: "Processing a message from another chat")
+        }
+        return String(localized: "Processing a message from \(title)")
+    }
+
     /// The reason in a call's arguments, trimmed; nil when it gave none.
     private static func reason(_ arguments: String?) -> String? {
         let values = arguments.flatMap { try? JSONCoding.decode(JSONValue.self, from: Data($0.utf8)) }
@@ -535,9 +923,11 @@ struct ChatTranscript {
         let path = values?["path"]?.stringValue ?? ""
         switch tool {
         case .fileRead: return path.isEmpty ? String(localized: "Read a file") : String(localized: "Read \(path)")
-        case .fileWrite, .fileCreate:
-            return path.isEmpty ? String(localized: "Write a file") : String(localized: "Write \(path)")
-        case .fileEdit: return path.isEmpty ? String(localized: "Edit a file") : String(localized: "Edit \(path)")
+        case .fileWrite, .fileEdit, .fileCreate:
+            // One verb for the three tools that write a file: what they were
+            // given differs, what the reader sees does not — the diff or the
+            // content under the line tells them apart.
+            return path.isEmpty ? String(localized: "Edit a file") : String(localized: "Edit \(path)")
         case .fileList: return String(localized: "List files")
         case .fileGrep, .fileFind: return String(localized: "Search files")
         case .fileShow:
@@ -547,6 +937,8 @@ struct ChatTranscript {
                 return String(localized: "Show \(paths.count) files")
             }
             return paths.first.map { String(localized: "Show \($0)") } ?? String(localized: "Show a file")
+        case .todoList: return String(localized: "Read the to-do list")
+        case .todoWrite: return String(localized: "Update the to-do list")
         case .shellRun: return String(localized: "Run a command")
         case .sdkAnalyzeFramework, .sdkReadHeader: return String(localized: "Read the SDK")
         case .projectBuild: return String(localized: "Build the project")
@@ -570,6 +962,19 @@ struct ChatTranscript {
         case .skillSave: return String(localized: "Save a skill")
         case .skillRemove: return String(localized: "Remove a skill")
         case .projectCheckDistribution: return String(localized: "Check for distribution")
+        case .gitBranches: return String(localized: "Branches")
+        case .gitBranchCreate: return String(localized: "Create branch")
+        case .gitBranchCheckout: return String(localized: "Switch Branch")
+        case .gitBranchDelete: return String(localized: "Delete Branch")
+        case .gitTag: return String(localized: "Tags")
+        case .gitStash: return String(localized: "Stashes")
+        case .gitRestore: return String(localized: "Discard Changes")
+        case .gitClean: return String(localized: "Remove")
+        case .gitBranchRename: return String(localized: "Rename Branch")
+        case .gitMerge: return String(localized: "Merge Branch")
+        case .gitMergeAbort: return String(localized: "Abort Merge")
+        case .gitLog: return String(localized: "Git History")
+        case .gitCommitDetail: return String(localized: "Read the changes")
         case .gitStatus: return String(localized: "Check the repository")
         case .gitDiff: return String(localized: "Read the changes")
         case .gitStage: return String(localized: "Stage changes")
@@ -597,6 +1002,11 @@ struct ChatTranscript {
         case .conversationRead: return String(localized: "Read a chat")
         case .conversationStop: return String(localized: "Stop a chat")
         case .notificationSend: return String(localized: "Send a notification")
+        case .questionAsk: return String(localized: "Ask a question")
+        case .runMode: return String(localized: "Switch the run mode")
+        case .webSearch:
+            let query = values?["query"]?.stringValue ?? ""
+            return query.isEmpty ? String(localized: "Search the web") : String(localized: "Search for \(query)")
         case .webFetch:
             let host = values?["url"]?.stringValue.flatMap { URLComponents(string: $0)?.host } ?? ""
             return host.isEmpty ? String(localized: "Read a webpage") : String(localized: "Read \(host)")
@@ -625,5 +1035,44 @@ struct ChatTranscript {
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
             bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
         ))
+    }
+}
+
+/// How full a conversation's context is: what the agent measures for
+/// compaction (`contextUsage`), and what the ring beside the composer draws.
+struct ChatContextUsage: Equatable {
+    /// What the conversation takes now.
+    var tokens: Int
+    /// What it may take before compaction.
+    var window: Int
+
+    init(tokens: Int, window: Int) {
+        self.tokens = max(0, tokens)
+        self.window = max(0, window)
+    }
+
+    /// From an event's payload, and only with a window to read it against.
+    init?(_ payload: JSONValue?) {
+        guard let tokens = payload?["tokens"]?.doubleValue,
+              let window = payload?["window"]?.doubleValue,
+              window > 0
+        else { return nil }
+        self.init(tokens: Int(tokens), window: Int(window))
+    }
+
+    /// How much of the window is used, 0 ... 1.
+    var fraction: Double {
+        guard window > 0 else { return 0 }
+        return min(1, max(0, Double(tokens) / Double(window)))
+    }
+
+    /// The figure the ring writes, in the user's locale: "12%".
+    var percentText: String {
+        fraction.formatted(.percent.precision(.fractionLength(0)))
+    }
+
+    /// What VoiceOver reads for the ring: the share and the room.
+    var spoken: String {
+        String(localized: "\(percentText) of \(window.formatted()) tokens used")
     }
 }

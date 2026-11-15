@@ -11,9 +11,9 @@ final class ComposerControlPanel: ComposerSectionView {
     let photoButton = ComposerGiantButton(title: String(localized: "Photo"), icon: "ComposerPhoto")
     let fileButton = ComposerGiantButton(title: String(localized: "File"), icon: "ComposerFile")
     let webButton = ComposerGiantButton(title: String(localized: "Web"), icon: "ComposerWeb")
-    @objc dynamic private lazy var buttons = [cameraButton, photoButton, fileButton, webButton]
+    private lazy var buttons = [cameraButton, photoButton, fileButton, webButton]
 
-    @objc override dynamic func initializeViews() {
+    override func initializeViews() {
         super.initializeViews()
         for button in buttons {
             addSubview(button)
@@ -30,7 +30,7 @@ final class ComposerControlPanel: ComposerSectionView {
         }.store(in: &cancellables)
     }
 
-    @objc dynamic private var buttonHeight: CGFloat {
+    private var buttonHeight: CGFloat {
         max(100, UIFont.preferredFont(forTextStyle: .footnote).lineHeight + 76)
     }
 
@@ -45,11 +45,18 @@ final class ComposerControlPanel: ComposerSectionView {
         }
     }
 
-    @objc dynamic func toggle() {
+    func toggle() {
         doWithAnimation { [self] in isPanelOpen.send(!isPanelOpen.value) }
     }
 
-    @objc dynamic func close() {
+    /// Opened or folded from outside, as the row's plus does: one value, one
+    /// place it is kept, so both controls agree on which way it is.
+    func setPanelOpen(_ open: Bool) {
+        guard isPanelOpen.value != open else { return }
+        toggle()
+    }
+
+    func close() {
         guard isPanelOpen.value else { return }
         toggle()
     }

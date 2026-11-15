@@ -31,8 +31,11 @@ struct LongLogTests {
         // build's replay pays some 14 µs a line: this many keep it quick.
         let lines = 50000
         var file = try SyntheticLog(home: home, sessionID: sessionID)
+        var selectedLines = 0
         for seq in 1 ... lines {
-            try file.append(needed[seq] ?? Self.streamed(seq))
+            let event = needed[seq] ?? Self.streamed(seq)
+            if needed[seq] != nil || event == .messageStarted { selectedLines += 1 }
+            try file.append(event)
         }
         try file.write()
         let configuration = AgentSessionConfiguration(
@@ -53,10 +56,10 @@ struct LongLogTests {
 
         let session = try await open()
         let opening = await session.log.decodes
-        #expect(opening <= needed.count + 1, "the lines the summary reads, and the last for its number")
+        #expect(opening == selectedLines + 1, "metadata, turn boundaries and the last line only; no streamed bulk")
         // the session took the summary: a message it has is a duplicate
         let seq = await session.log.lastSeq
-        #expect(seq == UInt64(lines) + 1, "the abandoned approval is closed")
+        #expect(seq == UInt64(lines) + 2, "the abandoned approval and interrupted turn are closed")
         try await session.prompt("Go on.", messageID: second)
         #expect(await session.log.lastSeq == seq)
 
@@ -73,6 +76,7 @@ struct LongLogTests {
         #expect(await session.log.decodes == opening + Int(seq), "each line the replay read, once")
         #expect(await session.log.opened == SessionEventLog.Summary(Array(replayed.prefix(lines))))
         #expect(await session.log.opened.userMessageIDs == [first, second])
+        #expect(await session.log.opened.titleSource == "Write a long essay.")
         #expect(await session.log.opened.openApprovals == [abandoned.id])
         let closings = replayed.filter {
             $0.event == .approvalResolved(requestID: abandoned.id, decision: .deny(reason: "the session restarted"))
@@ -82,7 +86,8 @@ struct LongLogTests {
 
         // Opened again, it has nothing left to close.
         let reopened = try await open()
-        #expect(await reopened.log.decodes <= needed.count + 2)
+        #expect(await reopened.log.decodes == selectedLines + 3)
+        #expect(await reopened.log.opened.interruptionEvents.isEmpty)
         #expect(await reopened.log.opened.openApprovals.isEmpty)
         #expect(await reopened.log.lastSeq == seq + 1)
         await reopened.close()
@@ -155,6 +160,13 @@ struct LongLogTests {
         await #expect(throws: SessionStoreError.corrupt("line 3")) {
             _ = try await log.records(afterSeq: 0)
         }
+        // A partial opening scan must not become a seemingly valid fork.
+        // Failed reads stay failed on retry, never cached as empty/partial.
+        for _ in 0 ..< 2 {
+            await #expect(throws: SessionStoreError.corrupt("line 3")) {
+                _ = try await log.historyRecords()
+            }
+        }
         await log.close()
     }
 
@@ -200,13 +212,16 @@ struct LongLogTests {
     func `the kinds the summary reads are spelled as the encoder writes them`() throws {
         let needed: [AgentSessionEvent] = [
             .userMessage(id: UUID(), text: "Hi", attachments: []),
+            .conversationMessageTaken(id: UUID(), text: "Hi", from: "source"),
+            .promptSubmitted(text: "Legacy prompt"), .steered(text: "Legacy steer"), .messageStarted,
+            .finished(reason: .completed), .compactionStarted, .compactionFinished(.init(outcome: .cancelled)),
             .titleUpdated("A title"),
             .approvalRequested(Self.approval("asked")),
             .approvalResolved(requestID: "asked", decision: .deny(reason: "no")),
         ]
         let others: [AgentSessionEvent] = [
-            .thinkingDelta("a"), .textDelta("b"), .received(tokens: 3), .messageStarted,
-            .userMessageQueued(id: UUID(), text: "Hi", attachments: []), .finished(reason: .completed),
+            .thinkingDelta("a"), .textDelta("b"), .received(tokens: 3),
+            .userMessageQueued(id: UUID(), text: "Hi", attachments: []),
         ]
         func kind(_ event: AgentSessionEvent) throws -> String? {
             let line = try SyntheticLog.encoder.encode(SessionEventRecord(seq: 7, date: Date(), event: event))
