@@ -32,8 +32,11 @@ public enum AgentSessionEvent: Sendable, Hashable, Codable {
     /// and is asked for again: its text and thinking are not the reply.
     case messageDiscarded
     /// A model request failed and is being made again: kwwk's retry, or a
-    /// wait for the network to come back (`NetworkRecovery`).
+    /// failed handshake asked again (`NetworkRecovery`).
     case reconnecting
+    /// A model request failed with no route to the network, and waits for
+    /// one before it is made again (`NetworkRecovery`).
+    case waitingForNetwork
     /// Streamed assistant text.
     case textDelta(String)
     /// Streamed reasoning text.
