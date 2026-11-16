@@ -71,8 +71,8 @@ enum ChatActions {
     private static func assistantActions(
         for id: UUID,
         from presenter: UIViewController,
-    ) -> UIDeferredMenuElement {
-        UIDeferredMenuElement.uncached { [weak presenter] (completion: @escaping ([UIMenuElement]) -> Void) in
+    ) -> [UIDeferredMenuElement] {
+        [UIDeferredMenuElement.uncached { [weak presenter] (completion: @escaping ([UIMenuElement]) -> Void) in
             MainActor.assumeIsolated {
                 guard let presenter else {
                     completion([])

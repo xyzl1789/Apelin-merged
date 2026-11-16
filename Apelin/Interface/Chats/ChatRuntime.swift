@@ -535,7 +535,7 @@ final class ChatRuntime {
         let reason = (error as? ApelinError)?.reason
             ?? (error is URLError ? .network : nil)
         guard reason != .offline else { return }
-        let shouldSwitch = canSwitch && (reason == nil || Self.switchableReasons.contains(reason))
+        let shouldSwitch = canSwitch && (reason.map { Self.switchableReasons.contains($0) } ?? true)
         let shouldRetry = canRetry && reason == .timeout
         guard shouldSwitch || shouldRetry else { return }
         let ids: Set<UUID> = [draft.id]
