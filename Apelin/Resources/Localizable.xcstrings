@@ -135141,6 +135141,89 @@
         }
       }
     },
+    "Now using %1$@ from %2$@. New conversations start with it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now using %1$@ from %2$@. New conversations start with it."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يُستخدم الآن %1$@ من %2$@. ستبدأ المحادثات الجديدة به."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jetzt wird %1$@ von %2$@ verwendet. Neue Unterhaltungen starten damit."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora se usa %1$@ de %2$@. Las conversaciones nuevas empezarán con él."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utilisation de %1$@ de %2$@. Les nouvelles conversations commenceront avec."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ora viene usato %1$@ di %2$@. Le nuove conversazioni inizieranno con questo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ の %1$@ を使用中です。新しい会話はこれで始まります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이제 %2$@의 %1$@을(를) 사용합니다. 새 대화는 이 모델로 시작합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agora usando %1$@ de %2$@. Novas conversas começarão com ele."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Теперь используется %1$@ от %2$@. Новые беседы начнутся с него."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang dùng %1$@ từ %2$@. Cuộc trò chuyện mới sẽ bắt đầu với mô hình này."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "现使用来自 %2$@ 的 %1$@。新对话将用它开始。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現使用來自 %2$@ 的 %1$@。新對話將用它開始。"
+          }
+        }
+      }
+    },
     "Unable to Measure Models": {
       "extractionState": "manual",
       "localizations": {

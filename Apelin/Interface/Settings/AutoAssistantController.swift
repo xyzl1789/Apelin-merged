@@ -219,12 +219,19 @@ final class AutoAssistantController: TableController {
                     )
                     return
                 }
-                // 选最快改的是全局默认：下一个新对话从这里起步，正在进行的
-                // 对话不被打断。
+                // 选最快改的是全局默认，以及此刻打开的那个对话：后者有自己的
+                // scoped 选择，只写全局的话，当前对话仍按旧模型发送，界面也
+                // 不会变，看起来像没生效。
                 ComposerModelSelection.current = selected
+                let open = ChatRuntime.active?.viewedChat
+                if let open {
+                    ComposerModelSelection.choose(selected, for: open)
+                }
                 presentNotice(
                     title: "Fastest Model Selected",
-                    message: String(format: String(localized: "Now using %@ from %@."), selected.model, selected.provider.displayName),
+                    message: open == nil
+                        ? String(format: String(localized: "Now using %1$@ from %2$@. New conversations start with it."), selected.model, selected.provider.displayName)
+                        : String(format: String(localized: "Now using %@ from %@."), selected.model, selected.provider.displayName),
                 )
             } catch is CancellationError {
                 // 用户取消，无需提示。

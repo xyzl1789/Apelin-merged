@@ -66,24 +66,21 @@ final class ExcludedProvidersController: TableController {
 
 // MARK: - Excluded models
 
-/// Individual models, named together with the provider they belong to. The
-/// list starts with every model the signed-in accounts offer and a switch on
-/// each; a typed rule adds any model id, useful for a relay whose model list
-/// changes or a provider the app is signed out of right now.
+/// Individual models, picked from the models the app already offers: one
+/// section per provider, a switch on every model the reader enabled there.
+/// Turning one on keeps the automatic assistant and the speed test off it.
+///
+/// The list is the same catalog the composer's picker shows, so the reader
+/// never has to type a model id to exclude it. A typed rule is still accepted
+/// for a model a relay lists only sometimes.
 final class ExcludedModelsController: TableController {
     private struct Row: Hashable {
         var provider: String
+        var providerName: String
         var model: String
-        var title: String
-        var subtitle: String
     }
 
-    private enum Section: Hashable {
-        case accountModels
-        case custom
-    }
-
-    private lazy var dataSource = TableDataSource<Section, Row, Row>(
+    private lazy var dataSource = TableDataSource<String, Row, Row>(
         tableView: tableView,
         identifier: { $0 },
     ) { [weak self] table, _, row in
@@ -91,21 +88,22 @@ final class ExcludedModelsController: TableController {
         let cell = table.dequeueReusableCell(withIdentifier: "model") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "model")
         var content = UIListContentConfiguration.subtitleCell()
         content.text = row.model
-        content.secondaryText = row.subtitle
+        content.secondaryText = row.providerName
         cell.contentConfiguration = content
         cell.selectionStyle = .none
         let toggle = (cell.accessoryView as? UISwitch) ?? UISwitch()
-        toggle.isOn = ModelExclusions.stored.models.contains { $0.provider == row.provider && $0.model == row.model }
-        toggle.tag = row.hashValue
+        toggle.isOn = isExcluded(row)
         toggle.accessibilityLabel = row.model
+        toggle.accessibilityValue = row.providerName
+        toggle.accessibilityIdentifier = row.provider + "/" + row.model
         toggle.removeTarget(nil, action: nil, for: .valueChanged)
         toggle.addTarget(self, action: #selector(changed(_:)), for: .valueChanged)
         cell.accessoryView = toggle
         return cell
     }
 
-    private var fromAccounts: [Row] = []
-    private var custom: [Row] = []
+    /// Section id → its rows, in the order the providers are shown.
+    private var sections: [(String, [Row])] = []
     private var loader: Task<Void, Never>?
 
     override func viewDidLoad() {
@@ -117,44 +115,64 @@ final class ExcludedModelsController: TableController {
             action: #selector(addRule),
         )
         navigationItem.rightBarButtonItem?.accessibilityLabel = String(localized: "Add Excluded Model")
-        dataSource.headerTitle = { section in
-            switch section {
-            case .accountModels: String(localized: "Signed-In Models")
-            case .custom: String(localized: "Other Rules")
-            }
-        }
+        dataSource.headerTitle = { id in self.sections.first { $0.0 == id }?.1.first?.providerName }
         dataSource.footerTitle = { _ in String(localized: "Excluded Models Footnote") }
         rebuild()
         load()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(updateRows),
+            name: .enabledModelsChanged,
+            object: nil,
+        )
     }
 
     @objc(apelin_load) private dynamic func load() {
         loader?.cancel()
         loader = Task { [weak self] in
-            guard let accounts = try? await ApelinService.app.agentAccountList().accounts else { return }
-            guard !Task.isCancelled, let self else { return }
-            var rows: [Row] = []
-            for account in accounts where account.signedIn {
-                for model in account.models ?? [] {
-                    rows.append(Row(
-                        provider: account.provider.rawValue,
-                        model: model,
-                        title: model,
-                        subtitle: account.provider.displayName,
-                    ))
+            guard let self else { return }
+            let selected = EnabledModels.selectedModelIDs()
+            guard let listed = try? await ApelinService.app
+                .agentAccountList(extraModels: selected, onlyExtraModels: true).accounts
+            else { return }
+            guard !Task.isCancelled else { return }
+            let accounts = EnabledModels.accounts(from: listed)
+            var built: [(String, [Row])] = []
+            for account in accounts {
+                let rows = (account.models ?? []).map { model in
+                    Row(provider: account.provider.rawValue, providerName: account.provider.displayName, model: model)
                 }
+                guard !rows.isEmpty else { continue }
+                built.append((account.provider.rawValue, rows))
             }
-            self.fromAccounts = rows
+            self.sections = built
             self.rebuild()
         }
     }
 
+    /// The catalog, plus any excluded model the catalog does not list right
+    /// now (a relay that dropped it, or a typed rule): those keep a row, so a
+    /// rule is never invisible and always removable.
     private func rebuild() {
-        let rules = ModelExclusions.stored.models
-        custom = rules
-            .filter { rule in !fromAccounts.contains { $0.provider == rule.provider && $0.model == rule.model } }
-            .map { Row(provider: $0.provider, model: $0.model, title: $0.model, subtitle: $0.provider) }
-        dataSource.update([(.accountModels, fromAccounts), (.custom, custom)], reconfigure: true)
+        var shown = sections
+        let listed = Set(shown.flatMap { _, rows in rows.map { $0.provider + "/" + $0.model } })
+        for rule in ModelExclusions.stored.models where !listed.contains(rule.provider + "/" + rule.model) {
+            guard let provider = AgentProvider(rawValue: rule.provider) else { continue }
+            let row = Row(provider: rule.provider, providerName: provider.displayName, model: rule.model)
+            if let index = shown.firstIndex(where: { $0.0 == rule.provider }) {
+                shown[index].1.append(row)
+            } else {
+                shown.append((rule.provider, [row]))
+            }
+        }
+        shown = shown.filter { !$0.1.isEmpty }
+        shown.sort { $0.1[0].providerName.localizedStandardCompare($1.1[0].providerName) == .orderedAscending }
+        sections = shown
+        dataSource.update(sections.map { ($0.0, $0.1) }, reconfigure: true)
+    }
+
+    private func isExcluded(_ row: Row) -> Bool {
+        ModelExclusions.stored.models.contains { $0.provider == row.provider && $0.model == row.model }
     }
 
     @objc private dynamic func updateRows() {
@@ -162,12 +180,10 @@ final class ExcludedModelsController: TableController {
     }
 
     @objc private dynamic func changed(_ toggle: UISwitch) {
-        let all = fromAccounts + custom
-        guard let row = all.first(where: { $0.hashValue == toggle.tag }),
-              let provider = AgentProvider(rawValue: row.provider)
-        else { return }
-        ModelExclusions.setModel(provider, model: row.model, excluded: toggle.isOn)
-        rebuild()
+        guard let id = toggle.accessibilityIdentifier else { return }
+        let parts = id.split(separator: "/", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let provider = AgentProvider(rawValue: parts[0]) else { return }
+        ModelExclusions.setModel(provider, model: parts[1], excluded: toggle.isOn)
     }
 
     @objc private dynamic func addRule() {

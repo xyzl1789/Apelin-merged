@@ -507,12 +507,98 @@ final class ChatRuntime {
         return Task {
             do {
                 try await send(draft, to: id, selection: selection)
+                // 请求已被收下，从这一刻起等对方开口：对端不回话也算一种失败。
+                watchForStall(in: id, draft: draft, selection: selection)
             } catch {
                 takeBack(draft, from: id)
+                // 发送本身失败（连不上、被拒、额度不足）：草稿已经退回输入框，
+                // 但仍然值得换一个模型再试一次，否则这条判据等于不存在。
+                recoverFromFailure(of: draft, in: id, error: error, selection: selection)
                 throw error
             }
         }
     }
+
+    /// 发送直接抛错时的自动恢复。只对 `switchableReasons` 与超时起作用，且
+    /// 与事件里的 `error` 共用每轮一次的额度：两条路径不会各自重发一遍。
+    private func recoverFromFailure(of draft: ComposerDraft, in id: UUID, error: Error, selection: ComposerModelSelection?) {
+        let canSwitch = ModelExclusions.Automatic.switchOnFailure.isEnabled
+        let canRetry = ModelExclusions.Automatic.retryOnTimeout.isEnabled
+        guard canSwitch || canRetry, !autoRecovered.contains(id) else { return }
+        let reason = (error as? ApelinError)?.reason
+            ?? (error is URLError ? .network : nil)
+        guard let reason, reason != .offline else { return }
+        let shouldSwitch = canSwitch && Self.switchableReasons.contains(reason)
+        let shouldRetry = canRetry && reason == .timeout
+        guard shouldSwitch || shouldRetry else { return }
+        autoRecovered.insert(id)
+        let ids: Set<UUID> = [draft.id]
+        Task { [weak self] in
+            guard let self else { return }
+            if shouldSwitch,
+               let next = await self.firstAvailableModel(around: selection)
+            {
+                ComposerModelSelection.choose(next, for: id)
+                ComposerModelSelection.rememberSelection(next)
+                _ = await self.configureModel(id, selection: next)
+                // 草稿已经回到输入框，不在 sending 里：按 id 取回来重发。
+                await self.resendFromComposer(ids, in: id, selection: next)
+                return
+            }
+            if shouldRetry {
+                try? await Task.sleep(for: .seconds(10))
+                guard !Task.isCancelled, self.records[id] != nil else { return }
+                await self.resendFromComposer(ids, in: id, selection: selection)
+            }
+        }
+    }
+
+    /// 重发退回输入框的草稿。`send` 成功时会从输入框取走，所以只有仍是当前
+    /// 草稿的那条才会被再发一次，用户已经改写的不会。
+    private func resendFromComposer(_ ids: Set<UUID>, in id: UUID, selection: ComposerModelSelection?) async {
+        guard let draft = records[id]?.draft, ids.contains(draft.id) else { return }
+        guard !Task.isCancelled, records[id] != nil else { return }
+        records[id]?.submit(draft)
+        changed(id)
+        do {
+            try await send(draft, to: id, selection: selection)
+            watchForStall(in: id, draft: draft, selection: selection)
+        } catch {
+            takeBack(draft, from: id)
+        }
+    }
+
+    /// 等对端开口的看门狗。请求收下后 `follow` 才开始读事件；如果一直没有
+    /// 事件、草稿又还在等待，就当作超时走自动恢复。
+    private func watchForStall(in id: UUID, draft: ComposerDraft, selection: ComposerModelSelection?) {
+        let canSwitch = ModelExclusions.Automatic.switchOnFailure.isEnabled
+        let canRetry = ModelExclusions.Automatic.retryOnTimeout.isEnabled
+        guard canSwitch || canRetry, !autoRecovered.contains(id) else { return }
+        lastActivity[id] = .now
+        stallWatchdogs[id]?.cancel()
+        stallWatchdogs[id] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.stallSeconds))
+            guard let self, !Task.isCancelled, self.records[id] != nil,
+                  !self.autoRecovered.contains(id)
+            else { return }
+            // 已经收到事件、或在等待回答/审批，就不是「没有反应」。
+            let quiet = Date.now.timeIntervalSince(self.lastActivity[id] ?? .now)
+            guard quiet >= Self.stallSeconds,
+                  let waiting = self.records[id]?.sending, waiting.contains(where: { $0.id == draft.id })
+            else { return }
+            self.autoRecovered.insert(id)
+            let ids = Set(waiting.map(\.id))
+            if canSwitch, let next = await self.firstAvailableModel(around: selection) {
+                ComposerModelSelection.choose(next, for: id)
+                ComposerModelSelection.rememberSelection(next)
+                _ = await self.configureModel(id, selection: next)
+                await self.resend(ids, in: id, selection: next)
+            } else if canRetry {
+                await self.resend(ids, in: id, selection: selection)
+            }
+        }
+    }
+
 
     /// A send that failed: its row goes, and its draft returns to an empty
     /// composer (`ChatRecord.takeBack`).
@@ -609,6 +695,10 @@ final class ChatRuntime {
     }
 
     func stop(_ id: UUID, continueQueue: Bool = true) async throws {
+        // 读者主动停止：这不是失败，不能过了一会儿又自动重发。
+        stallWatchdogs[id]?.cancel()
+        stallWatchdogs[id] = nil
+        autoRecovered.insert(id)
         guard let sessionID = records[id]?.sessionID else { return }
         let continuation = UUID()
         stopContinuations[id] = continuation
@@ -888,6 +978,10 @@ final class ChatRuntime {
                     guard !Task.isCancelled, records[id]?.task == task else { return }
                     let fresh = records[id]?.take(batch.events) ?? []
                     let realtime = fresh.filter { !ChatFork.isHistorical($0) }
+                    // 有事件到达就说明模型还在动：看门狗重新计时。
+                    if !realtime.isEmpty {
+                        self.lastActivity[id] = .now
+                    }
                     // Historical replay belongs in the transcript and cursor,
                     // but must not replay reader-visible side effects.
                     records[id]?.summary.noteReplies(in: realtime, isViewed: id == viewedChat)
@@ -1131,6 +1225,14 @@ final class ChatRuntime {
         .network, .timeout, .authentication, .quota, .rateLimit, .server, .contextOverflow,
     ]
 
+    /// 一轮里最后一次收到事件的时间，看门狗据此判断「没有反应」。
+    private var lastActivity: [UUID: Date] = [:]
+    /// 每个会话正在跑的看门狗，新一轮开始或被停止时取消旧的。
+    private var stallWatchdogs: [UUID: Task<Void, Never>] = [:]
+    /// 每轮没反应多久算失败。请求已经发出、对端却什么都不回时，运行时不报错，
+    /// 只沉默——没有这条判据，自动切换永远不会被触发。
+    private static let stallSeconds: TimeInterval = 60
+
     /// `follow` 读到本轮新事件里的 `error` 时调用。按原因与两个自动开关决定
     /// 切换模型还是超时重试；只处理新到的 error，历史回放不传进来，也不会
     /// 让旧失败重发文本。每个会话每轮只恢复一次（`autoRecovered`）。
@@ -1161,7 +1263,7 @@ final class ChatRuntime {
             {
                 ComposerModelSelection.choose(next, for: id)
                 ComposerModelSelection.rememberSelection(next)
-                await self.configureModel(id, selection: next)
+                _ = await self.configureModel(id, selection: next)
                 await self.resend(draftIDs, in: id, selection: next)
                 return
             }

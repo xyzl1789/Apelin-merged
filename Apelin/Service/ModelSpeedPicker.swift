@@ -12,6 +12,11 @@ import Foundation
 /// a time: a burst of parallel first messages is harder on a provider than a
 /// short queue, and the sequential order gives the progress card a count.
 enum ModelSpeedPicker {
+    /// A model that has not answered in this long is skipped: a relay that
+    /// hangs would otherwise hold the whole measurement, and a model slow
+    /// enough to matter is not the fastest one anyway.
+    static let probeTimeout = Duration.seconds(10)
+
     /// A model's speed, kept beside the selection it belongs to.
     struct Result {
         var selection: ComposerModelSelection
@@ -60,25 +65,42 @@ enum ModelSpeedPicker {
         return fastest?.selection
     }
 
-    /// The total time of one successful probe, or nil when it failed or the
-    /// report held no total stage.
+    /// The total time of one successful probe, or nil when it failed, the
+    /// report held no total stage, or the probe outran `probeTimeout`.
     private static func measure(_ account: AgentAccount, model: String) async throws -> Double? {
         let handle = try await ApelinService.app.agentModelTest(
             AgentModelTestRequest(provider: account.provider, model: model)
         )
-        for try await event in ApelinService.app.events(of: handle) {
-            if Task.isCancelled { return nil }
-            guard event.kind == TaskEvent.stateKind,
-                  let state = event.payload?["state"]?.stringValue.flatMap(TaskState.init(rawValue:)),
-                  state.isTerminal
-            else { continue }
-            guard let value = event.payload?[AgentModelTestResponse.stateMember],
-                  let report = try? value.decode(AgentModelTestResponse.self),
-                  report.success,
-                  let total = report.stages.first(where: { $0.name == .total })?.milliseconds
-            else { return nil }
-            return total
+        return try await withThrowingTaskGroup(of: Double?.self) { group in
+            // Raced against a timer that answers nil: a stream that stops
+            // sending events (a relay holding the connection open) says
+            // nothing, so the cap cannot wait for the next event. The probe
+            // task keeps running on the host after we stop reading it;
+            // dropping the stream is the only cancel a model test has, and the
+            // next probe starts at once.
+            group.addTask {
+                for try await event in ApelinService.app.events(of: handle) {
+                    if Task.isCancelled { return nil }
+                    guard event.kind == TaskEvent.stateKind,
+                          let state = event.payload?["state"]?.stringValue.flatMap(TaskState.init(rawValue:)),
+                          state.isTerminal
+                    else { continue }
+                    guard let value = event.payload?[AgentModelTestResponse.stateMember],
+                          let report = try? value.decode(AgentModelTestResponse.self),
+                          report.success,
+                          let total = report.stages.first(where: { $0.name == .total })?.milliseconds
+                    else { return nil }
+                    return total
+                }
+                return nil
+            }
+            group.addTask {
+                try? await Task.sleep(for: probeTimeout)
+                return nil
+            }
+            let first = try await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
-        return nil
     }
 }
