@@ -286,9 +286,16 @@ extension SessionEventLog {
             default: false
             }
         }
-        guard case .finished(reason: .aborted)? = ending?.event else {
-            throw SessionStoreError.corrupt("unfinished tool calls without a recorded stop")
+        if case .finished(reason: let reason)? = ending?.event, reason != .aborted {
+            // A run that claims it ended cleanly or with a failure yet left
+            // calls unanswered is damage, not an interruption: refuse it.
+            throw SessionStoreError.corrupt("unfinished tool calls after a recorded \(reason) run")
         }
+        // No recorded stop means the worker died mid-run: the same case an
+        // explicit stop lands in, and recovered the same way. The prefix
+        // check inside recoverInterruptedHistory still refuses a broken
+        // middle, an orphan result or a duplicate call; only the tail that
+        // a killed process could leave is dropped.
         return try recoverInterruptedHistory(messages)
     }
 

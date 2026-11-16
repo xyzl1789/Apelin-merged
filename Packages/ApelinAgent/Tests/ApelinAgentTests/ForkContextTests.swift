@@ -467,6 +467,25 @@ struct ForkContextTests {
         await log.close()
     }
 
+    @Test
+    func `a killed worker's log with no recorded stop recovers the whole prefix`() async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let log = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: UUID().uuidString)
+        let id = UUID()
+        let user = UserMessage(text: "Read")
+        let complete = [Message.user(user)]
+        let unfinished = complete + pendingBatch()
+        try await log.append(.userMessage(id: id, text: "Read", attachments: []))
+        try await log.writeHistorySnapshot(complete, anchors: [id.uuidString.lowercased(): anchor(user)])
+        try await log.writeTranscript(unfinished)
+        // No finished record at all: the worker died mid-run.
+        let recovered = try await log.readResumableTranscript()
+        #expect(recovered == complete)
+        #expect(try await log.readTranscript() == complete)
+        await log.close()
+    }
+
     @Test(arguments: ["manifest", "object", "transcript-write"])
     func `stopped recovery surfaces real damage and IO failures`(_ failure: String) async throws {
         let home = try TemporaryHome()
