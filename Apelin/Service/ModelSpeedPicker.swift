@@ -18,7 +18,7 @@ enum ModelSpeedPicker {
     static let probeTimeout = Duration.seconds(10)
 
     /// A model's speed, kept beside the selection it belongs to.
-    struct Result {
+    struct Result: Codable {
         var selection: ComposerModelSelection
         var milliseconds: Double
     }
