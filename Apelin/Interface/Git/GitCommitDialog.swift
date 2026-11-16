@@ -223,7 +223,7 @@ final class GitCommitDialogController: UIViewController {
         }
         guard let selection = ComposerModelSelection.current else {
             presentNotice(
-                title: String(localized: "Unable to Generate"),
+                title: "Unable to Generate",
                 message: String(localized: "Choose a model before generating."),
             )
             return
@@ -263,7 +263,7 @@ final class GitCommitDialogController: UIViewController {
                 self.generating = false
                 guard !Task.isCancelled else { return }
                 self.presentNotice(
-                    title: String(localized: "Unable to Generate"),
+                    title: "Unable to Generate",
                     message: error.readableMessage,
                 )
             }
