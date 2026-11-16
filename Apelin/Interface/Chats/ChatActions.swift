@@ -25,10 +25,10 @@ enum ChatActions {
             renameAction(for: chat.id, runtime: runtime, from: presenter),
             compactAction(for: chat.id, runtime: runtime, from: presenter),
         ]
-        // 自动助手是这条对话自己的设置，随菜单打开时重读；它排在最前面，
-        // 因为这正是读者常改的一项。
+        // 自动助手是这条对话自己的设置，随菜单打开时重读；它平铺在最前面，
+        // 因为这正是读者常改的一项——比子菜单少一层。
         let chatID = chat.id
-        let assistant = assistantMenu(for: chatID, from: presenter)
+        let assistant = assistantActions(for: chatID, from: presenter)
         let deletion = UIMenu(options: .displayInline, children: [deleteAction(for: chat.id, onDelete: onDelete)])
         guard let projectName = chat.projectName else {
             let folders = ProjectActions.folderActions(from: presenter, failureTitle: "Unable to Open Folder") {
@@ -37,12 +37,12 @@ enum ChatActions {
                     projectRoot: nil,
                 )
             }
-            completion([
-                UIMenu(children: [assistant]),
-                UIMenu(options: .displayInline, children: chatActions),
-                UIMenu(options: .displayInline, children: folders),
-                deletion,
-            ])
+            completion(
+                assistant
+                    + [UIMenu(options: .displayInline, children: chatActions)]
+                    + [UIMenu(options: .displayInline, children: folders)]
+                    + [deletion]
+            )
             return
         }
         // Distribute… is read off the project's own manifest each time: one
@@ -61,21 +61,24 @@ enum ChatActions {
                 chatActions: chatActions,
                 onPrepareDistribution: onPrepareDistribution,
             )
-            completion([UIMenu(children: [assistant])] + projectActions.children + [deletion])
+            completion(assistant + projectActions.children + [deletion])
         }
     }
 
-    /// 自动助手的子菜单，打开时才读这条对话的设置。`UIDeferredMenuElement`
+    /// 自动助手的动作组，打开菜单时才读这条对话的设置。`UIDeferredMenuElement`
     /// 的构建闭包是 `@Sendable` 的同步非隔离上下文，所以主线程的断言与
     /// `completion` 都显式标出来：闭包的类型在赋值处就定死，不在里面推导。
-    private static func assistantMenu(for id: UUID, from presenter: UIViewController) -> UIDeferredMenuElement {
+    private static func assistantActions(
+        for id: UUID,
+        from presenter: UIViewController,
+    ) -> UIDeferredMenuElement {
         UIDeferredMenuElement.uncached { [weak presenter] (completion: @escaping ([UIMenuElement]) -> Void) in
             MainActor.assumeIsolated {
                 guard let presenter else {
                     completion([])
                     return
                 }
-                completion([AutoAssistantMenu.menu(for: id, in: presenter)])
+                completion(AutoAssistantMenu.actions(for: id, in: presenter))
             }
         }
     }

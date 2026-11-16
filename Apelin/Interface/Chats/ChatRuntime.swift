@@ -502,6 +502,8 @@ final class ChatRuntime {
         guard records[id] != nil else { return Task {} }
         // 新的一轮消息：允许这个会话再次自动恢复。
         autoRecovered.remove(id)
+        autoSwitchAttempts[id] = nil
+        autoSwitchTried[id] = nil
         let selection = ComposerModelSelection.selection(for: id)
         records[id]?.submit(draft)
         changed(id)
@@ -521,32 +523,38 @@ final class ChatRuntime {
     }
 
     /// 发送直接抛错时的自动恢复。只对 `switchableReasons` 与超时起作用，且
-    /// 与事件里的 `error` 共用每轮一次的额度：两条路径不会各自重发一遍。
+    /// 与事件里的 `error` 共用每轮的切换额度：两条路径不会各自重发一遍。
     private func recoverFromFailure(of draft: ComposerDraft, in id: UUID, error: Error, selection: ComposerModelSelection?) {
         // 这一条对话自己的设置：它开着的对话（子代理）继承，除非自己另设。
         let policy = AutoAssistantPolicy.current(for: id)
         let canSwitch = policy.switchOnFailure
         let canRetry = policy.retryOnTimeout
-        guard canSwitch || canRetry, !autoRecovered.contains(id) else { return }
+        guard canSwitch || canRetry else { return }
+        // 分类不出的失败（reason 为 nil）也算：余额不足这类提供商话术常常
+        // 没有归类。离线仍不触发：换模型没用。
         let reason = (error as? ApelinError)?.reason
             ?? (error is URLError ? .network : nil)
-        guard let reason, reason != .offline else { return }
-        let shouldSwitch = canSwitch && Self.switchableReasons.contains(reason)
+        guard reason != .offline else { return }
+        let shouldSwitch = canSwitch && (reason == nil || Self.switchableReasons.contains(reason))
         let shouldRetry = canRetry && reason == .timeout
         guard shouldSwitch || shouldRetry else { return }
-        autoRecovered.insert(id)
         let ids: Set<UUID> = [draft.id]
         Task { [weak self] in
             guard let self else { return }
-            if shouldSwitch,
-               let next = await self.firstAvailableModel(around: selection)
-            {
-                ComposerModelSelection.choose(next, for: id)
-                ComposerModelSelection.rememberSelection(next)
-                _ = await self.configureModel(id, selection: next)
-                // 草稿已经回到输入框，不在 sending 里：按 id 取回来重发。
-                await self.resendFromComposer(ids, in: id, selection: next)
-                return
+            if shouldSwitch {
+                let tried = self.autoSwitchTried[id] ?? []
+                if let next = await self.firstAvailableModel(around: selection, skipping: tried),
+                   self.autoSwitchAttempts[id, default: 0] < Self.maxAutoSwitches
+                {
+                    self.autoSwitchAttempts[id, default: 0] += 1
+                    self.autoSwitchTried[id, default: []].insert(Self.candidateKey(next))
+                    ComposerModelSelection.choose(next, for: id)
+                    ComposerModelSelection.rememberSelection(next)
+                    _ = await self.configureModel(id, selection: next)
+                    // 草稿已经回到输入框，不在 sending 里：按 id 取回来重发。
+                    await self.resendFromComposer(ids, in: id, selection: next)
+                    return
+                }
             }
             if shouldRetry {
                 try? await Task.sleep(for: .seconds(10))
@@ -578,27 +586,33 @@ final class ChatRuntime {
         let policy = AutoAssistantPolicy.current(for: id)
         let canSwitch = policy.switchOnFailure
         let canRetry = policy.retryOnTimeout
-        guard canSwitch || canRetry, !autoRecovered.contains(id) else { return }
+        guard canSwitch || canRetry else { return }
         lastActivity[id] = .now
         stallWatchdogs[id]?.cancel()
         stallWatchdogs[id] = Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.stallSeconds))
             guard let self, !Task.isCancelled, self.records[id] != nil,
-                  !self.autoRecovered.contains(id)
+                  self.autoSwitchAttempts[id, default: 0] < Self.maxAutoSwitches
             else { return }
             // 已经收到事件、或在等待回答/审批，就不是「没有反应」。
             let quiet = Date.now.timeIntervalSince(self.lastActivity[id] ?? .now)
             guard quiet >= Self.stallSeconds,
                   let waiting = self.records[id]?.sending, waiting.contains(where: { $0.id == draft.id })
             else { return }
-            self.autoRecovered.insert(id)
             let ids = Set(waiting.map(\.id))
-            if canSwitch, let next = await self.firstAvailableModel(around: selection) {
-                ComposerModelSelection.choose(next, for: id)
-                ComposerModelSelection.rememberSelection(next)
-                _ = await self.configureModel(id, selection: next)
-                await self.resend(ids, in: id, selection: next)
-            } else if canRetry {
+            if canSwitch {
+                let tried = self.autoSwitchTried[id] ?? []
+                if let next = await self.firstAvailableModel(around: selection, skipping: tried) {
+                    self.autoSwitchAttempts[id, default: 0] += 1
+                    self.autoSwitchTried[id, default: []].insert(Self.candidateKey(next))
+                    ComposerModelSelection.choose(next, for: id)
+                    ComposerModelSelection.rememberSelection(next)
+                    _ = await self.configureModel(id, selection: next)
+                    await self.resend(ids, in: id, selection: next)
+                    return
+                }
+            }
+            if canRetry {
                 await self.resend(ids, in: id, selection: selection)
             }
         }
@@ -703,7 +717,10 @@ final class ChatRuntime {
         // 读者主动停止：这不是失败，不能过了一会儿又自动重发。
         stallWatchdogs[id]?.cancel()
         stallWatchdogs[id] = nil
+        // 把这一轮的切换额度用满：三条恢复路径（事件错误、发送抛错、看门狗）
+        // 都以此判断这一轮还有没有恢复资格。
         autoRecovered.insert(id)
+        autoSwitchAttempts[id] = Self.maxAutoSwitches
         guard let sessionID = records[id]?.sessionID else { return }
         let continuation = UUID()
         stopContinuations[id] = continuation
@@ -1226,11 +1243,26 @@ final class ChatRuntime {
 
     // MARK: - 发送失败自动恢复
 
-    /// 哪些原因会触发自动切换模型。`offline`（没有网络）从不切换：换一个
-    /// 账号的模型也发不出去，只会多一次失败。未知原因同样不自动切换。
+    /// 哪些原因会触发自动切换。`offline`（没有网络）从不切换：换一个
+    /// 账号的模型也发不出去，只会多一次失败。分类不出的失败也算：
+    /// 提供商的报错话术千变万化，余额不足、套餐限制常常落不进任何一类
+    /// （reason 是 nil）——既然读者开了「失败即切」，就按失败处理。
     private static let switchableReasons: Set<ApelinError.Reason> = [
         .network, .timeout, .authentication, .quota, .rateLimit, .server, .contextOverflow,
     ]
+
+    /// 一个候选的去重键：同一轮里已经试过、又失败的模型不再试。
+    private static func candidateKey(_ selection: ComposerModelSelection) -> String {
+        selection.provider.rawValue + "/" + selection.model
+    }
+
+    /// 一轮里自动切换的上限：候选逐个试，全失败才停下等读者。没有余额的
+    /// 账号常不止一个，只切一次会落在另一个同样没余额的模型上。
+    private static let maxAutoSwitches = 3
+    /// 每轮自动切换已试的次数，随新一轮消息清零。
+    private var autoSwitchAttempts: [UUID: Int] = [:]
+    /// 每轮自动切换已经试过又失败的模型，`candidateKey` 的集合。
+    private var autoSwitchTried: [UUID: Set<String>] = [:]
 
     /// 一轮里最后一次收到事件的时间，看门狗据此判断「没有反应」。
     private var lastActivity: [UUID: Date] = [:]
@@ -1242,38 +1274,51 @@ final class ChatRuntime {
 
     /// `follow` 读到本轮新事件里的 `error` 时调用。按原因与两个自动开关决定
     /// 切换模型还是超时重试；只处理新到的 error，历史回放不传进来，也不会
-    /// 让旧失败重发文本。每个会话每轮只恢复一次（`autoRecovered`）。
+    /// 让旧失败重发文本。同一轮的自动切换有次数上限：候选逐个试，试过的
+    /// 不再试，全失败才停下——只切一次会落在另一个同样没余额的模型上。
     private func handleAutoRecovery(in id: UUID, realtime: [TaskEvent]) {
-        guard !autoRecovered.contains(id) else { return }
+        // 每轮恢复的额度现在按「试过的次数」计，而不是一次性的开关。
+        let attempts = autoSwitchAttempts[id] ?? 0
+        guard attempts < Self.maxAutoSwitches else { return }
         // 这一条对话自己的设置：它开着的对话（子代理）继承，除非自己另设。
         let policy = AutoAssistantPolicy.current(for: id)
         let canSwitch = policy.switchOnFailure
         let canRetry = policy.retryOnTimeout
         guard canSwitch || canRetry else { return }
-        guard let failure = realtime.last(where: { $0.kind == "error" }),
-              let reason = failure.payload?["reason"]?.stringValue.map(ApelinError.Reason.init(rawValue:)),
-              reason != .offline
-        else { return }
+        // 分类不出的失败（reason 为 nil）也触发切换：提供商的话术常常
+        // 落不进任何一类，余额不足正是最常见的。离线仍不触发：换模型没用。
+        let failure = realtime.last(where: { $0.kind == "error" })
+        let reason = failure?.payload?["reason"]?.stringValue.map(ApelinError.Reason.init(rawValue:))
+        guard reason != .offline else { return }
         // 只有仍留在 sending 里的草稿才还没被主机收下，才谈得上重发。
         let drafts = records[id]?.sending ?? []
         guard !drafts.isEmpty else { return }
         let draftIDs = Set(drafts.map(\.id))
-
-        let shouldSwitch = canSwitch && Self.switchableReasons.contains(reason)
+        // 已经知道有问题的原因且明确不可切换（如上下文溢出）时不再试；
+        // 未知原因给切换一条路。重试仍只对明确的超时开。
+        let shouldSwitch = canSwitch && (reason == nil || Self.switchableReasons.contains(reason!))
         let shouldRetry = canRetry && reason == .timeout
         guard shouldSwitch || shouldRetry else { return }
-        // 先占位：同一批里的多个 error、或重发后再次失败，都不会再触发一次。
-        autoRecovered.insert(id)
 
         Task { [weak self] in
             guard let self else { return }
-            if shouldSwitch,
-               let next = await self.firstAvailableModel(around: ComposerModelSelection.selection(for: id))
-            {
-                ComposerModelSelection.choose(next, for: id)
-                ComposerModelSelection.rememberSelection(next)
-                _ = await self.configureModel(id, selection: next)
-                await self.resend(draftIDs, in: id, selection: next)
+            if shouldSwitch {
+                let tried = self.autoSwitchTried[id] ?? []
+                var current = ComposerModelSelection.selection(for: id)
+                while self.autoSwitchAttempts[id, default: 0] < Self.maxAutoSwitches {
+                    guard let next = await self.firstAvailableModel(around: current, skipping: tried)
+                    else { return }
+                    current = next
+                    self.autoSwitchAttempts[id, default: 0] += 1
+                    self.autoSwitchTried[id, default: []].insert(Self.candidateKey(next))
+                    ComposerModelSelection.choose(next, for: id)
+                    ComposerModelSelection.rememberSelection(next)
+                    _ = await self.configureModel(id, selection: next)
+                    await self.resend(draftIDs, in: id, selection: next)
+                    // 重发成败由下一轮事件与错误驱动：成功就结束，又失败
+                    // 会带着更新过的 attempt 计数再进这里，换下一个候选。
+                    return
+                }
                 return
             }
             // 没有可切换的候选，且是超时并开启了重试：等 10 秒再用原模型重发。
@@ -1295,8 +1340,13 @@ final class ChatRuntime {
         }
     }
 
-    /// 选一个与 `current` 不同、其账号已登录、模型已启用、且未被排除的模型。
-    private func firstAvailableModel(around current: ComposerModelSelection?) async -> ComposerModelSelection? {
+    /// 选一个与 `current` 不同、其账号已登录、模型已启用、且未被排除的
+    /// 模型。`skipping` 里是同一轮已经试过又失败的（provider/model 键）：
+    /// 没有余额的候选不该再领到重发。
+    private func firstAvailableModel(
+        around current: ComposerModelSelection?,
+        skipping tried: Set<String> = [],
+    ) async -> ComposerModelSelection? {
         let models = EnabledModels.selectedModelIDs()
         let accounts: [AgentAccount]
         do {
@@ -1310,13 +1360,15 @@ final class ChatRuntime {
             for model in account.models ?? [] {
                 guard !ModelExclusions.isModelExcluded(account.provider, model: model) else { continue }
                 if let current, current.provider == account.provider, current.model == model { continue }
-                return ComposerModelSelection(
+                let selection = ComposerModelSelection(
                     provider: account.provider,
                     model: model,
                     supportedEfforts: (account.reasoningEfforts?[model] ?? [])
                         .filter { [.low, .high, .max].contains($0) },
                     supportedTiers: account.serviceTiers?[model] ?? [],
                 )
+                guard !tried.contains(Self.candidateKey(selection)) else { continue }
+                return selection
             }
         }
         return nil

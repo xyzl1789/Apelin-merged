@@ -1,18 +1,22 @@
 import ApelinProtocol
 import UIKit
 
-/// The automatic assistant as the conversation's own menu entry, in the
-/// conversation's More (…) menu: the two switches, the measurement that picks
-/// the fastest model, and the exclusions both honour.
+/// The automatic assistant's actions, laid flat in the conversation's More
+/// (…) menu: the two switches, the measurement that picks the fastest model,
+/// and the exclusions both honour. Flat, not a submenu: one tap less, and
+/// the switches are the setting the reader reaches for.
 ///
 /// The state is read when the menu opens, never captured when it is built: a
 /// switch toggled here must not keep showing its old value, and the chat it
 /// belongs to may not even have existed when the button was made.
 enum AutoAssistantMenu {
-    /// The submenu for one conversation: its own settings, with what it
-    /// inherits from the conversation that opened it said under the switch.
+    /// The actions for one conversation, as an inline group (no submenu of
+    /// its own): its own settings, with what it inherits from the
+    /// conversation that opened it said under the switch. `controller` is
+    /// where the measure action shows its progress and the exclusions push
+    /// their pages from; the actions keep it weakly.
     @MainActor
-    static func menu(for id: UUID, in controller: UIViewController) -> UIMenu {
+    static func actions(for id: UUID, in controller: UIViewController) -> [UIMenu] {
         let settings = AutoAssistantPolicy.current(for: id)
 
         let switching = UIAction(
@@ -39,10 +43,6 @@ enum AutoAssistantMenu {
                 AutoAssistantPolicy.set(next, for: id)
             }
         }
-        // 设置读出来就是这条对话实际生效的（含从开启它的对话继承来的），
-        // 所以开关的选中态如实反映它，不需要另加说明文字。
-        let title = String(localized: "Auto Assistant")
-
         let measure = UIAction(
             title: String(localized: "Measure Now and Use Fastest"),
             image: UIImage(systemName: "speedometer"),
@@ -66,16 +66,11 @@ enum AutoAssistantMenu {
                 ExcludedModelsController(style: .insetGrouped), animated: true,
             )
         }
-
-        return UIMenu(
-            title: title,
-            image: UIImage(systemName: "wand.and.stars"),
-            children: [
-                UIMenu(options: .displayInline, children: [switching, retrying]),
-                UIMenu(options: .displayInline, children: [measure]),
-                UIMenu(options: .displayInline, children: [providers, excluded]),
-            ],
-        )
+        return [
+            UIMenu(options: .displayInline, children: [switching, retrying]),
+            UIMenu(options: .displayInline, children: [measure]),
+            UIMenu(options: .displayInline, children: [providers, excluded]),
+        ]
     }
 
     /// Measures every enabled, non-excluded model and leaves this conversation
