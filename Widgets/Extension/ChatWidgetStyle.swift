@@ -9,6 +9,14 @@ struct WidgetTheme {
         isDark = colorScheme == .dark
     }
 
+    /// The lock screen's live activity keeps a fixed dark look whatever the
+    /// appearance: iOS 16's card follows the system's light and dark at once,
+    /// while this view's `colorScheme` can lag a switch behind it, and a
+    /// white ground under white text is what that lag reads as. A constant
+    /// dark ground and ink can never disagree, and the tint is partly
+    /// transparent so the wallpaper shows through.
+    static let lockScreen = WidgetTheme(.dark)
+
     /// The island is black in both appearances.
     static let island = WidgetTheme(.dark)
 

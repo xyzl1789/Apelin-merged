@@ -61,12 +61,14 @@ struct ChatsActivityWidget: Widget {
 /// per conversation in progress.
 @available(iOS 16.2, *)
 private struct ChatsLockScreenView: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     let state: ChatWidgetSnapshot
 
     var body: some View {
-        let theme = WidgetTheme(colorScheme)
+        // A fixed dark theme, not the environment's: an appearance switch
+        // turns the system's card at once but can leave this view's
+        // colorScheme behind, and the old pairing (white ink, white ground)
+        // is the text gone. Dark ink on a dark ground cannot disagree.
+        let theme = WidgetTheme.lockScreen
         VStack(alignment: .leading, spacing: WidgetSpacing.line) {
             ChatWidgetHeader(snapshot: state, theme: theme)
             ChatWidgetRows(snapshot: state, theme: theme, limit: 3)
@@ -74,7 +76,8 @@ private struct ChatsLockScreenView: View {
         .foregroundStyle(theme.ink)
         .padding(WidgetSpacing.card)
         .animation(.easeInOut(duration: 0.35), value: state)
-        .activityBackgroundTint(theme.ground)
+        // partly transparent, so the wallpaper shows through the card
+        .activityBackgroundTint(Color.black.opacity(0.72))
         .activitySystemActionForegroundColor(theme.green)
         .widgetURL(state.mostUrgent?.link)
     }
