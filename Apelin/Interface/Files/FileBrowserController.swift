@@ -1,5 +1,6 @@
 import AlertController
 import ApelinCore
+import Foundation
 import QuickLook
 import SnapKit
 import SPIndicator
