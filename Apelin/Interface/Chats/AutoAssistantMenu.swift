@@ -11,6 +11,7 @@ import UIKit
 enum AutoAssistantMenu {
     /// The submenu for one conversation: its own settings, with what it
     /// inherits from the conversation that opened it said under the switch.
+    @MainActor
     static func menu(for id: UUID, in controller: UIViewController) -> UIMenu {
         let settings = AutoAssistantPolicy.current(for: id)
 
@@ -83,13 +84,13 @@ enum AutoAssistantMenu {
                     cancellable: true,
                     from: controller,
                 ) { update in
-                    try await ModelSpeedPicker.pickFastest { measured, total in
+                    try await ModelSpeedPicker.pickFastest(progress: { measured, total in
                         update(ProgressCard.Status(
                             subtitle: String(localized: "Testing each signed-in model…"),
                             fraction: Double(measured) / Double(max(total, 1)),
                             count: "\(measured) / \(total)",
                         ))
-                    }
+                    })
                 }
                 guard !Task.isCancelled else { return }
                 guard let selected else {
