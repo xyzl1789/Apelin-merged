@@ -38,6 +38,10 @@ final class ChatRuntime {
     private var opening: [UUID: Task<AgentOpenResponse, Error>] = [:]
     /// A newer Stop or Rewind supersedes an earlier Stop's queue continuation.
     @objc dynamic private var stopContinuations: [UUID: UUID] = [:]
+    /// 本轮消息已经自动恢复过的会话。一次 submit 到下一次 submit 之间，
+    /// 一个会话只自动切换模型或重试一次：重发后再次失败、或同一批里多个
+    /// error，都不会把它变成循环（用集合是为了只关心“本轮是否恢复过”）。
+    private var autoRecovered: Set<UUID> = []
     private var attachmentCache: [String: ComposerAttachment] = [:]
     private var transcripts = ChatTranscriptCache()
     /// Conversations whose latest state is in memory only.
@@ -354,6 +358,7 @@ final class ChatRuntime {
         transcripts.remove(id)
         historyTurns[id] = nil
         promptCache[id] = nil
+        autoRecovered.remove(id)
     }
 
     /// The conversation's rows, brought up to date only when its events, the
@@ -494,6 +499,8 @@ final class ChatRuntime {
     /// composer before the task throws.
     func submit(_ draft: ComposerDraft, to id: UUID) -> Task<Void, Error> {
         guard records[id] != nil else { return Task {} }
+        // 新的一轮消息：允许这个会话再次自动恢复。
+        autoRecovered.remove(id)
         let selection = ComposerModelSelection.selection(for: id)
         records[id]?.submit(draft)
         changed(id)
@@ -886,6 +893,8 @@ final class ChatRuntime {
                     records[id]?.summary.noteReplies(in: realtime, isViewed: id == viewedChat)
                     ConversationJournal.note(realtime, session: records[id]?.sessionID)
                     settleSending(in: id, against: realtime)
+                    // 只对本次新到的事件做自动恢复；历史回放不传进来，不会重发文本。
+                    handleAutoRecovery(in: id, realtime: realtime)
                     let builds = CompletedBuilds.count(in: realtime)
                     if builds > 0 {
                         onBuildsCompleted?(builds)
@@ -1112,6 +1121,94 @@ final class ChatRuntime {
         guard unsaved.remove(id) != nil else { return }
         onSaveRecovered?()
         retryUnsaved()
+    }
+
+    // MARK: - 发送失败自动恢复
+
+    /// 哪些原因会触发自动切换模型。`offline`（没有网络）从不切换：换一个
+    /// 账号的模型也发不出去，只会多一次失败。未知原因同样不自动切换。
+    private static let switchableReasons: Set<ApelinError.Reason> = [
+        .network, .timeout, .authentication, .quota, .rateLimit, .server, .contextOverflow,
+    ]
+
+    /// `follow` 读到本轮新事件里的 `error` 时调用。按原因与两个自动开关决定
+    /// 切换模型还是超时重试；只处理新到的 error，历史回放不传进来，也不会
+    /// 让旧失败重发文本。每个会话每轮只恢复一次（`autoRecovered`）。
+    private func handleAutoRecovery(in id: UUID, realtime: [TaskEvent]) {
+        guard !autoRecovered.contains(id) else { return }
+        let canSwitch = ModelExclusions.Automatic.switchOnFailure.isEnabled
+        let canRetry = ModelExclusions.Automatic.retryOnTimeout.isEnabled
+        guard canSwitch || canRetry else { return }
+        guard let failure = realtime.last(where: { $0.kind == "error" }),
+              let reason = failure.payload?["reason"]?.stringValue.map(ApelinError.Reason.init(rawValue:)),
+              reason != .offline
+        else { return }
+        // 只有仍留在 sending 里的草稿才还没被主机收下，才谈得上重发。
+        let drafts = records[id]?.sending ?? []
+        guard !drafts.isEmpty else { return }
+        let draftIDs = Set(drafts.map(\.id))
+
+        let shouldSwitch = canSwitch && Self.switchableReasons.contains(reason)
+        let shouldRetry = canRetry && reason == .timeout
+        guard shouldSwitch || shouldRetry else { return }
+        // 先占位：同一批里的多个 error、或重发后再次失败，都不会再触发一次。
+        autoRecovered.insert(id)
+
+        Task { [weak self] in
+            guard let self else { return }
+            if shouldSwitch,
+               let next = await self.firstAvailableModel(around: ComposerModelSelection.selection(for: id))
+            {
+                ComposerModelSelection.choose(next, for: id)
+                ComposerModelSelection.rememberSelection(next)
+                await self.configureModel(id, selection: next)
+                await self.resend(draftIDs, in: id, selection: next)
+                return
+            }
+            // 没有可切换的候选，且是超时并开启了重试：等 10 秒再用原模型重发。
+            if shouldRetry {
+                try? await Task.sleep(for: .seconds(10))
+                guard !Task.isCancelled, self.records[id] != nil else { return }
+                await self.resend(draftIDs, in: id, selection: ComposerModelSelection.selection(for: id))
+            }
+        }
+    }
+
+    /// 只重发 `ids` 中此刻仍在 `sending` 里的草稿：等待的 10 秒里用户可能
+    /// 停止或撤回，那些不再算待发。
+    private func resend(_ ids: Set<UUID>, in id: UUID, selection: ComposerModelSelection?) async {
+        let pending = records[id]?.sending?.filter { ids.contains($0.id) } ?? []
+        for draft in pending {
+            guard !Task.isCancelled, records[id] != nil else { return }
+            try? await send(draft, to: id, selection: selection)
+        }
+    }
+
+    /// 选一个与 `current` 不同、其账号已登录、模型已启用、且未被排除的模型。
+    private func firstAvailableModel(around current: ComposerModelSelection?) async -> ComposerModelSelection? {
+        let models = EnabledModels.selectedModelIDs()
+        let accounts: [AgentAccount]
+        do {
+            accounts = try await ApelinService.app
+                .agentAccountList(extraModels: models, onlyExtraModels: true).accounts
+        } catch {
+            return nil
+        }
+        guard !Task.isCancelled else { return nil }
+        for account in EnabledModels.accounts(from: accounts) {
+            for model in account.models ?? [] {
+                guard !ModelExclusions.isModelExcluded(account.provider, model: model) else { continue }
+                if let current, current.provider == account.provider, current.model == model { continue }
+                return ComposerModelSelection(
+                    provider: account.provider,
+                    model: model,
+                    supportedEfforts: (account.reasoningEfforts?[model] ?? [])
+                        .filter { [.low, .high, .max].contains($0) },
+                    supportedTiers: account.serviceTiers?[model] ?? [],
+                )
+            }
+        }
+        return nil
     }
 
     private func imageMIME(_ data: Data) -> String {
