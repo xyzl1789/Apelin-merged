@@ -79,7 +79,7 @@ final class AutoAssistantSheet: UITableViewController {
         return config
     }
 
-    private var settings: AutoAssistantPolicy {
+    private var settings: AutoAssistantPolicy.Settings {
         AutoAssistantPolicy.current(for: id)
     }
 
