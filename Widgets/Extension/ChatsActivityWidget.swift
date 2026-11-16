@@ -76,8 +76,10 @@ private struct ChatsLockScreenView: View {
         .foregroundStyle(theme.ink)
         .padding(WidgetSpacing.card)
         .animation(.easeInOut(duration: 0.35), value: state)
-        // partly transparent, so the wallpaper shows through the card
-        .activityBackgroundTint(Color.black.opacity(0.72))
+        // Partly transparent, so the wallpaper shows through the card. A
+        // custom tint sits in front of the system's own material: at this
+        // opacity the wallpaper reads dimly, and the ink keeps its contrast.
+        .activityBackgroundTint(Color(red: 0, green: 0, blue: 0, opacity: 0.72))
         .activitySystemActionForegroundColor(theme.green)
         .widgetURL(state.mostUrgent?.link)
     }

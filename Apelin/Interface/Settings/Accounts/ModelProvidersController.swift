@@ -106,10 +106,9 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             return String(localized: "Credentials stay in this device’s keychain. Currently using kwwk \(kwwk).")
         }
         dataSource.update(sections)
-        // The keychain footer sits on the last section, which a content inset
-        // reads as touching the bottom; some space of its own keeps it clear
-        // of the home indicator.
-        tableView.contentInset.bottom = 12
+        // The keychain footer sits tight above the table's bottom; ten
+        // points of negative inset let it reach lower, clear of the rows.
+        tableView.contentInset.bottom = -10
     }
 
     override func viewWillAppear(_ animated: Bool) {
