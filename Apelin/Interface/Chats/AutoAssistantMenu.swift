@@ -62,7 +62,7 @@ enum AutoAssistantMenu {
 
         return UIMenu(
             title: title,
-            image: UIImage(systemName: "wand.and.sparkles"),
+            image: UIImage(systemName: "wand.and.stars"),
             children: [
                 UIMenu(options: .displayInline, children: [switching, retrying]),
                 UIMenu(options: .displayInline, children: [measure]),
