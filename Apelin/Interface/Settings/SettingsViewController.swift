@@ -297,7 +297,7 @@ final class ChatPreferencesController: TableController {
         case returnKey
         case compression
         case liveActivityCustom
-        case liveActivityOpacity
+        case liveActivityStyle
     }
 
     private struct RowContent: Equatable {
@@ -354,8 +354,8 @@ final class ChatPreferencesController: TableController {
                     detail: "",
                 ),
                 RowContent(
-                    row: .liveActivityOpacity,
-                    detail: Preferences.percentText(ChatWidgetAppearance.backgroundOpacity),
+                    row: .liveActivityStyle,
+                    detail: ChatWidgetAppearance.cardStyle.title,
                 ),
             ]),
         ], reconfigure: true)
@@ -371,7 +371,7 @@ final class ChatPreferencesController: TableController {
         case .returnKey: content.text = String(localized: "Return Key")
         case .compression: content.text = String(localized: "Compression Threshold")
         case .liveActivityCustom: content.text = String(localized: "Custom Background")
-        case .liveActivityOpacity: content.text = String(localized: "Background Opacity")
+        case .liveActivityStyle: content.text = String(localized: "Card Style")
         }
         cell.contentConfiguration = content
         if value.row == .liveActivityCustom {
@@ -393,6 +393,7 @@ final class ChatPreferencesController: TableController {
 
     @objc private dynamic func customBackgroundChanged(_ toggle: UISwitch) {
         ChatWidgetAppearance.customBackground = toggle.isOn
+        ChatWidgetPublisher.shared.appearanceChanged()
         updateRows()
     }
 
@@ -452,15 +453,18 @@ final class ChatPreferencesController: TableController {
             )
         case .liveActivityCustom:
             break // 开关自己处理
-        case .liveActivityOpacity:
-            let choices = ChatWidgetAppearance.opacities
-            let current = ChatWidgetAppearance.backgroundOpacity
+        case .liveActivityStyle:
+            let styles = ChatWidgetAppearance.CardStyle.allCases
             push(
                 SettingChoiceController(
-                    title: String(localized: "Background Opacity"),
-                    options: choices.map { Preferences.percentText($0) },
-                    selected: choices.firstIndex { abs($0 - current) < 0.001 } ?? choices.firstIndex(of: ChatWidgetAppearance.defaultOpacity) ?? 0,
-                ) { index in ChatWidgetAppearance.backgroundOpacity = choices[index] },
+                    title: String(localized: "Card Style"),
+                    options: styles.map(\.title),
+                    selected: styles.firstIndex(of: ChatWidgetAppearance.cardStyle) ?? 0,
+                ) { index in
+                    ChatWidgetAppearance.cardStyle = styles[index]
+                    ChatWidgetPublisher.shared.appearanceChanged()
+                    updateRows()
+                },
             )
         }
     }

@@ -51,6 +51,13 @@ final class ChatWidgetPublisher {
         chatsChanged()
     }
 
+    /// 背景或卡片样式变了：快照本身不变，`chatsChanged` 的比较不会推送，
+    /// 这里把当前活动原样重推一次，让扩展按新设置重新渲染。
+    func appearanceChanged() {
+        guard let shownActivity, !Self.isClosedForQuit else { return }
+        showActivity(shownActivity)
+    }
+
     /// Something in the runtime changed: looks again within a second.
     @objc dynamic func chatsChanged() {
         guard !isScheduled else { return }

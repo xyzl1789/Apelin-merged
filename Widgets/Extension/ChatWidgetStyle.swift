@@ -126,7 +126,7 @@ private struct BracesShape: Shape {
 }
 
 /// The leaf and its vein, filled even-odd.
-private struct LeafShape: Shape {
+struct LeafShape: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         path.move(to: CGPoint(x: 388, y: 636))
@@ -148,7 +148,7 @@ struct MarkView: View {
     let braces: Color
 
     /// The leaf's green, the same in both appearances.
-    private static let leaf = Color(hex: 0x2BD17E)
+    static let leafGreen = Color(hex: 0x2BD17E)
     /// The square around the icon's centre that holds the braces' stroke.
     private static let crop: CGFloat = 660
 
@@ -158,7 +158,7 @@ struct MarkView: View {
                 braces,
                 style: StrokeStyle(lineWidth: max(1.5, 62 * size / Self.crop), lineCap: .round, lineJoin: .round),
             )
-            LeafShape().fill(Self.leaf, style: FillStyle(eoFill: true))
+            LeafShape().fill(Self.leafGreen, style: FillStyle(eoFill: true))
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
