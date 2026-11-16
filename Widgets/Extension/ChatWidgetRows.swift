@@ -108,7 +108,7 @@ struct ChatWidgetRows: View {
                 }
             }
             if hidden > 0 {
-                Text("\(hidden) more chats")
+                Text(String(localized: "%lld more chats").replacingOccurrences(of: "%lld", with: "\(hidden)"))
                     .font(.rounded(.footnote))
                     .opacity(0.5)
                     .padding(.leading, WidgetSpacing.dotColumn)

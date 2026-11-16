@@ -120,9 +120,8 @@ private struct ChatsLeafGarden: View {
                     LeafPlant(chat: chat, theme: theme, height: Self.tallest - CGFloat(index) * 6)
                 }
                 if shown.count < state.totalCount {
-                    Text("+\(state.totalCount - shown.count)")
+                    Text(String(localized: "+%lld").replacingOccurrences(of: "%lld", with: "\(state.totalCount - shown.count)"))
                         .font(.rounded(.footnote, .bold))
-                        .opacity(0.5)
                         .padding(.bottom, 4)
                 }
                 Spacer(minLength: 0)
