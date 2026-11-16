@@ -530,12 +530,12 @@ final class ChatRuntime {
         let canSwitch = policy.switchOnFailure
         let canRetry = policy.retryOnTimeout
         guard canSwitch || canRetry else { return }
-        // 分类不出的失败（reason 为 nil）也算：余额不足这类提供商话术常常
-        // 没有归类。离线仍不触发：换模型没用。
+        // 分类出的失败才考虑切换/重试；unknown（reason 为 nil）不切——
+        // 模型可能本来就好好的，不能「秒连接也切走」。离线不触发。
         let reason = (error as? ApelinError)?.reason
             ?? (error is URLError ? .network : nil)
         guard reason != .offline else { return }
-        let shouldSwitch = canSwitch && (reason.map { Self.switchableReasons.contains($0) } ?? true)
+        let shouldSwitch = canSwitch && reason.map { Self.switchableReasons.contains($0) } ?? false
         let shouldRetry = canRetry && reason == .timeout
         guard shouldSwitch || shouldRetry else { return }
         let ids: Set<UUID> = [draft.id]
@@ -1243,12 +1243,12 @@ final class ChatRuntime {
 
     // MARK: - 发送失败自动恢复
 
-    /// 哪些原因会触发自动切换。`offline`（没有网络）从不切换：换一个
-    /// 账号的模型也发不出去，只会多一次失败。分类不出的失败也算：
-    /// 提供商的报错话术千变万化，余额不足、套餐限制常常落不进任何一类
-    /// （reason 是 nil）——既然读者开了「失败即切」，就按失败处理。
+    /// 哪些原因会触发自动切换。只有模型真正用不了的情况才切：账号无效、
+    /// 余额不足、被限流、服务商故障、上下文放不下。`offline`（没有网络）
+    /// 从不切换：换一个账号的模型也发不出去。普通超时和网络抖动也不切——
+    /// 模型本身可用，换一个纯属白折腾；开「超时重试」的由重试兜底。
     private static let switchableReasons: Set<ApelinError.Reason> = [
-        .network, .timeout, .authentication, .quota, .rateLimit, .server, .contextOverflow,
+        .authentication, .quota, .rateLimit, .server, .contextOverflow,
     ]
 
     /// 一个候选的去重键：同一轮里已经试过、又失败的模型不再试。
@@ -1294,9 +1294,10 @@ final class ChatRuntime {
         let drafts = records[id]?.sending ?? []
         guard !drafts.isEmpty else { return }
         let draftIDs = Set(drafts.map(\.id))
-        // 已经知道有问题的原因且明确不可切换（如上下文溢出）时不再试；
-        // 未知原因给切换一条路。重试仍只对明确的超时开。
-        let shouldSwitch = canSwitch && (reason == nil || Self.switchableReasons.contains(reason!))
+        // 只有明确「模型用不了」的原因才切换（账号无效、余额不足、限流、
+        // 服务商故障）；未知原因不切——模型可能本来就好好的。离线不触发，
+        // 普通超时和网络抖动也不切：开「超时重试」的由重试兜底。
+        let shouldSwitch = canSwitch && reason.map(Self.switchableReasons.contains) ?? false
         let shouldRetry = canRetry && reason == .timeout
         guard shouldSwitch || shouldRetry else { return }
 

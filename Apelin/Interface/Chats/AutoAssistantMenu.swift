@@ -1,82 +1,165 @@
 import ApelinProtocol
 import UIKit
 
-/// The automatic assistant's actions, laid flat in the conversation's More
-/// (…) menu: the two switches, the measurement that picks the fastest model,
-/// and the exclusions both honour. Flat, not a submenu: one tap less, and
-/// the switches are the setting the reader reaches for.
+/// The automatic assistant, one entry in the conversation's More (…) menu:
+/// 「自动助手…」, which puts up a sheet where the two switches, the
+/// measurement and the exclusions are picked. Flat items stayed too crowded;
+/// one entry keeps the menu short and the sheet carries everything.
 ///
-/// The state is read when the menu opens, never captured when it is built: a
-/// switch toggled here must not keep showing its old value, and the chat it
-/// belongs to may not even have existed when the button was made.
+/// The state is read when the menu opens, never captured when it is built:
+/// the sheet always shows the values as they are now.
 enum AutoAssistantMenu {
-    /// The actions for one conversation, as an inline group (no submenu of
-    /// its own): its own settings, with what it inherits from the
-    /// conversation that opened it said under the switch. `controller` is
-    /// where the measure action shows its progress and the exclusions push
-    /// their pages from; the actions keep it weakly.
+    /// The one entry for one conversation. `controller` is where the sheet
+    /// shows and the exclusions push their pages from; the action keeps it
+    /// weakly.
     @MainActor
     static func actions(for id: UUID, in controller: UIViewController) -> [UIMenu] {
-        let settings = AutoAssistantPolicy.current(for: id)
+        let entry = UIAction(
+            title: String(localized: "Auto Assistant…"),
+            image: UIImage(systemName: "wand.and.stars"),
+        ) { [weak controller] _ in
+            controller?.present(AutoAssistantSheet(id: id), animated: true)
+        }
+        return [UIMenu(options: .displayInline, children: [entry])]
+    }
+}
 
-        let switching = UIAction(
-            title: String(localized: "Switch Model on Failure"),
-            image: UIImage(systemName: "arrow.triangle.swap"),
-            state: settings.switchOnFailure ? .on : .off,
-        ) { _ in
-            // `UIAction` 的处理闭包是同步非隔离上下文，改设置这件事搬回主线程：
-            // `current` 本身不用等，主线程的断言与它一致。
-            MainActor.assumeIsolated {
-                var next = AutoAssistantPolicy.current(for: id)
-                next.switchOnFailure.toggle()
-                AutoAssistantPolicy.set(next, for: id)
-            }
-        }
-        let retrying = UIAction(
-            title: String(localized: "Retry on Timeout"),
-            image: UIImage(systemName: "clock.arrow.circlepath"),
-            state: settings.retryOnTimeout ? .on : .off,
-        ) { _ in
-            MainActor.assumeIsolated {
-                var next = AutoAssistantPolicy.current(for: id)
-                next.retryOnTimeout.toggle()
-                AutoAssistantPolicy.set(next, for: id)
-            }
-        }
-        let measure = UIAction(
-            title: String(localized: "Measure Now and Use Fastest"),
-            image: UIImage(systemName: "speedometer"),
-        ) { [weak controller] _ in
-            guard let controller else { return }
-            measureAndUseFastest(for: id, from: controller)
-        }
-        let providers = UIAction(
-            title: String(localized: "Excluded Providers"),
-            image: UIImage(systemName: "person.crop.circle.badge.xmark"),
-        ) { [weak controller] _ in
-            controller?.navigationController?.pushViewController(
-                ExcludedProvidersController(style: .insetGrouped), animated: true,
-            )
-        }
-        let excluded = UIAction(
-            title: String(localized: "Excluded Models"),
-            image: UIImage(systemName: "minus.circle"),
-        ) { [weak controller] _ in
-            controller?.navigationController?.pushViewController(
-                ExcludedModelsController(style: .insetGrouped), animated: true,
-            )
-        }
-        return [
-            UIMenu(options: .displayInline, children: [switching, retrying]),
-            UIMenu(options: .displayInline, children: [measure]),
-            UIMenu(options: .displayInline, children: [providers, excluded]),
-        ]
+/// The sheet 「自动助手…」 opens: the two switches, the measure action and
+/// the two exclusion pages, in one grouped table.
+@MainActor
+final class AutoAssistantSheet: UITableViewController {
+    private enum Row: Int, CaseIterable {
+        case switchOnFailure
+        case retryOnTimeout
+        case measure
+        case excludedProviders
+        case excludedModels
     }
 
-    /// Measures every enabled, non-excluded model and leaves this conversation
-    /// on the fastest one: the conversation it was asked from, not the app's
-    /// default, which the reader may never open next.
-    private static func measureAndUseFastest(for id: UUID, from controller: UIViewController) {
+    private let id: UUID
+
+    init(id: UUID) {
+        self.id = id
+        super.init(style: .insetGrouped)
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = String(localized: "Auto Assistant")
+        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(done))
+        tableView.reloadData()
+    }
+
+    @objc private func done() {
+        dismiss(animated: true)
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // 排除页可能改了排除名单，回来时开关状态重读一遍。
+        tableView.reloadData()
+    }
+
+    private static func content(text: String, image: UIImage?) -> UIListContentConfiguration {
+        var config = UIListContentConfiguration.cell()
+        config.text = text
+        config.textProperties.color = .label
+        config.image = image
+        config.imageToTextPadding = 12
+        return config
+    }
+
+    private var settings: AutoAssistantPolicy {
+        AutoAssistantPolicy.current(for: id)
+    }
+
+    override func tableView(_: UITableView, numberOfRowsInSection _: Int) -> Int {
+        Row.allCases.count
+    }
+
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "auto-assistant")
+            ?? UITableViewCell(style: .default, reuseIdentifier: "auto-assistant")
+        let row = Row(rawValue: indexPath.row) ?? .switchOnFailure
+        switch row {
+        case .switchOnFailure:
+            cell.contentConfiguration = Self.content(
+                text: String(localized: "Switch Model on Failure"),
+                image: UIImage(systemName: "arrow.triangle.swap"),
+            )
+            cell.accessoryType = settings.switchOnFailure ? .checkmark : .none
+            cell.selectionStyle = .default
+        case .retryOnTimeout:
+            cell.contentConfiguration = Self.content(
+                text: String(localized: "Retry on Timeout"),
+                image: UIImage(systemName: "clock.arrow.circlepath"),
+            )
+            cell.accessoryType = settings.retryOnTimeout ? .checkmark : .none
+            cell.selectionStyle = .default
+        case .measure:
+            cell.contentConfiguration = Self.content(
+                text: String(localized: "Measure Now and Use Fastest"),
+                image: UIImage(systemName: "speedometer"),
+            )
+            cell.accessoryType = .none
+            cell.selectionStyle = .default
+        case .excludedProviders:
+            cell.contentConfiguration = Self.content(
+                text: String(localized: "Excluded Providers"),
+                image: UIImage(systemName: "person.crop.circle.badge.xmark"),
+            )
+            cell.accessoryType = .disclosureIndicator
+            cell.selectionStyle = .default
+        case .excludedModels:
+            cell.contentConfiguration = Self.content(
+                text: String(localized: "Excluded Models"),
+                image: UIImage(systemName: "minus.circle"),
+            )
+            cell.accessoryType = .disclosureIndicator
+            cell.selectionStyle = .default
+        }
+        return cell
+    }
+
+    override func tableView(_: UITableView, titleForFooterInSection _: Int) -> String? {
+        String(localized: "Auto Assistant Sheet Footer")
+    }
+
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        switch Row(rawValue: indexPath.row) {
+        case .switchOnFailure:
+            var next = settings
+            next.switchOnFailure.toggle()
+            AutoAssistantPolicy.set(next, for: id)
+            tableView.reloadData()
+        case .retryOnTimeout:
+            var next = settings
+            next.retryOnTimeout.toggle()
+            AutoAssistantPolicy.set(next, for: id)
+            tableView.reloadData()
+        case .measure:
+            measureAndUseFastest(for: id, from: self)
+        case .excludedProviders:
+            navigationController?.pushViewController(
+                ExcludedProvidersController(style: .insetGrouped), animated: true,
+            )
+        case .excludedModels:
+            navigationController?.pushViewController(
+                ExcludedModelsController(style: .insetGrouped), animated: true,
+            )
+        case nil:
+            break
+        }
+    }
+
+    /// 同 `AutoAssistantMenu` 早期的实现：测速选中最快的模型，落到这条对话上。
+    private func measureAndUseFastest(for id: UUID, from controller: UIViewController) {
         Task { @MainActor in
             do {
                 let selected = try await ProgressCard.run(

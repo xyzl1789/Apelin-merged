@@ -290,14 +290,12 @@ final class SettingsViewController: TableController {
 /// (owner, 2026-11-08): a sheet that closed on every tap hid both what was
 /// chosen and what was left to choose.
 final class ChatPreferencesController: TableController {
-    private enum Section: Hashable, CaseIterable { case chat, liveActivity }
+    private enum Section: Hashable, CaseIterable { case chat }
 
     private enum Row: Hashable {
         case launch
         case returnKey
         case compression
-        case liveActivityCustom
-        case liveActivityStyle
     }
 
     private struct RowContent: Equatable {
@@ -336,7 +334,6 @@ final class ChatPreferencesController: TableController {
     }
 
     private func updateRows() {
-        let custom = ChatWidgetAppearance.customBackground
         dataSource.update([
             (.chat, [
                 RowContent(row: .launch, detail: Preferences.launch.title),
@@ -347,16 +344,6 @@ final class ChatPreferencesController: TableController {
                         : String(localized: "Send"),
                 ),
                 RowContent(row: .compression, detail: Preferences.percentText(Preferences.compressionThreshold)),
-            ]),
-            (.liveActivity, [
-                RowContent(
-                    row: .liveActivityCustom,
-                    detail: "",
-                ),
-                RowContent(
-                    row: .liveActivityStyle,
-                    detail: ChatWidgetAppearance.cardStyle.title,
-                ),
             ]),
         ], reconfigure: true)
     }
@@ -370,52 +357,26 @@ final class ChatPreferencesController: TableController {
         case .launch: content.text = String(localized: "On Launch")
         case .returnKey: content.text = String(localized: "Return Key")
         case .compression: content.text = String(localized: "Compression Threshold")
-        case .liveActivityCustom: content.text = String(localized: "Custom Background")
-        case .liveActivityStyle: content.text = String(localized: "Card Style")
         }
         cell.contentConfiguration = content
-        if value.row == .liveActivityCustom {
-            // 开关自己说明开或关，行文字只命名它。
-            cell.selectionStyle = .none
-            cell.accessoryType = .none
-            let toggle = (cell.accessoryView as? UISwitch) ?? UISwitch()
-            toggle.isOn = ChatWidgetAppearance.customBackground
-            toggle.removeTarget(nil, action: nil, for: .valueChanged)
-            toggle.addTarget(self, action: #selector(customBackgroundChanged(_:)), for: .valueChanged)
-            cell.accessoryView = toggle
-        } else {
-            cell.selectionStyle = .default
-            cell.accessoryView = nil
-            cell.accessoryType = .disclosureIndicator
-        }
+        cell.selectionStyle = .default
+        cell.accessoryView = nil
+        cell.accessoryType = .disclosureIndicator
         return cell
-    }
-
-    @objc private dynamic func customBackgroundChanged(_ toggle: UISwitch) {
-        ChatWidgetAppearance.customBackground = toggle.isOn
-        ChatWidgetPublisher.shared.appearanceChanged()
-        updateRows()
     }
 
     private func header(for section: Section) -> String? {
         switch section {
         case .chat: nil
-        case .liveActivity: String(localized: "Live Activity Background")
         }
     }
 
-    private func footer(for section: Section) -> String? {
-        switch section {
-        case .chat: nil
-        case .liveActivity:
-            ChatWidgetAppearance.customBackground
-                ? String(localized: "Live Activity Background Footnote")
-                : nil
-        }
+    private func footer(for _: Section) -> String? {
+        nil
     }
 
-    override func tableView(_ tableView: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
-        dataSource.value(at: indexPath)?.row != .liveActivityCustom
+    override func tableView(_: UITableView, shouldHighlightRowAt _: IndexPath) -> Bool {
+        true
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -450,21 +411,6 @@ final class ChatPreferencesController: TableController {
                     options: choices.map { Preferences.percentText($0) },
                     selected: choices.firstIndex { abs($0 - current) < 0.001 } ?? choices.count - 1,
                 ) { index in Preferences.compressionThreshold = choices[index] },
-            )
-        case .liveActivityCustom:
-            break // 开关自己处理
-        case .liveActivityStyle:
-            let styles = ChatWidgetAppearance.CardStyle.allCases
-            push(
-                SettingChoiceController(
-                    title: String(localized: "Card Style"),
-                    options: styles.map(\.title),
-                    selected: styles.firstIndex(of: ChatWidgetAppearance.cardStyle) ?? 0,
-                ) { index in
-                    ChatWidgetAppearance.cardStyle = styles[index]
-                    ChatWidgetPublisher.shared.appearanceChanged()
-                    self.updateRows()
-                },
             )
         }
     }
