@@ -65,7 +65,7 @@ public struct UsageRecorder {
             let handle = try FileHandle(forWritingTo: root)
             defer { try? handle.close() }
             _ = try? handle.seekToEnd()
-            try handle.write(contentsOf: Data(line.utf8).appending(Data([0x0A])))
+            try handle.write(contentsOf: Data((line + "\n").utf8))
             try Self.trimIfNeeded(root, limit: Self.maximumLines)
         } catch {
             // 打不开、写不进都不算会话的错：静默放弃这一条。
@@ -76,7 +76,7 @@ public struct UsageRecorder {
     public static func trimIfNeeded(_ url: URL, limit: Int) throws {
         guard limit > 0,
               let current = try? String(contentsOf: url, encoding: .utf8),
-              current.lineCount > limit else { return }
+              current.split(separator: "\n", omittingEmptySubsequences: false).count > limit else { return }
         let lines = current.split(separator: "\n", omittingEmptySubsequences: false)
         let kept = lines.suffix(limit / 2)
         let next = kept.joined(separator: "\n").appending("\n")
