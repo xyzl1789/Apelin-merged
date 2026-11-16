@@ -1,5 +1,4 @@
 import ApelinProtocol
-import SnapKit
 import Then
 import UIKit
 
@@ -25,9 +24,9 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
         }
     }
 
-    private enum Status: String, Hashable {
+    private enum Status: Equatable {
         case loading
-        case unavailable
+        case unavailable(String)
         case noResults
     }
 
@@ -38,30 +37,12 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
 
     private enum Row: Equatable {
         case account(AgentAccount)
-        case status(Status, String?)
+        case status(Status)
         var id: String {
             switch self {
             case let .account(account): account.provider.rawValue
-            case let .status(status, _): "status-\(status.rawValue)"
+            case .status: "status"
             }
-        }
-    }
-
-    /// The keychain line under the last section, in a footer view of its
-    /// own: set here once, laid out and measured by `viewDidLayoutSubviews`.
-    private let footerLabel = UILabel().then {
-        $0.font = .preferredFont(forTextStyle: .footnote)
-        $0.adjustsFontForContentSizeCategory = true
-        $0.textColor = .secondaryLabel
-        $0.numberOfLines = 0
-    }
-    private lazy var footerView = UIView().then {
-        $0.addSubview(self.footerLabel)
-        self.footerLabel.snp.makeConstraints { make in
-            // ten points under the last section's footer gap, clear of its row
-            make.top.equalToSuperview().inset(10)
-            make.leading.trailing.equalToSuperview().inset(32)
-            make.bottom.equalToSuperview().inset(20)
         }
     }
 
@@ -72,7 +53,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
         guard let self else { return nil }
         switch row {
         case let .account(account): return accountCell(account)
-        case let .status(status, message): return statusCell(status, message: message)
+        case let .status(status): return statusCell(status)
         }
     }
 
@@ -81,7 +62,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     @objc private dynamic var loaded = false
     @objc private dynamic var failure: Error?
     @objc private dynamic var query = ""
-    private var sections: [(Section, [Row])] = [(.status, [.status(.loading, nil)])]
+    private var sections: [(Section, [Row])] = [(.status, [.status(.loading)])]
     private var loader: Task<Void, Never>?
     private let search = UISearchController(searchResultsController: nil)
 
@@ -115,25 +96,21 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             }
             return nil
         }
-        dataSource.footerTitle = { _ in nil }
-        tableView.tableFooterView = footerView
-        setFooterText()
+        dataSource.footerTitle = { [weak self] section in
+            guard let self, section == sections.last?.0, case .group = section else { return nil }
+            // kwwk signs in and talks to every provider here: its version
+            // is what a report about one needs.
+            guard let kwwk = LinkedPackage.kwwkVersion else {
+                return String(localized: "Credentials stay in this device’s keychain.")
+            }
+            return String(localized: "Credentials stay in this device’s keychain. Currently using kwwk \(kwwk).")
+        }
         dataSource.update(sections)
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         load()
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        // the table's width and text size are what the line wraps at
-        let width = tableView.bounds.width
-        guard width > 0 else { return }
-        let height = systemFooterHeight(for: width)
-        guard footerView.frame != CGRect(x: 0, y: 0, width: width, height: height) else { return }
-        layoutFooter(width: width, height: height)
     }
 
     @objc(apelin_load) private dynamic func load() {
@@ -164,9 +141,9 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
 
     @objc private dynamic func regroup() {
         if !loaded {
-            sections = [(.status, [.status(.loading, nil)])]
+            sections = [(.status, [.status(.loading)])]
         } else if let failure, accounts.isEmpty {
-            sections = [(.status, [.status(.unavailable, ProviderLoginController.unavailableText(failure))])]
+            sections = [(.status, [.status(.unavailable(ProviderLoginController.unavailableText(failure)))])]
         } else {
             let shown = query.isEmpty
                 ? accounts
@@ -182,49 +159,10 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             ]
             sections = groups.filter { !$0.1.isEmpty }.map { (.group($0.0), $0.1.map(Row.account)) }
             if sections.isEmpty {
-                sections = [(.status, [.status(.noResults, nil)])]
+                sections = [(.status, [.status(.noResults)])]
             }
         }
         dataSource.update(sections)
-        setFooterText()
-        let width = tableView.bounds.width
-        guard width > 0 else { return }
-        layoutFooter(width: width, height: systemFooterHeight(for: width))
-    }
-
-    /// The keychain line stands under the sections while they are the
-    /// provider groups, and goes while the table says Loading or is empty.
-    private func setFooterText() {
-        let shows = loaded && sections.allSatisfy { if case .group = $0.0 { true } else { false } }
-        footerView.isHidden = !shows
-        let text: String
-        if let kwwk = LinkedPackage.kwwkVersion {
-            text = String(localized: "Credentials stay in this device’s keychain. Currently using kwwk \(kwwk).")
-        } else {
-            text = String(localized: "Credentials stay in this device’s keychain.")
-        }
-        guard footerLabel.text != text else { return }
-        footerLabel.text = text
-        // one stop for VoiceOver, the line read in full
-        footerView.isAccessibilityElement = true
-        footerView.accessibilityLabel = text
-    }
-
-    private func systemFooterHeight(for width: CGFloat) -> CGFloat {
-        footerView.systemLayoutSizeFitting(
-            CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
-            withHorizontalFittingPriority: .required,
-            verticalFittingPriority: .fittingSizeLevel,
-        ).height
-    }
-
-    /// A table footer is held at the frame it was given: measuring it sets
-    /// the table again, so only a new size does.
-    private func layoutFooter(width: CGFloat, height: CGFloat) {
-        footerView.frame = CGRect(x: 0, y: 0, width: width, height: height)
-        if tableView.tableFooterView !== footerView {
-            tableView.tableFooterView = footerView
-        }
     }
 
     // MARK: - Table
@@ -234,15 +172,15 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
         return account
     }
 
-    private func statusCell(_ status: Status, message: String?) -> UITableViewCell {
+    private func statusCell(_ status: Status) -> UITableViewCell {
         switch status {
         case .loading:
             return WaitingCell().then { $0.show(String(localized: "Loading…")) }
-        case .unavailable:
+        case let .unavailable(message):
             let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
             var content = UIListContentConfiguration.stackedValueCell()
             content.text = String(localized: "Model Providers Unavailable")
-            content.secondaryText = message ?? ""
+            content.secondaryText = message
             content.secondaryTextProperties.color = .secondaryLabel
 
             cell.contentConfiguration = content
