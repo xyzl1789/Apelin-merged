@@ -463,7 +463,7 @@ final class ChatPreferencesController: TableController {
                 ) { index in
                     ChatWidgetAppearance.cardStyle = styles[index]
                     ChatWidgetPublisher.shared.appearanceChanged()
-                    updateRows()
+                    self.updateRows()
                 },
             )
         }
