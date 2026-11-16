@@ -38,9 +38,8 @@ final class ExcludedProvidersController: TableController {
         // Further OpenAI-compatible endpoints the reader added and then
         // excluded still have a rule here even though they are not in allCases.
         let known = Set(providers.map(\.rawValue))
-        for raw in ModelExclusions.stored.providers where !known.contains(raw),
-            let extra = AgentProvider(rawValue: raw)
-        {
+        for raw in ModelExclusions.stored.providers {
+            guard !known.contains(raw), let extra = AgentProvider(rawValue: raw) else { continue }
             providers.append(extra)
         }
         return providers.map { Row(provider: $0, title: $0.displayName) }
