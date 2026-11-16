@@ -25,6 +25,8 @@ final class SettingsViewController: TableController {
         case promptInjection
         /// Settings ▸ Agent ▸ Auto Assistant: fastest-model test, auto switch, timeout retry and exclusions.
         case autoAssistant
+        /// Settings ▸ Agent ▸ Usage Stats: token usage per model and recent requests.
+        case usageStats
         case memories
         case skills
         case toolchain
@@ -128,7 +130,7 @@ final class SettingsViewController: TableController {
     private func rows(in section: Section) -> [Row] {
         switch section {
         case .chat: [.preferences]
-        case .agent: [.modelProviders, .defaultModels, .permissionMode, .promptInjection, .autoAssistant, .memories, .skills]
+        case .agent: [.modelProviders, .defaultModels, .permissionMode, .promptInjection, .autoAssistant, .usageStats, .memories, .skills]
         case .environment: [.toolchain, .sdks, .apps, .templates]
         case .git: [.git]
         case .plugins: [.weChat]
@@ -192,6 +194,8 @@ final class SettingsViewController: TableController {
             content.text = String(localized: "Prompt Injection")
         case .autoAssistant:
             content.text = String(localized: "Auto Assistant")
+        case .usageStats:
+            content.text = String(localized: "用量统计")
         case .memories:
             content.text = String(localized: "Memories")
         case .skills:
@@ -243,6 +247,7 @@ final class SettingsViewController: TableController {
         case .permissionMode: page = PermissionModeController()
         case .promptInjection: page = PromptInjectionController()
         case .autoAssistant: page = AutoAssistantController()
+        case .usageStats: page = UsageStatsController()
         case .memories: page = MemoriesController()
         case .skills: page = SkillsController()
         case .toolchain: page = ToolchainController()

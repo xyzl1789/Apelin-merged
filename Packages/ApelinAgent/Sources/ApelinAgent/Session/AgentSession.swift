@@ -75,6 +75,8 @@ public actor AgentSession {
     /// The project's context went with a message that started a run.
     var projectContextGiven = false
     private var aborted = false
+    /// 用量记录器：每次模型回复完成时追加一条到 `<数据根>/usage/usage.jsonl`。
+    private let usageRecorder: UsageRecorder
     private let workspace: ScopedRoot
     private var submitted: Set<UUID> = []
     /// A message sent while a run was going, until a run's loop takes it.
@@ -308,6 +310,7 @@ public actor AgentSession {
         self.agent = agent
         self.gate = gate
         self.runner = runner
+        usageRecorder = UsageRecorder(dataRoot: configuration.dataRoot)
         self.mcpManager = mcpManager
         self.mcpTools = mcpTools
         self.toolExtensions = toolExtensions
@@ -1503,6 +1506,16 @@ public actor AgentSession {
             let usage = assistant.usage
             if usage.input > 0 || usage.output > 0 || usage.cacheRead > 0 || usage.cacheWrite > 0 {
                 await record(.usage(
+                    input: usage.input,
+                    output: usage.output,
+                    cacheRead: usage.cacheRead,
+                    cacheWrite: usage.cacheWrite,
+                ))
+                usageRecorder.record(UsageRecord(
+                    time: Date(),
+                    sessionID: configuration.id,
+                    project: configuration.project.name.rawValue,
+                    model: agent.state.model.id,
                     input: usage.input,
                     output: usage.output,
                     cacheRead: usage.cacheRead,
