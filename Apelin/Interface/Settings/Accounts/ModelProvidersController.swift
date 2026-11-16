@@ -64,7 +64,6 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             make.bottom.equalToSuperview().inset(20)
         }
     }
-    private var footerHeight: CGFloat = 0
 
     private lazy var dataSource = TableDataSource<Section, String, Row>(
         tableView: tableView,
@@ -118,7 +117,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
         }
         dataSource.footerTitle = { _ in nil }
         tableView.tableFooterView = footerView
-        refreshFooter()
+        setFooterText()
         dataSource.update(sections)
     }
 
