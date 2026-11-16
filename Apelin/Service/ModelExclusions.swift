@@ -31,20 +31,6 @@ enum ModelExclusions {
         var models: [ModelKey] = []
     }
 
-    /// The automatic behaviours are independent of the exclusions.
-    /// OFF by default: the assistant never changes the reader's model without
-    /// the reader turning the behaviour on first.
-    enum Automatic: String, Sendable {
-        case switchOnFailure = "AutoAssistant.switchOnFailure"
-        case retryOnTimeout = "AutoAssistant.retryOnTimeout"
-
-        var defaultsKey: String { rawValue }
-
-        var isEnabled: Bool {
-            UserDefaults.standard.bool(forKey: defaultsKey)
-        }
-    }
-
     private static let storageKey = "modelExclusions.rules"
 
     static var stored: Stored {
@@ -59,11 +45,6 @@ enum ModelExclusions {
             UserDefaults.standard.set(data, forKey: storageKey)
             NotificationCenter.default.post(name: .modelExclusionsChanged, object: nil)
         }
-    }
-
-    static func setAutomatic(_ behaviour: Automatic, on: Bool) {
-        UserDefaults.standard.set(on, forKey: behaviour.defaultsKey)
-        NotificationCenter.default.post(name: .modelExclusionsChanged, object: nil)
     }
 
     // MARK: - Rules

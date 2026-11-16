@@ -4,20 +4,21 @@ import UIKit
 
 /// Settings ▸ Agent ▸ Auto Assistant.
 ///
-/// Three independent switches, an action that measures every signed-in model
-/// and leaves the reader on the fastest one, and an editor for the exclusions
-/// both the measurement and the send path honour. Every switch is off until
-/// the reader turns it on: the app never changes their model on its own.
+/// The switches themselves live where they apply: in a conversation's own
+/// More (…) menu, so a reader decides per conversation, and a subagent
+/// follows the conversation that opened it. What is left here is what is not
+/// bound to one conversation — measuring every model, and the exclusions both
+/// the measurement and the send path honour — plus a line saying where the
+/// switches went.
 final class AutoAssistantController: TableController {
     private enum Section: Hashable, CaseIterable {
-        case behaviour
+        case where_
         case models
         case exclusions
     }
 
     private enum Row: Hashable {
-        case switchOnFailure
-        case retryOnTimeout
+        case whereItIs
         case pickFastest
         case excludeProviders
         case excludeModels
@@ -62,10 +63,7 @@ final class AutoAssistantController: TableController {
 
     @objc private dynamic func updateRows() {
         dataSource.update([
-            (.behaviour, [
-                RowContent(row: .switchOnFailure),
-                RowContent(row: .retryOnTimeout),
-            ]),
+            (.where_, [RowContent(row: .whereItIs)]),
             (.models, [RowContent(row: .pickFastest)]),
             (.exclusions, [
                 RowContent(row: .excludeProviders),
@@ -76,7 +74,7 @@ final class AutoAssistantController: TableController {
 
     private func header(for section: Section) -> String? {
         switch section {
-        case .behaviour: String(localized: "Automatic Behaviour")
+        case .where_: nil
         case .models: String(localized: "Measure Models")
         case .exclusions: String(localized: "Exclusions")
         }
@@ -84,47 +82,21 @@ final class AutoAssistantController: TableController {
 
     private func footer(for section: Section) -> String? {
         switch section {
-        case .behaviour:
-            String(localized: "Auto Assistant Footnote")
+        case .where_: String(localized: "Auto Assistant Lives in the Conversation")
         case .models: String(localized: "Measure Models Footnote")
         case .exclusions: String(localized: "Exclusions Footnote")
         }
     }
 
-    private var switchRows: Set<Row> {
-        [.switchOnFailure, .retryOnTimeout]
-    }
-
-    private func isOn(_ row: Row) -> Bool {
-        switch row {
-        case .switchOnFailure: ModelExclusions.Automatic.switchOnFailure.isEnabled
-        case .retryOnTimeout: ModelExclusions.Automatic.retryOnTimeout.isEnabled
-        default: false
-        }
-    }
-
-    /// A rule is set through `ModelExclusions`, which owns the defaults key;
-    /// the enum's own property is only the reader for it.
-    private func set(_ row: Row, on: Bool) {
-        switch row {
-        case .switchOnFailure: ModelExclusions.setAutomatic(.switchOnFailure, on: on)
-        case .retryOnTimeout: ModelExclusions.setAutomatic(.retryOnTimeout, on: on)
-        default: break
-        }
-        updateRows()
-    }
-
     private func title(for row: Row) -> String {
         switch row {
-        case .switchOnFailure: String(localized: "Switch Model on Failure")
-        case .retryOnTimeout: String(localized: "Retry on Timeout")
+        case .whereItIs: String(localized: "Turn It On in a Conversation")
         case .pickFastest: String(localized: "Measure Now and Use Fastest")
         case .excludeProviders: String(localized: "Excluded Providers")
         case .excludeModels: String(localized: "Excluded Models")
         }
     }
 
-    /// The switch's stable tag identifies its action across reused cells.
     private func cell(in tableView: UITableView, content value: RowContent) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "auto-assistant")
             ?? UITableViewCell(style: .value1, reuseIdentifier: "auto-assistant")
@@ -133,15 +105,10 @@ final class AutoAssistantController: TableController {
         cell.contentConfiguration = content
         cell.accessoryType = .none
         cell.selectionStyle = .default
-        if switchRows.contains(value.row) {
+        if value.row == .whereItIs {
+            // Nothing to open: the instruction is the whole row.
             cell.selectionStyle = .none
-            let toggle = (cell.accessoryView as? UISwitch) ?? UISwitch()
-            toggle.isOn = isOn(value.row)
-            toggle.tag = value.row == .switchOnFailure ? 1 : 2
-            toggle.removeTarget(nil, action: nil, for: .valueChanged)
-            toggle.addTarget(self, action: #selector(switchChanged(_:)), for: .valueChanged)
-            toggle.accessibilityLabel = content.text
-            cell.accessoryView = toggle
+            cell.accessoryView = nil
         } else {
             cell.accessoryView = nil
             cell.accessoryType = .disclosureIndicator
@@ -155,22 +122,16 @@ final class AutoAssistantController: TableController {
         return cell
     }
 
-    @objc private dynamic func switchChanged(_ toggle: UISwitch) {
-        guard toggle.tag == 1 || toggle.tag == 2 else { return }
-        set(toggle.tag == 1 ? .switchOnFailure : .retryOnTimeout, on: toggle.isOn)
-    }
-
     override func tableView(_: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
-        guard let row = dataSource.value(at: indexPath)?.row else { return false }
-        return !switchRows.contains(row)
+        dataSource.value(at: indexPath)?.row != .whereItIs
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         guard let row = dataSource.value(at: indexPath)?.row else { return }
         switch row {
-        case .switchOnFailure, .retryOnTimeout:
-            break // 开关处理
+        case .whereItIs:
+            break
         case .pickFastest:
             measureAndUseFastest()
         case .excludeProviders:
@@ -186,6 +147,9 @@ final class AutoAssistantController: TableController {
 
     // MARK: - Measure every signed-in model, use the fastest
 
+    /// From here there is no conversation to apply it to, so it only sets the
+    /// default the next new conversation starts on; a conversation's own menu
+    /// has the same action, and applies it to that conversation.
     private func measureAndUseFastest() {
         guard !measuring else { return }
         measuring = true
@@ -219,19 +183,11 @@ final class AutoAssistantController: TableController {
                     )
                     return
                 }
-                // 选最快改的是全局默认，以及此刻打开的那个对话：后者有自己的
-                // scoped 选择，只写全局的话，当前对话仍按旧模型发送，界面也
-                // 不会变，看起来像没生效。
+                // 这里没有具体对话可改，只记成下一次新对话用的默认。
                 ComposerModelSelection.current = selected
-                let open = ChatRuntime.active?.viewedChat
-                if let open {
-                    ComposerModelSelection.choose(selected, for: open)
-                }
                 presentNotice(
                     title: "Fastest Model Selected",
-                    message: open == nil
-                        ? String(format: String(localized: "Now using %1$@ from %2$@. New conversations start with it."), selected.model, selected.provider.displayName)
-                        : String(format: String(localized: "Now using %@ from %@."), selected.model, selected.provider.displayName),
+                    message: String(format: String(localized: "Now using %1$@ from %2$@. New conversations start with it."), selected.model, selected.provider.displayName),
                 )
             } catch is CancellationError {
                 // 用户取消，无需提示。

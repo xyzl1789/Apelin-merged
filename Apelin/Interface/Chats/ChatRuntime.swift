@@ -233,6 +233,7 @@ final class ChatRuntime {
         // the model the reader last picked, not the one it was shown with.
         if let reused {
             ComposerModelSelection.forget(reused.summary.id)
+            AutoAssistantPolicy.forget(reused.summary.id)
         }
         if reused == nil {
             records[summary.id] = ChatRecord(summary: summary)
@@ -522,8 +523,10 @@ final class ChatRuntime {
     /// 发送直接抛错时的自动恢复。只对 `switchableReasons` 与超时起作用，且
     /// 与事件里的 `error` 共用每轮一次的额度：两条路径不会各自重发一遍。
     private func recoverFromFailure(of draft: ComposerDraft, in id: UUID, error: Error, selection: ComposerModelSelection?) {
-        let canSwitch = ModelExclusions.Automatic.switchOnFailure.isEnabled
-        let canRetry = ModelExclusions.Automatic.retryOnTimeout.isEnabled
+        // 这一条对话自己的设置：它开着的对话（子代理）继承，除非自己另设。
+        let policy = AutoAssistantPolicy.current(for: id)
+        let canSwitch = policy.switchOnFailure
+        let canRetry = policy.retryOnTimeout
         guard canSwitch || canRetry, !autoRecovered.contains(id) else { return }
         let reason = (error as? ApelinError)?.reason
             ?? (error is URLError ? .network : nil)
@@ -571,8 +574,10 @@ final class ChatRuntime {
     /// 等对端开口的看门狗。请求收下后 `follow` 才开始读事件；如果一直没有
     /// 事件、草稿又还在等待，就当作超时走自动恢复。
     private func watchForStall(in id: UUID, draft: ComposerDraft, selection: ComposerModelSelection?) {
-        let canSwitch = ModelExclusions.Automatic.switchOnFailure.isEnabled
-        let canRetry = ModelExclusions.Automatic.retryOnTimeout.isEnabled
+        // 这一条对话自己的设置：它开着的对话（子代理）继承，除非自己另设。
+        let policy = AutoAssistantPolicy.current(for: id)
+        let canSwitch = policy.switchOnFailure
+        let canRetry = policy.retryOnTimeout
         guard canSwitch || canRetry, !autoRecovered.contains(id) else { return }
         lastActivity[id] = .now
         stallWatchdogs[id]?.cancel()
@@ -808,6 +813,8 @@ final class ChatRuntime {
         // reader picked them for this conversation, and a branch of it is
         // the same conversation continued, not a new chat with the defaults.
         ComposerModelSelection.inherit(from: id, into: newID)
+        // 自动助手也跟着：分支是同一条对话的继续。
+        AutoAssistantPolicy.inherit(from: id, into: newID)
         // Opening the page starts (or retries) its replay. No model prompt is
         // sent, and failure stays visible instead of leaving a silent blank.
         changed(newID)
@@ -1238,8 +1245,10 @@ final class ChatRuntime {
     /// 让旧失败重发文本。每个会话每轮只恢复一次（`autoRecovered`）。
     private func handleAutoRecovery(in id: UUID, realtime: [TaskEvent]) {
         guard !autoRecovered.contains(id) else { return }
-        let canSwitch = ModelExclusions.Automatic.switchOnFailure.isEnabled
-        let canRetry = ModelExclusions.Automatic.retryOnTimeout.isEnabled
+        // 这一条对话自己的设置：它开着的对话（子代理）继承，除非自己另设。
+        let policy = AutoAssistantPolicy.current(for: id)
+        let canSwitch = policy.switchOnFailure
+        let canRetry = policy.retryOnTimeout
         guard canSwitch || canRetry else { return }
         guard let failure = realtime.last(where: { $0.kind == "error" }),
               let reason = failure.payload?["reason"]?.stringValue.map(ApelinError.Reason.init(rawValue:)),

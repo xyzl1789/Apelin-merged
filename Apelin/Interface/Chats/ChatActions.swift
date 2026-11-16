@@ -25,6 +25,15 @@ enum ChatActions {
             renameAction(for: chat.id, runtime: runtime, from: presenter),
             compactAction(for: chat.id, runtime: runtime, from: presenter),
         ]
+        // 自动助手是这条对话自己的设置，随菜单打开时重读；它排在最前面，
+        // 因为这正是读者常改的一项。
+        let chatID = chat.id
+        let assistant = UIDeferredMenuElement.uncached { [weak presenter] completion in
+            MainActor.assumeIsolated {
+                guard let presenter else { completion([]); return }
+                completion([AutoAssistantMenu.menu(for: chatID, in: presenter)])
+            }
+        }
         let deletion = UIMenu(options: .displayInline, children: [deleteAction(for: chat.id, onDelete: onDelete)])
         guard let projectName = chat.projectName else {
             let folders = ProjectActions.folderActions(from: presenter, failureTitle: "Unable to Open Folder") {
@@ -34,6 +43,7 @@ enum ChatActions {
                 )
             }
             completion([
+                UIMenu(children: [assistant]),
                 UIMenu(options: .displayInline, children: chatActions),
                 UIMenu(options: .displayInline, children: folders),
                 deletion,
@@ -56,7 +66,7 @@ enum ChatActions {
                 chatActions: chatActions,
                 onPrepareDistribution: onPrepareDistribution,
             )
-            completion(projectActions.children + [deletion])
+            completion([UIMenu(children: [assistant])] + projectActions.children + [deletion])
         }
     }
 
