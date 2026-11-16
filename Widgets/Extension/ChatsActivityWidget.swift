@@ -61,14 +61,20 @@ struct ChatsActivityWidget: Widget {
 /// per conversation in progress.
 @available(iOS 16.2, *)
 private struct ChatsLockScreenView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let state: ChatWidgetSnapshot
 
     var body: some View {
-        // A fixed dark theme, not the environment's: an appearance switch
-        // turns the system's card at once but can leave this view's
-        // colorScheme behind, and the old pairing (white ink, white ground)
-        // is the text gone. Dark ink on a dark ground cannot disagree.
-        let theme = WidgetTheme.lockScreen
+        let custom = ChatWidgetAppearance.customBackground
+        // 开启自定义底色时沿用恒定深色主题；关闭时回到原项目随系统深浅色
+        // 自动切换的主题。这样外观切换后文字和底色不会一个亮一个暗。
+        let theme = custom ? WidgetTheme.lockScreen : WidgetTheme(colorScheme)
+        // 自定义底色是半透明黑，盖在系统材质上让壁纸隐约透出；关闭时把
+        // 底色交回系统，黑或白跟着视图的深浅色自动切换。
+        let tint = custom
+            ? Color(red: 0, green: 0, blue: 0, opacity: ChatWidgetAppearance.backgroundOpacity)
+            : theme.ground
         VStack(alignment: .leading, spacing: WidgetSpacing.line) {
             ChatWidgetHeader(snapshot: state, theme: theme)
             ChatWidgetRows(snapshot: state, theme: theme, limit: 3)
@@ -76,10 +82,7 @@ private struct ChatsLockScreenView: View {
         .foregroundStyle(theme.ink)
         .padding(WidgetSpacing.card)
         .animation(.easeInOut(duration: 0.35), value: state)
-        // Partly transparent, so the wallpaper shows through the card. A
-        // custom tint sits in front of the system's own material: at this
-        // opacity the wallpaper reads dimly, and the ink keeps its contrast.
-        .activityBackgroundTint(Color(red: 0, green: 0, blue: 0, opacity: 0.45))
+        .activityBackgroundTint(tint)
         .activitySystemActionForegroundColor(theme.green)
         .widgetURL(state.mostUrgent?.link)
     }

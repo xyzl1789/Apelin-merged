@@ -137,3 +137,47 @@ enum ChatWidgetStore {
         return true
     }
 }
+
+/// 锁屏卡片的背景设置：app 在偏好设置里选择，沙盒里的扩展通过写入
+/// 快照用的同一个 App Group 默认设置读取——扩展读不到 app 自己的偏好。
+enum ChatWidgetAppearance {
+    private static let customKey = "widgets.liveActivity.customBackground"
+    private static let opacityKey = "widgets.liveActivity.backgroundOpacity"
+
+    /// 一直沿用的底色：黑色半透明盖在系统自带材质之上，壁纸隐约可见，
+    /// 文字仍看得清。
+    static let defaultOpacity: Double = 0.45
+    /// 设置给出的档位，从最透到最不透。
+    static let opacities: [Double] = [0.3, 0.45, 0.6, 0.75, 0.9]
+
+    private static var defaults: UserDefaults? {
+        UserDefaults(suiteName: ChatWidgetStore.appGroup)
+    }
+
+    /// 开：按 `backgroundOpacity` 画自定义底色。关：恢复系统自带卡片，
+    /// 随视图的深浅色在黑/白之间自动切换（原项目的做法）。
+    static var customBackground: Bool {
+        get { defaults?.object(forKey: customKey) as? Bool ?? true }
+        set {
+            defaults?.set(newValue, forKey: customKey)
+            defaults?.synchronize()
+        }
+    }
+
+    static var backgroundOpacity: Double {
+        get {
+            let stored = defaults?.object(forKey: opacityKey) as? Double
+            return (stored ?? defaultOpacity).clamped(to: 0 ... 1)
+        }
+        set {
+            defaults?.set(newValue.clamped(to: 0 ... 1), forKey: opacityKey)
+            defaults?.synchronize()
+        }
+    }
+}
+
+private extension Double {
+    func clamped(to range: ClosedRange<Double>) -> Double {
+        min(max(self, range.lowerBound), range.upperBound)
+    }
+}
