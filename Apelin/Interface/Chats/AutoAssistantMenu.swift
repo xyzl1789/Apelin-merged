@@ -13,7 +13,6 @@ enum AutoAssistantMenu {
     /// inherits from the conversation that opened it said under the switch.
     static func menu(for id: UUID, in controller: UIViewController) -> UIMenu {
         let settings = AutoAssistantPolicy.current(for: id)
-        let inherited = AutoAssistantPolicy.ownSettings(for: id) == nil && settings.isAny
 
         let switching = UIAction(
             title: String(localized: "Switch Model on Failure"),
@@ -33,13 +32,9 @@ enum AutoAssistantMenu {
             next.retryOnTimeout.toggle()
             AutoAssistantPolicy.set(next, for: id)
         }
-        // The inherited state is said, not drawn: an action whose own switch
-        // looks on while this conversation has nothing written would be the
-        // menu lying about what is stored.
-        if inherited {
-            switching.subtitle = String(localized: "On for this conversation through the one that opened it")
-            retrying.subtitle = switching.subtitle
-        }
+        // 设置读出来就是这条对话实际生效的（含从开启它的对话继承来的），
+        // 所以开关的选中态如实反映它，不需要另加说明文字。
+        let title = String(localized: "Auto Assistant")
 
         let measure = UIAction(
             title: String(localized: "Measure Now and Use Fastest"),
@@ -66,7 +61,7 @@ enum AutoAssistantMenu {
         }
 
         return UIMenu(
-            title: String(localized: "Auto Assistant"),
+            title: title,
             image: UIImage(systemName: "wand.and.sparkles"),
             children: [
                 UIMenu(options: .displayInline, children: [switching, retrying]),

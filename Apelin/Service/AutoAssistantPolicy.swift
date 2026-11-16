@@ -26,18 +26,6 @@ enum AutoAssistantPolicy {
 
         /// Nothing automatic: what a conversation that never turned one on has.
         static let off = Settings()
-
-        var isAny: Bool { switchOnFailure || retryOnTimeout }
-
-        /// What the reader is told the switch does, for the menu.
-        var summary: String {
-            switch (switchOnFailure, retryOnTimeout) {
-            case (true, true): String(localized: "Switch on Failure and Retry on Timeout")
-            case (true, false): String(localized: "Switch Model on Failure")
-            case (false, true): String(localized: "Retry on Timeout")
-            case (false, false): String(localized: "Off")
-            }
-        }
     }
 
     private static let prefix = "autoAssistant.conversation."
@@ -61,14 +49,6 @@ enum AutoAssistantPolicy {
             current = parents[conversation] ?? nil
         }
         return .off
-    }
-
-    /// What `id` has written itself, ignoring what it inherits: the switch is
-    /// shown as this conversation's own, and an inherited one is shown as
-    /// coming from its opener.
-    static func ownSettings(for id: UUID, defaults: UserDefaults = .standard) -> Settings? {
-        guard let data = defaults.data(forKey: key(id)) else { return nil }
-        return try? JSONDecoder().decode(Settings.self, from: data)
     }
 
     static func set(_ settings: Settings, for id: UUID, defaults: UserDefaults = .standard) {
