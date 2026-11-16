@@ -80,7 +80,7 @@ enum ChatActions {
                 }
                 completion(AutoAssistantMenu.actions(for: id, in: presenter))
             }
-        }
+        }]
     }
 
     /// Asked about first, whatever state the conversation is in when it is
