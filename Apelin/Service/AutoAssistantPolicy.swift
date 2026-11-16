@@ -87,9 +87,18 @@ enum AutoAssistantPolicy {
 
     /// `id`'s settings, looked up along the chain the open conversations
     /// describe. A chat whose opener the app holds inherits from it.
-    @MainActor
-    static func current(for id: UUID) -> Settings {
-        let records = ChatRuntime.active?.records ?? [:]
-        return settings(for: id, parents: parents(of: records.values.map(\.summary)))
+    ///
+    /// `ChatRuntime.active` is main-actor state, but every caller already runs
+    /// there: the chat page, the conversation's runtime (itself `@MainActor`)
+    /// and the menu built on the main thread. Marking the lookup itself
+    /// nonisolated keeps it callable from a menu, whose action and deferred
+    /// builder closures are synchronous and not main-actor isolated — the
+    /// isolated call inside is still checked, and one made off the main thread
+    /// traps rather than reading the runtime unsafely.
+    nonisolated static func current(for id: UUID) -> Settings {
+        MainActor.assumeIsolated {
+            let records = ChatRuntime.active?.records ?? [:]
+            return settings(for: id, parents: parents(of: records.values.map(\.summary)))
+        }
     }
 }

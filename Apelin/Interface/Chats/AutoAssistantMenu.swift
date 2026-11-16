@@ -20,18 +20,24 @@ enum AutoAssistantMenu {
             image: UIImage(systemName: "arrow.triangle.swap"),
             state: settings.switchOnFailure ? .on : .off,
         ) { _ in
-            var next = AutoAssistantPolicy.current(for: id)
-            next.switchOnFailure.toggle()
-            AutoAssistantPolicy.set(next, for: id)
+            // `UIAction` 的处理闭包是同步非隔离上下文，改设置这件事搬回主线程：
+            // `current` 本身不用等，主线程的断言与它一致。
+            MainActor.assumeIsolated {
+                var next = AutoAssistantPolicy.current(for: id)
+                next.switchOnFailure.toggle()
+                AutoAssistantPolicy.set(next, for: id)
+            }
         }
         let retrying = UIAction(
             title: String(localized: "Retry on Timeout"),
             image: UIImage(systemName: "clock.arrow.circlepath"),
             state: settings.retryOnTimeout ? .on : .off,
         ) { _ in
-            var next = AutoAssistantPolicy.current(for: id)
-            next.retryOnTimeout.toggle()
-            AutoAssistantPolicy.set(next, for: id)
+            MainActor.assumeIsolated {
+                var next = AutoAssistantPolicy.current(for: id)
+                next.retryOnTimeout.toggle()
+                AutoAssistantPolicy.set(next, for: id)
+            }
         }
         // 设置读出来就是这条对话实际生效的（含从开启它的对话继承来的），
         // 所以开关的选中态如实反映它，不需要另加说明文字。

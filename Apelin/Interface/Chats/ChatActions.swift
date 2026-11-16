@@ -28,12 +28,7 @@ enum ChatActions {
         // 自动助手是这条对话自己的设置，随菜单打开时重读；它排在最前面，
         // 因为这正是读者常改的一项。
         let chatID = chat.id
-        let assistant = UIDeferredMenuElement.uncached { [weak presenter] completion in
-            MainActor.assumeIsolated {
-                guard let presenter else { completion([]); return }
-                completion([AutoAssistantMenu.menu(for: chatID, in: presenter)])
-            }
-        }
+        let assistant = assistantMenu(for: chatID, from: presenter)
         let deletion = UIMenu(options: .displayInline, children: [deleteAction(for: chat.id, onDelete: onDelete)])
         guard let projectName = chat.projectName else {
             let folders = ProjectActions.folderActions(from: presenter, failureTitle: "Unable to Open Folder") {
@@ -67,6 +62,21 @@ enum ChatActions {
                 onPrepareDistribution: onPrepareDistribution,
             )
             completion([UIMenu(children: [assistant])] + projectActions.children + [deletion])
+        }
+    }
+
+    /// 自动助手的子菜单，打开时才读这条对话的设置。`UIDeferredMenuElement`
+    /// 的构建闭包是 `@Sendable` 的同步非隔离上下文，所以主线程的断言与
+    /// `completion` 都显式标出来：闭包的类型在赋值处就定死，不在里面推导。
+    private static func assistantMenu(for id: UUID, from presenter: UIViewController) -> UIDeferredMenuElement {
+        UIDeferredMenuElement.uncached { [weak presenter] (completion: @escaping ([UIMenuElement]) -> Void) in
+            MainActor.assumeIsolated {
+                guard let presenter else {
+                    completion([])
+                    return
+                }
+                completion([AutoAssistantMenu.menu(for: id, in: presenter)])
+            }
         }
     }
 
