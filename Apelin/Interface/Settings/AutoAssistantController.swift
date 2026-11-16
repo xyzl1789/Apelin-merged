@@ -1,6 +1,5 @@
 import ApelinCore
 import ApelinProtocol
-import ProgressCard
 import UIKit
 
 /// Settings ▸ Agent ▸ Auto Assistant.

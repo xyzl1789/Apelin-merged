@@ -1,5 +1,4 @@
 import ApelinProtocol
-import ProgressCard
 import UIKit
 
 // MARK: - Excluded providers

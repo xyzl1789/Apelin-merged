@@ -1,0 +1,177 @@
+{
+  "total_count": 1,
+  "jobs": [
+    {
+      "id": 133143364666,
+      "run_id": 43820861822,
+      "workflow_name": "Debug build",
+      "head_branch": "main",
+      "run_url": "https://api.github.com/repos/xyzl1789/Apelin-merged/actions/runs/43820861822",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVvUWUM8AAAAe__aEOg",
+      "head_sha": "0214bf7ee88a7b09843f7c0af045db796e1688d6",
+      "url": "https://api.github.com/repos/xyzl1789/Apelin-merged/actions/jobs/133143364666",
+      "html_url": "https://github.com/xyzl1789/Apelin-merged/actions/runs/43820861822/job/133143364666",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-11-16T07:01:36Z",
+      "started_at": "2026-11-16T07:01:38Z",
+      "completed_at": "2026-11-16T07:11:09Z",
+      "name": "Build and publish roothide",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-11-16T07:01:38Z",
+          "completed_at": "2026-11-16T07:01:39Z"
+        },
+        {
+          "name": "Check out repository",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-11-16T07:01:39Z",
+          "completed_at": "2026-11-16T07:01:42Z"
+        },
+        {
+          "name": "Select Xcode 27.1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-11-16T07:01:42Z",
+          "completed_at": "2026-11-16T07:01:44Z"
+        },
+        {
+          "name": "Install packaging dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-11-16T07:01:44Z",
+          "completed_at": "2026-11-16T07:01:54Z"
+        },
+        {
+          "name": "Regenerate the system prompt",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-11-16T07:01:54Z",
+          "completed_at": "2026-11-16T07:01:55Z"
+        },
+        {
+          "name": "Restore SwiftPM cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-11-16T07:01:55Z",
+          "completed_at": "2026-11-16T07:01:55Z"
+        },
+        {
+          "name": "Resolve package dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-11-16T07:01:55Z",
+          "completed_at": "2026-11-16T07:03:15Z"
+        },
+        {
+          "name": "Keep the resolve log",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 8,
+          "started_at": "2026-11-16T07:03:15Z",
+          "completed_at": "2026-11-16T07:03:15Z"
+        },
+        {
+          "name": "Build and package",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 9,
+          "started_at": "2026-11-16T07:03:15Z",
+          "completed_at": "2026-11-16T07:11:02Z"
+        },
+        {
+          "name": "Keep the build log",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-11-16T07:11:02Z",
+          "completed_at": "2026-11-16T07:11:03Z"
+        },
+        {
+          "name": "Report the compiler errors",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-11-16T07:11:03Z",
+          "completed_at": "2026-11-16T07:11:03Z"
+        },
+        {
+          "name": "Read version and prepare release files",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 12,
+          "started_at": "2026-11-16T07:11:03Z",
+          "completed_at": "2026-11-16T07:11:03Z"
+        },
+        {
+          "name": "Create, upload and publish the release",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-11-16T07:11:03Z",
+          "completed_at": "2026-11-16T07:11:03Z"
+        },
+        {
+          "name": "Keep the package artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-11-16T07:11:03Z",
+          "completed_at": "2026-11-16T07:11:03Z"
+        },
+        {
+          "name": "Report a failed build or publish",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-11-16T07:11:03Z",
+          "completed_at": "2026-11-16T07:11:05Z"
+        },
+        {
+          "name": "Post Restore SwiftPM cache",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 29,
+          "started_at": "2026-11-16T07:11:05Z",
+          "completed_at": "2026-11-16T07:11:05Z"
+        },
+        {
+          "name": "Post Check out repository",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 30,
+          "started_at": "2026-11-16T07:11:05Z",
+          "completed_at": "2026-11-16T07:11:05Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 31,
+          "started_at": "2026-11-16T07:11:05Z",
+          "completed_at": "2026-11-16T07:11:06Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/xyzl1789/Apelin-merged/check-runs/133143364666",
+      "labels": [
+        "xcode-27"
+      ],
+      "runner_id": 1000001607,
+      "runner_name": "GitHub Actions 1000001607",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  ]
+}
