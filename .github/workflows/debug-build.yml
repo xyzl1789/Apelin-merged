@@ -136,6 +136,12 @@ jobs:
           log="$RUNNER_TEMP/build.log"
           [[ -f "$log" ]] || exit 0
           { echo '```'; grep -E "error:" "$log" | head -60; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          # The log itself needs admin rights to download, so each compiler
+          # error is also raised as an annotation: one line, readable from the
+          # run's check runs without signed in.
+          grep -E "error:" "$log" | head -20 | while IFS= read -r line; do
+            echo "::error::$(printf '%s' "$line" | sed -e 's/%/%25/g' -e 's/\r//g')"
+          done || true
           grep -E "error:" "$log" | head -40 || true
 
       - name: Read version and prepare release files
