@@ -310,7 +310,7 @@ public actor AgentSession {
         self.agent = agent
         self.gate = gate
         self.runner = runner
-        usageRecorder = UsageRecorder(dataRoot: configuration.dataRoot)
+        usageRecorder = UsageRecorder(dataRoot: configuration.dataRoot.url)
         self.mcpManager = mcpManager
         self.mcpTools = mcpTools
         self.toolExtensions = toolExtensions

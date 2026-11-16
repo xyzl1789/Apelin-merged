@@ -52,11 +52,3 @@ SWIFT_INCLUDE_PATHS = $(inherited) $(SRCROOT)/Shared/XPCShim
 // ▸ Strings).
 SWIFT_EMIT_LOC_STRINGS = YES
 LOCALIZATION_PREFERS_STRING_CATALOGS = YES
-
-// 关闭显式模块（explicit modules）。Xcode 26 的 Clang 依赖扫描解析不了
-// SwiftPM 依赖里的 C target 模块（swift-atomics 的 _AtomicsShims、
-// swift-nio 的 CNIOLLHTTP/CNIODarwin 等），App 目标编译时整个失败：
-// "Unable to resolve module dependency" + "ExplicitPrecompiledModules/
-// *.pcm: No such file or directory"。隐式模块对这些依赖一直正常。
-SWIFT_ENABLE_EXPLICIT_MODULES = NO
-CLANG_ENABLE_EXPLICIT_MODULES = NO

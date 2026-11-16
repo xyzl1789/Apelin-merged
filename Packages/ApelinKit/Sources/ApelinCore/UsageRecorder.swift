@@ -1,8 +1,9 @@
-import ApelinCore
 import Foundation
 
 /// 一条用量记录：一次模型回复完成时由供应商统计的 token 数。
 /// 与会话日志（events.jsonl）分开，落在数据根下，供设置页的用量统计读取。
+/// 放在 ApelinCore：写入方（apelin-agent）与读取方（App）都用它，
+/// App 不必为此引入 agent 的第三方依赖。
 public struct UsageRecord: Codable, Sendable, Equatable {
     /// 记录时刻。
     public var time: Date
@@ -49,8 +50,8 @@ public struct UsageRecorder {
 
     public static let maximumLines = 5000
 
-    public init(dataRoot: ApelinDataRoot) {
-        root = Self.file(in: dataRoot.url)
+    public init(dataRoot: URL) {
+        root = Self.file(in: dataRoot)
     }
 
     /// 追加一条记录。行数超过上限时从头截掉最旧的一半，避免文件无限增长。
