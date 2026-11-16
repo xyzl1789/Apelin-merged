@@ -41,11 +41,7 @@ enum ModelExclusions {
         var defaultsKey: String { rawValue }
 
         var isEnabled: Bool {
-            get { UserDefaults.standard.bool(forKey: defaultsKey) }
-            set {
-                UserDefaults.standard.set(newValue, forKey: defaultsKey)
-                NotificationCenter.default.post(name: .modelExclusionsChanged, object: self)
-            }
+            UserDefaults.standard.bool(forKey: defaultsKey)
         }
     }
 
@@ -63,6 +59,11 @@ enum ModelExclusions {
             UserDefaults.standard.set(data, forKey: storageKey)
             NotificationCenter.default.post(name: .modelExclusionsChanged, object: nil)
         }
+    }
+
+    static func setAutomatic(_ behaviour: Automatic, on: Bool) {
+        UserDefaults.standard.set(on, forKey: behaviour.defaultsKey)
+        NotificationCenter.default.post(name: .modelExclusionsChanged, object: nil)
     }
 
     // MARK: - Rules

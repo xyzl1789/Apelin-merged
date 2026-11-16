@@ -103,10 +103,12 @@ final class AutoAssistantController: TableController {
         }
     }
 
+    /// A rule is set through `ModelExclusions`, which owns the defaults key;
+    /// the enum's own property is only the reader for it.
     private func set(_ row: Row, on: Bool) {
         switch row {
-        case .switchOnFailure: ModelExclusions.Automatic.switchOnFailure.isEnabled = on
-        case .retryOnTimeout: ModelExclusions.Automatic.retryOnTimeout.isEnabled = on
+        case .switchOnFailure: ModelExclusions.setAutomatic(.switchOnFailure, on: on)
+        case .retryOnTimeout: ModelExclusions.setAutomatic(.retryOnTimeout, on: on)
         default: break
         }
         updateRows()
@@ -172,9 +174,9 @@ final class AutoAssistantController: TableController {
         case .pickFastest:
             measureAndUseFastest()
         case .excludeProviders:
-            push(ExcludedProvidersController())
+            push(ExcludedProvidersController(style: .insetGrouped))
         case .excludeModels:
-            push(ExcludedModelsController())
+            push(ExcludedModelsController(style: .insetGrouped))
         }
     }
 
