@@ -743,7 +743,7 @@ final class FileBrowserController: UIViewController {
                 let file = CanonicalPath.resolve(url.path)
                 if let root, let file, file.hasPrefix(root + "/") {
                     editor.gitSnapshot = GitFileSnapshotter(
-                        scopeID: root.lastPathComponent,
+                        scopeID: (root as NSString).lastPathComponent,
                         path: String(file.dropFirst(root.count + 1)),
                     )
                 }
