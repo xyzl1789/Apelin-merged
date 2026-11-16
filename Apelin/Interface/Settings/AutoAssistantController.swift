@@ -20,6 +20,7 @@ final class AutoAssistantController: TableController {
     private enum Row: Hashable {
         case whereItIs
         case pickFastest
+        case lastMeasurement
         case excludeProviders
         case excludeModels
     }
@@ -64,7 +65,10 @@ final class AutoAssistantController: TableController {
     @objc private dynamic func updateRows() {
         dataSource.update([
             (.where_, [RowContent(row: .whereItIs)]),
-            (.models, [RowContent(row: .pickFastest)]),
+            (.models, [
+                RowContent(row: .pickFastest),
+                RowContent(row: .lastMeasurement),
+            ]),
             (.exclusions, [
                 RowContent(row: .excludeProviders),
                 RowContent(row: .excludeModels),
@@ -92,6 +96,7 @@ final class AutoAssistantController: TableController {
         switch row {
         case .whereItIs: String(localized: "Turn It On in a Conversation")
         case .pickFastest: String(localized: "Measure Now and Use Fastest")
+        case .lastMeasurement: String(localized: "Last Measurement")
         case .excludeProviders: String(localized: "Excluded Providers")
         case .excludeModels: String(localized: "Excluded Models")
         }
@@ -118,6 +123,10 @@ final class AutoAssistantController: TableController {
                 cell.accessoryView = spinner
                 cell.accessoryType = .none
             }
+            if value.row == .lastMeasurement, AutoAssistantSheet.lastResults.isEmpty {
+                cell.accessoryType = .none
+                cell.selectionStyle = .none
+            }
         }
         return cell
     }
@@ -134,6 +143,8 @@ final class AutoAssistantController: TableController {
             break
         case .pickFastest:
             measureAndUseFastest()
+        case .lastMeasurement:
+            push(MeasurementResultsController(style: .insetGrouped))
         case .excludeProviders:
             push(ExcludedProvidersController(style: .insetGrouped))
         case .excludeModels:

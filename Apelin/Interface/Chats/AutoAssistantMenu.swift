@@ -18,7 +18,12 @@ enum AutoAssistantMenu {
             title: String(localized: "Auto Assistant…"),
             image: UIImage(systemName: "wand.and.stars"),
         ) { [weak controller] _ in
-            controller?.present(AutoAssistantSheet(id: id), animated: true)
+            guard let controller else { return }
+            // 三个子页（上次测量、排除供应商、排除模型）都往导航栈里推，
+            // 所以弹层必须自己带一个导航控制器，否则推入什么都不发生。
+            let sheet = AutoAssistantSheet(id: id)
+            let navigation = UINavigationController(rootViewController: sheet)
+            controller.present(navigation, animated: true)
         }
         return [UIMenu(options: .displayInline, children: [entry])]
     }
@@ -66,9 +71,12 @@ final class AutoAssistantSheet: UITableViewController {
         tableView.reloadData()
     }
 
-    /// 上一次测量的完整排名，快到慢；没有测过就是空。结果随弹层的生命周期
-    /// 保留，测一次够这一轮用。
-    static var lastResults: [ModelSpeedPicker.Result] = []
+    /// 上一次测量的完整排名，快到慢；没有测过就是空。结果落盘，设置页与
+    /// 对话菜单共用同一份，重启后仍在。
+    static var lastResults: [ModelSpeedPicker.Result] {
+        get { MeasurementStore.load().results }
+        set { MeasurementStore.save(results: newValue) }
+    }
 
     private static func content(text: String, image: UIImage?) -> UIListContentConfiguration {
         var config = UIListContentConfiguration.cell()
@@ -221,6 +229,30 @@ final class AutoAssistantSheet: UITableViewController {
                 controller.presentNotice(title: "Unable to Measure Models", message: error.readableMessage)
             }
         }
+    }
+}
+
+/// 「上次测量」的落盘：`UserDefaults` 一个键存整份排名。设置页与对话菜单
+/// 读同一份，重启后仍在。
+enum MeasurementStore {
+    private struct Stored: Codable {
+        var results: [ModelSpeedPicker.Result]
+    }
+
+    private static let storageKey = "autoAssistant.lastMeasurement"
+
+    static func load() -> (results: [ModelSpeedPicker.Result], measuredAt: Date?) {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let decoded = try? JSONDecoder().decode(Stored.self, from: data)
+        else { return ([], nil) }
+        let date = UserDefaults.standard.object(forKey: storageKey + ".date") as? Date
+        return (decoded.results, date)
+    }
+
+    static func save(results: [ModelSpeedPicker.Result]) {
+        guard let data = try? JSONEncoder().encode(Stored(results: results)) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey)
+        UserDefaults.standard.set(Date.now, forKey: storageKey + ".date")
     }
 }
 

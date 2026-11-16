@@ -530,12 +530,15 @@ final class ChatRuntime {
         let canSwitch = policy.switchOnFailure
         let canRetry = policy.retryOnTimeout
         guard canSwitch || canRetry else { return }
-        // 分类出的失败才考虑切换/重试；unknown（reason 为 nil）不切——
-        // 模型可能本来就好好的，不能「秒连接也切走」。离线不触发。
+        // 分类出的失败才考虑切换/重试；unknown（reason 为 nil）也切换——
+        // 供应商的失败话术常常落不进任何一类，余额不足正是最常见的。
+        // 离线不触发：换一个账号的模型也发不出去。
         let reason = (error as? ApelinError)?.reason
             ?? (error is URLError ? .network : nil)
         guard reason != .offline else { return }
-        let shouldSwitch = canSwitch && reason.map { Self.switchableReasons.contains($0) } ?? false
+        // 未知原因（nil）与网络抖动不同：网络抖动换模型没用，走重试兜底；
+        // 未知原因换一个模型值得试。
+        let shouldSwitch = canSwitch && (reason.map { Self.switchableReasons.contains($0) } ?? true)
         let shouldRetry = canRetry && reason == .timeout
         guard shouldSwitch || shouldRetry else { return }
         let ids: Set<UUID> = [draft.id]
@@ -1287,6 +1290,7 @@ final class ChatRuntime {
         guard canSwitch || canRetry else { return }
         // 分类不出的失败（reason 为 nil）也触发切换：提供商的话术常常
         // 落不进任何一类，余额不足正是最常见的。离线仍不触发：换模型没用。
+        // 网络抖动（.network）不切——换模型没用，由重试兜底。
         let failure = realtime.last(where: { $0.kind == "error" })
         let reason = failure?.payload?["reason"]?.stringValue.map(ApelinError.Reason.init(rawValue:))
         guard reason != .offline else { return }
@@ -1294,10 +1298,8 @@ final class ChatRuntime {
         let drafts = records[id]?.sending ?? []
         guard !drafts.isEmpty else { return }
         let draftIDs = Set(drafts.map(\.id))
-        // 只有明确「模型用不了」的原因才切换（账号无效、余额不足、限流、
-        // 服务商故障）；未知原因不切——模型可能本来就好好的。离线不触发，
-        // 普通超时和网络抖动也不切：开「超时重试」的由重试兜底。
-        let shouldSwitch = canSwitch && reason.map(Self.switchableReasons.contains) ?? false
+        // 未知原因（nil）与明确的「模型用不了」都切换；.network 不切。
+        let shouldSwitch = canSwitch && (reason.map(Self.switchableReasons.contains) ?? true)
         let shouldRetry = canRetry && reason == .timeout
         guard shouldSwitch || shouldRetry else { return }
 
