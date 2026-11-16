@@ -124,7 +124,7 @@ final class UsageStatsController: TableController {
         } else {
             snapshot.appendItems(byModel.map { .model($0.model) }, toSection: .models)
         }
-        let recent = records.prefix(Self.maximumRecent).enumerated().map { .request($0.offset) }
+        let recent: [Row] = records.prefix(Self.maximumRecent).enumerated().map { .request($0.offset) }
         if recent.isEmpty {
             snapshot.appendItems([.empty], toSection: .recent)
         } else {
