@@ -89,7 +89,7 @@ public enum ProviderResolutionError: Error, Equatable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case let .missingCredentials(id): "No saved sign-in for \(id). Sign in again in Apelin."
+        case let .missingCredentials(id): "没有 \(id) 的已保存登录，请在 Apelin 中重新登录。"
         }
     }
 }

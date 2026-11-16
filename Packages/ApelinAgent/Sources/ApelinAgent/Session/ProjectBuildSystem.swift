@@ -48,5 +48,5 @@ enum ProjectBuildSystem: Equatable {
     /// What apelin_project_build answers on a workspace that declares no build,
     /// instead of the build worker's error about a description the
     /// workspace never had.
-    static let externalBuildRefusal = "This workspace declares no build yet. Write a script in the project that builds the package with the repository's own tools and writes one .deb into $APELIN_PACKAGE_DIR, then declare it in apelin-project.json as \"external\": {\"script\": \"<its path>\"}; read the apelin-external-build skill first."
+    static let externalBuildRefusal = "该工作区还没有声明构建。请在项目中编写脚本，用仓库自带工具构建包并把 .deb 写入 $APELIN_PACKAGE_DIR，然后在 apelin-project.json 中声明为 \"external\": {\"script\": \"<脚本路径>\"}；请先阅读 apelin-external-build 技能。"
 }

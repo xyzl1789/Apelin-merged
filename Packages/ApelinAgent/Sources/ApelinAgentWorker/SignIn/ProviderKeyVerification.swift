@@ -22,7 +22,7 @@ public enum ProviderKeyVerification {
                             ? ProviderModels.list(provider, credentials: credentials).first
                             : nil)
                     guard let resolved = try await ProviderRegistration.resolve(storeID: provider.storeID, manager: manager, modelOverride: model) else {
-                        throw ApelinError(.badRequest, "The provider could not be configured.")
+                        throw ApelinError(.badRequest, "无法配置该供应商。")
                     }
                     let auth = try await resolved.authResolver?(resolved.model, nil)
                     let response = try await complete(
@@ -45,7 +45,7 @@ public enum ProviderKeyVerification {
                               default: false
                               }
                           })
-                    else { throw ApelinError(.unavailable, "The provider returned no response.") }
+                    else { throw ApelinError(.unavailable, "供应商没有返回响应。") }
                 } onCancel: {
                     cancellation.cancel()
                 }
@@ -57,7 +57,7 @@ public enum ProviderKeyVerification {
             // body, key, or request header crosses back to the app.
             throw ApelinError(
                 .unavailable,
-                "Unable to verify this provider. Check the API key, endpoint and model, then try again.",
+                "无法验证该供应商。请检查 API 密钥、端点和模型后重试。",
             )
         }
     }

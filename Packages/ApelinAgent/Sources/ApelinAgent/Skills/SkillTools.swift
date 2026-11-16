@@ -62,7 +62,7 @@ struct SkillTools {
     func change(saving arguments: JSONValue) throws -> SkillChangeApproval {
         let name = try arguments.requireString("name").trimmingCharacters(in: .whitespaces)
         if let problem = Self.nameProblem(name) {
-            throw ToolArgumentError("The skill's name \(problem).")
+            throw ToolArgumentError("技能名称\(problem)。")
         }
         guard !BuiltInSkills.all.contains(where: { $0.name == name }) else {
             throw ToolArgumentError("\(name) is a built-in skill's name; choose another.")
@@ -71,11 +71,11 @@ struct SkillTools {
         guard !description.isEmpty, !description.contains(where: \.isNewline), !description.contains("\0"),
               description.count <= Self.maximumDescriptionLength
         else {
-            throw ToolArgumentError("The description is one line of 1 to \(Self.maximumDescriptionLength) characters saying when to use the skill.")
+            throw ToolArgumentError("描述为一行 1 到 \(Self.maximumDescriptionLength) 个字符的文本，说明何时使用该技能。")
         }
         let instructions = try arguments.requireString("instructions").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !instructions.isEmpty, !instructions.contains("\0"), instructions.utf8.count <= SkillReader.maxBodyBytes else {
-            throw ToolArgumentError("The instructions are 1 to \(SkillReader.maxBodyBytes) bytes of text.")
+            throw ToolArgumentError("指令为 1 到 \(SkillReader.maxBodyBytes) 字节的文本。")
         }
         let place = directory.appendingPathComponent(name, isDirectory: true)
         let occupied = Self.exists(place)
@@ -83,7 +83,7 @@ struct SkillTools {
             throw ToolArgumentError("\(name).md at the top of the skills folder is a skill of that name; remove it with apelin_skill_remove first, or choose another name.")
         }
         if occupied, arguments.argBool("replace") != true {
-            throw ToolArgumentError("The skills folder already holds \(name); pass replace: true to replace it, or choose another name.")
+            throw ToolArgumentError("技能文件夹中已有 \(name)；传入 replace: true 以替换，或换一个名字。")
         }
         return SkillChangeApproval(
             action: "save",
@@ -99,7 +99,7 @@ struct SkillTools {
         let name = try arguments.requireString("name").trimmingCharacters(in: .whitespaces)
         let skills = SkillCatalog.load(userDirectory: directory).skills
         guard let skill = skills.first(where: { $0.name == name }) else {
-            throw ToolArgumentError("No skill is named \(name); apelin_skill_list names them.")
+            throw ToolArgumentError("没有名为 \(name) 的技能；apelin_skill_list 可列出全部技能。")
         }
         guard skill.isUserSkill, let location = skill.location else {
             throw ToolArgumentError("\(name) is built into Apelin and cannot be removed.")
@@ -110,25 +110,25 @@ struct SkillTools {
     /// Writes the approved skill. Staged, it must read back as kwwk reads
     /// it — this name and description, no diagnostic — or nothing changes.
     func save(_ change: SkillChangeApproval) throws -> Saved {
-        guard change.action == "save", let text = change.text else { throw ToolDeniedError(message: "not a skill to save") }
+        guard change.action == "save", let text = change.text else { throw ToolDeniedError(message: "不是要保存的技能") }
         do {
             try SkillFolder(root: directory).write(text, named: change.location, replacing: change.replacing) { staged in
                 let loaded = Skills.load(directories: [staged.deletingLastPathComponent().path], useIndex: false)
                 if let diagnostic = loaded.diagnostics.first {
-                    throw ToolArgumentError("The skill would not be offered: \(diagnostic.message).")
+                    throw ToolArgumentError("该技能不会被提供：\(diagnostic.message)。")
                 }
                 guard loaded.skills.contains(where: { $0.name == change.name }) else {
-                    throw ToolArgumentError("The skill would not be offered as \(change.name).")
+                    throw ToolArgumentError("该技能无法以 \(change.name) 提供。")
                 }
             }
         } catch SkillFolder.Failure.exists {
-            throw ToolArgumentError("The skills folder already holds \(change.name); pass replace: true to replace it.")
+            throw ToolArgumentError("技能文件夹中已有 \(change.name)；传入 replace: true 以替换。")
         }
         return Saved(name: change.name, location: change.location, replaced: change.replacing)
     }
 
     func remove(_ change: SkillChangeApproval) throws -> Removed {
-        guard change.action == "remove" else { throw ToolDeniedError(message: "not a skill to remove") }
+        guard change.action == "remove" else { throw ToolDeniedError(message: "不是要移除的技能") }
         try SkillFolder(root: directory).remove(change.location)
         return Removed(name: change.name, location: change.location)
     }

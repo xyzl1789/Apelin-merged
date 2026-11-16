@@ -16,10 +16,10 @@ public struct MCPServerConfiguration: Sendable, Hashable {
 
     public init(name: String, url: URL, headers: [String: String] = [:], description: String? = nil) throws {
         guard let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
-            throw ToolArgumentError("MCP server \(name) must use http or https")
+            throw ToolArgumentError("MCP 服务器 \(name) 必须使用 http 或 https")
         }
         guard !name.isEmpty, name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }) else {
-            throw ToolArgumentError("MCP server name may use letters, digits, _ and -")
+            throw ToolArgumentError("MCP 服务器名称只能用字母、数字、_ 和 -")
         }
         self.name = name
         self.url = url

@@ -17,7 +17,7 @@ enum AgentModelTester {
                 report.attach(continuation)
                 let deadline = Task {
                     do { try await Task.sleep(for: .seconds(60)) } catch { return }
-                    report.finish(failure: "The model test timed out during \(report.phaseName) after 60 seconds.")
+                    report.finish(failure: "模型测试在 \(report.phaseName) 阶段 60 秒后超时。")
                 }
                 let operation = Task {
                     do {
@@ -30,7 +30,7 @@ enum AgentModelTester {
                 report.attach(tasks: [operation, deadline])
             }
         } onCancel: {
-            report.finish(failure: "The model test was cancelled.")
+            report.finish(failure: "模型测试已取消。")
         }
     }
 
@@ -41,7 +41,7 @@ enum AgentModelTester {
         report: ModelTestReport,
     ) async throws {
         guard !request.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            report.finish(failure: "Choose a model before testing.")
+            report.finish(failure: "请先选择模型再测试。")
             return
         }
         if let unsupported = unsupportedPureHiProvider(request.provider) {
@@ -77,7 +77,7 @@ enum AgentModelTester {
         if let failure = final.providerFailure {
             report.finish(failure: safeFailure(failure, phase: "response"))
         } else if final.stopReason != .stop, final.stopReason != .length {
-            report.finish(failure: "The model did not complete a text response (\(final.stopReason.rawValue)).")
+            report.finish(failure: "模型没有完成文本响应（\(final.stopReason.rawValue)）。")
         } else {
             report.finish()
         }
@@ -137,13 +137,13 @@ enum AgentModelTester {
     static func unsupportedPureHiProvider(_ provider: AgentProvider) -> String? {
         switch provider {
         case .anthropicOAuth:
-            return "This provider adds a required Claude Code identity prompt, so a pure Hi test is unavailable."
+            return "该供应商会附加必需的 Claude Code 身份提示，因此无法进行纯 Hi 测试。"
         case .cursor:
-            return "This provider adds a default system prompt, so a pure Hi test is unavailable."
+            return "该供应商会附加默认系统提示，因此无法进行纯 Hi 测试。"
         case .qoder, .qoderCN:
-            return "This provider adds a required agent system prompt, so a pure Hi test is unavailable."
+            return "该供应商会附加必需的助手系统提示，因此无法进行纯 Hi 测试。"
         case .workBuddy, .workBuddyAI:
-            return "This provider adds a default system prompt, so a pure Hi test is unavailable."
+            return "该供应商会附加默认系统提示，因此无法进行纯 Hi 测试。"
         default:
             return nil
         }
@@ -151,22 +151,22 @@ enum AgentModelTester {
 
     /// No raw error body, URL, header, provider message or token crosses IPC.
     static func safeFailure(_ error: Error, phase: String) -> String {
-        if error is ProviderResolutionError { return "No saved sign-in. Sign in again in Model Providers." }
+        if error is ProviderResolutionError { return "没有已保存的登录，请在模型供应商中重新登录。" }
         let failure = ProviderFailure.capture(error)
         let reason: String
         switch failure.outcome {
-        case .signInRequired: reason = "Authentication failed. Sign in again."
-        case .accessDenied: reason = "This account is not allowed to use the model."
-        case .quotaExhausted: reason = "The model account's quota is exhausted."
-        case .rateLimited: reason = "The model provider rate-limited the request."
-        case .contextTooLong: reason = "The model provider rejected the input as too large."
-        case .requestRejected: reason = "The model provider rejected the request."
-        case .serviceUnavailable: reason = "The model provider is unavailable."
-        case .timeout: reason = "The model request timed out."
-        case .network: reason = "The connection to the model provider failed."
-        case .contentRefused: reason = "The model provider refused the content."
-        case .cancelled: reason = "The model request was cancelled."
-        case .unknown: reason = "The model test failed."
+        case .signInRequired: reason = "身份验证失败，请重新登录。"
+        case .accessDenied: reason = "该账户无权使用此模型。"
+        case .quotaExhausted: reason = "模型账户的配额已用尽。"
+        case .rateLimited: reason = "模型供应商对请求进行了限速。"
+        case .contextTooLong: reason = "模型供应商拒绝了过大的输入。"
+        case .requestRejected: reason = "模型供应商拒绝了该请求。"
+        case .serviceUnavailable: reason = "模型供应商不可用。"
+        case .timeout: reason = "模型请求超时。"
+        case .network: reason = "与模型供应商的连接失败。"
+        case .contentRefused: reason = "模型供应商拒绝了该内容。"
+        case .cancelled: reason = "模型请求已取消。"
+        case .unknown: reason = "模型测试失败。"
         }
         let status = failure.httpStatus.map { " HTTP \($0)." } ?? ""
         return "\(reason)\(status) Stage: \(phase)."

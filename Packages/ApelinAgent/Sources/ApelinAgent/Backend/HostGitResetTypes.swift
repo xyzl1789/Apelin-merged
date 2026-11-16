@@ -65,10 +65,10 @@ public struct GitResetToolResponse: Sendable, Hashable, Codable {
 /// A backend without a repository behind it (a test double, a live test).
 public extension AgentHostBackend {
     func gitResetPreview(_: GitResetPreviewToolRequest) async throws -> GitResetPreviewToolResponse {
-        throw ToolDeniedError(message: "resetting to a remote is not available here")
+        throw ToolDeniedError(message: "此处无法重置到远程")
     }
 
     func gitResetToRemote(_: GitResetToolRequest) async throws -> GitResetToolResponse {
-        throw ToolDeniedError(message: "resetting to a remote is not available here")
+        throw ToolDeniedError(message: "此处无法重置到远程")
     }
 }

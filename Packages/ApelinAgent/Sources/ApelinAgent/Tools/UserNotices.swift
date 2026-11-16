@@ -15,21 +15,21 @@ struct UserNotices {
     /// Counted as sent once it passes, before it is recorded.
     mutating func take(_ arguments: JSONValue, now: Date) throws -> (title: String?, body: String) {
         guard let body = try AgentNoticeRules.plain(arguments.requireString("body")) else {
-            throw ToolArgumentError("body is empty: say in a sentence what happened or what the user must do")
+            throw ToolArgumentError("正文为空：请用一句话说明发生了什么或用户需要做什么")
         }
         guard body.count <= AgentNoticeRules.maximumBodyLength else {
-            throw ToolArgumentError("body is \(body.count) characters; keep it to \(AgentNoticeRules.maximumBodyLength), one or two plain sentences")
+            throw ToolArgumentError("正文有 \(body.count) 个字符；不超过 \(AgentNoticeRules.maximumBodyLength)，一到两个平实句子")
         }
         let title = AgentNoticeRules.plain(arguments.argString("title"))
         if let title, title.count > AgentNoticeRules.maximumTitleLength {
-            throw ToolArgumentError("title is \(title.count) characters; keep it to \(AgentNoticeRules.maximumTitleLength), a few words, or leave it out")
+            throw ToolArgumentError("标题有 \(title.count) 个字符；不超过 \(AgentNoticeRules.maximumTitleLength)（几个词），或省略")
         }
         guard sentThisTurn < AgentNoticeRules.maximumPerTurn else {
-            throw ToolDeniedError(message: "Not sent: this turn has sent \(AgentNoticeRules.maximumPerTurn) notifications, the most one may. Say the rest in your reply; Apelin notifies the user when the turn ends.")
+            throw ToolDeniedError(message: "未发送：本轮已发出 \(AgentNoticeRules.maximumPerTurn) 条通知，已达上限。其余内容请写进回复；回合结束时 Apelin 会通知用户。")
         }
         if let lastSent, now.timeIntervalSince(lastSent) < AgentNoticeRules.minimumInterval {
             let seconds = Int(AgentNoticeRules.minimumInterval)
-            throw ToolDeniedError(message: "Not sent: the last notification went less than \(seconds) seconds ago, and they must be at least \(seconds) seconds apart. Fold this into the next one, or into your reply.")
+            throw ToolDeniedError(message: "未发送：上一条通知发出还不到 \(seconds) 秒，两条通知至少间隔 \(seconds) 秒。请把它并入下一条通知或你的回复。")
         }
         sentThisTurn += 1
         lastSent = now

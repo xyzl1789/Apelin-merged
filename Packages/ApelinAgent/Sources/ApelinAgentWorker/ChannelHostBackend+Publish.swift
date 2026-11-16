@@ -56,7 +56,7 @@ extension ChannelHostBackend {
         case .succeeded:
             return Self.published(result, publication: publication)
         case .cancelled, .interrupted:
-            throw PackagePublishToolFailure(message: "Publishing stopped before it finished. Publish the same builds again: a package already there with the same bytes is left as it is.")
+            throw PackagePublishToolFailure(message: "发布在中途停止。请重新发布相同的构建：已存在且字节相同的包会保持原样。")
         default:
             throw Self.publishFailure(message: GitFailure.split(end.message).1, reason: reason)
         }
@@ -66,7 +66,7 @@ extension ChannelHostBackend {
         if reason == ApelinError.Reason.authenticationRequired.rawValue {
             return PackagePublishToolFailure(message: PackagePublish.signInNeeded)
         }
-        return PackagePublishToolFailure(message: "Nothing was published: " + (message.isEmpty ? "no reason was given." : message))
+        return PackagePublishToolFailure(message: "没有发布任何内容：" + (message.isEmpty ? "no reason was given." : message))
     }
 
     /// What the task's `result` names, and what happens next.
@@ -79,7 +79,7 @@ extension ChannelHostBackend {
         let repository = result?["repository"]?.stringValue ?? publication.repository
         let source = result?["sourceURL"]?.stringValue ?? publication.sourceURL
         let next = if published.isEmpty {
-            "Every package was in \(repository) already, with the same bytes; nothing new was published."
+            "所有包已在 \(repository) 中且字节相同；没有发布新内容。"
         } else {
             "Package managers see \(published.count == 1 ? "it" : "them") once the repository's workflow on GitHub has indexed debs/, usually within a few minutes\(source.map { "; the source to add is \($0)" } ?? "")."
         }

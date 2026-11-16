@@ -64,7 +64,7 @@ extension SessionEventLog {
                 segments.append(record.messages)
             case .append:
                 guard !segments.isEmpty else {
-                    throw SessionStoreError.corrupt("messages.jsonl appends before any snapshot")
+                    throw SessionStoreError.corrupt("messages.jsonl 在任何快照之前就有追加内容")
                 }
                 segments[segments.count - 1] += record.messages
             }
@@ -121,7 +121,7 @@ extension SessionEventLog {
             } catch {
                 // the process died mid-write: the last line is not a record
                 if index == lines.count - 1 { break }
-                throw SessionStoreError.corrupt("messages.jsonl line \(index + 1)")
+                throw SessionStoreError.corrupt("messages.jsonl 第 \(index + 1) 行")
             }
         }
         return records
@@ -136,7 +136,7 @@ extension SessionEventLog {
               let size = attributes[.size] as? Int, size > 0
         else { return }
         guard let handle = FileHandle(forReadingAtPath: url.path) else {
-            throw SessionStoreError.io("could not read messages.jsonl")
+            throw SessionStoreError.io("无法读取 messages.jsonl")
         }
         let tail: Data
         do {
@@ -145,7 +145,7 @@ extension SessionEventLog {
             try handle.close()
         } catch {
             try? handle.close()
-            throw SessionStoreError.io("could not read messages.jsonl")
+            throw SessionStoreError.io("无法读取 messages.jsonl")
         }
         guard tail != Data([0x0A]) else { return }
         let whole = try Data(contentsOf: url)
@@ -159,7 +159,7 @@ extension SessionEventLog {
         data.append(0x0A)
         let descriptor = open(conversationURL.path, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0o600)
         guard descriptor >= 0 else {
-            throw SessionStoreError.io("could not open messages.jsonl")
+            throw SessionStoreError.io("无法打开 messages.jsonl")
         }
         defer { Darwin.close(descriptor) }
         try data.withUnsafeBytes { buffer in
@@ -168,7 +168,7 @@ extension SessionEventLog {
             while written < buffer.count {
                 let count = Darwin.write(descriptor, base.advanced(by: written), buffer.count - written)
                 guard count > 0 else {
-                    throw SessionStoreError.io("could not append to messages.jsonl")
+                    throw SessionStoreError.io("无法写入 messages.jsonl")
                 }
                 written += count
             }

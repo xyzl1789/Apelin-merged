@@ -81,10 +81,10 @@ public struct CredentialInbox: Sendable {
 
         var description: String {
             switch self {
-            case .notARegularFile: "not a regular file (links are not followed); removed"
+            case .notARegularFile: "不是普通文件（不跟随链接）；已移除"
             case .tooLarge: "larger than 64 KiB; removed"
-            case let .unreadable(code): "could not be read (\(String(cString: strerror(code))))"
-            case .notCredentials: "not a kwwk credential or auth.json map; removed"
+            case let .unreadable(code): "无法读取（\(String(cString: strerror(code)))）"
+            case .notCredentials: "不是 kwwk 凭据或 auth.json 映射；已移除"
             case let .unknownProvider(id): "\(id) is not a provider Apelin offers; removed"
             }
         }

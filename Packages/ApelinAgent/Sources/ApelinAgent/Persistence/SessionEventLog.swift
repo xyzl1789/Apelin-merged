@@ -8,8 +8,8 @@ public enum SessionStoreError: Error, Equatable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case let .invalidSessionID(id): "'\(id)' is not a session id"
-        case let .corrupt(detail): "session record is damaged: \(detail)"
+        case let .invalidSessionID(id): "「\(id)」不是有效的会话标识"
+        case let .corrupt(detail): "会话记录损坏：\(detail)"
         case let .io(detail): detail
         }
     }
@@ -139,7 +139,7 @@ public actor SessionEventLog {
         let events = directory.appendingPathComponent("events.jsonl")
         if !FileManager.default.fileExists(atPath: events.path) {
             guard FileManager.default.createFile(atPath: events.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
-                throw SessionStoreError.io("could not create \(events.lastPathComponent)")
+                throw SessionStoreError.io("无法创建 \(events.lastPathComponent)")
             }
         }
         let scan = try Self.scan(events)
@@ -370,11 +370,11 @@ public actor SessionEventLog {
         let url = directory.appendingPathComponent(name)
         let temporary = directory.appendingPathComponent(".\(name).\(UUID().uuidString)")
         guard FileManager.default.createFile(atPath: temporary.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
-            throw SessionStoreError.io("could not write \(name)")
+            throw SessionStoreError.io("无法写入 \(name)")
         }
         guard rename(temporary.path, url.path) == 0 else {
             unlink(temporary.path)
-            throw SessionStoreError.io("could not replace \(name)")
+            throw SessionStoreError.io("无法替换 \(name)")
         }
     }
 

@@ -68,10 +68,10 @@ struct FrameworkTools: Sendable {
         let header = arguments.argString("header")
         let symbol = arguments.argString("symbol")
         guard header == nil || symbol == nil else {
-            throw ToolArgumentError("pass header or symbol, not both")
+            throw ToolArgumentError("请只传 header 或 symbol 之一，不要都传")
         }
         if let symbol, !Self.isIdentifier(symbol) {
-            throw ToolArgumentError("symbol must be a C or Objective-C name, like VNFaceObservation")
+            throw ToolArgumentError("symbol 必须是 C 或 Objective-C 名称，如 VNFaceObservation")
         }
         let framework = try locate(name, privateFirst: arguments.argBool("private"))
         if let symbol {
@@ -82,7 +82,7 @@ struct FrameworkTools: Sendable {
             return framework.title + "\n" + (headers.isEmpty ? noHeaders(framework) : headers.joined(separator: "\n"))
         }
         guard !header.contains("/"), !header.contains("\0"), !header.hasPrefix(".") else {
-            throw ToolArgumentError("header must be a file name")
+            throw ToolArgumentError("header 必须是文件名")
         }
         do {
             let path = try sdk.resolveExisting("\(framework.path)/Headers/\(header)")
@@ -128,7 +128,7 @@ struct FrameworkTools: Sendable {
             }
         }
         let similar = similarFrameworks(name)
-        var message = "No framework named \(name) in Frameworks or PrivateFrameworks of this SDK; "
+        var message = "该 SDK 的 Frameworks 或 PrivateFrameworks 中没有名为 \(name) 的框架；"
         message += similar.isEmpty
             ? "none there has a similar name"
             : "similar: \(similar.joined(separator: ", "))"
@@ -237,7 +237,7 @@ struct FrameworkTools: Sendable {
             name = String(name.dropLast(".framework".count))
         }
         guard !name.isEmpty, !name.contains("/"), !name.contains("\0"), !name.hasPrefix(".") else {
-            throw ToolArgumentError("framework must be a name like UIKit")
+            throw ToolArgumentError("framework 必须是类似 UIKit 的名称")
         }
         return name
     }

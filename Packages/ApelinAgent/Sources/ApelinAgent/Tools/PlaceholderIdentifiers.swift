@@ -26,13 +26,13 @@ public enum PlaceholderIdentifiers {
     /// the name its goal gave it.
     static func renameHint(in root: ScopedRoot) -> String? {
         guard let named = named(in: root) else { return nil }
-        return "This project's \(named.subject) Apelin made up: ask the user for \(named.permanent) before the first install and keep \(named.them) the same for debug and release builds (file_grep for local.apelin. finds every file that spells one). Once a package of this project is installed, a new identifier makes another package: agree a migration with the user first, as the apelin-packaging-and-install skill says."
+        return "该项目的\(named.subject)是 Apelin 自动生成的：首次安装前请向用户索取\(named.permanent)，并在 debug 与 release 构建中保持一致（用 file_grep 搜 local.apelin. 可找到所有出现处）。该项目的包一旦安装，新的标识符就是另一个包：先与用户商定迁移方式，参见 apelin-packaging-and-install 技能。"
     }
 
     /// A Debug build's, while nothing the project built is installed.
     static func buildHint(in root: ScopedRoot) -> String? {
         guard let named = named(in: root) else { return nil }
-        return "This project's \(named.subject) Apelin made up, and nothing it built is installed now. Before installing, ask the user for \(named.permanent) or whether to keep \(named.them), the same for debug and release builds: changed after an install, an identifier makes another package (apelin-packaging-and-install skill)."
+        return "该项目的\(named.subject)是 Apelin 自动生成的，且当前没有任何构建产物在安装。安装前请向用户索取\(named.permanent)，或询问保留\(named.them)与否，并在 debug 与 release 构建中保持一致：安装后更改标识符等于另一个包（apelin-packaging-and-install 技能）。"
     }
 
     /// Each placeholder the project still carries, as the notes name it:

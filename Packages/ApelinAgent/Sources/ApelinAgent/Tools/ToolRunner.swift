@@ -168,7 +168,7 @@ actor ToolRunner {
             return "a plan runs nothing as root"
         }
         guard let command = try? CommandClassifier.classify(arguments) else {
-            return "the command could not be read; give a plain argv that reads"
+            return "无法读取该命令；请给出可读的普通 argv"
         }
         guard case let .argv(argv) = command else {
             return "shell text, pipes and scripts are not reads; give a plain argv"
@@ -322,7 +322,7 @@ actor ToolRunner {
         // approval mode says, because a plan is not the approval mode.
         if runMode == .plan, let verdict = planVerdict(for: tool, arguments: arguments) {
             journal?.note(ToolCallOutcome(.denied, "a plan run refused it: \(verdict)"), for: toolCallID)
-            throw ToolDeniedError(message: "refused: this run is a plan — \(verdict)")
+            throw ToolDeniedError(message: "已拒绝：本次运行处于计划模式 — \(verdict)")
         }
         let facts = try await gatherFacts(tool, arguments: arguments)
         let workingDirectory = arguments.argString("cwd") ?? "."
@@ -359,14 +359,14 @@ actor ToolRunner {
                 cancellation: cancellation,
             )
         }
-        let hostRefusal = "Apelin could not confirm that this command is one of your approved presets. Review it before running."
+        let hostRefusal = "Apelin 无法确认该命令属于你批准的预设。运行前请先审查。"
         let evidence: ApprovalEvidence
         switch policy.evaluate(facts, root: root) {
         case let .allow(allowed):
             evidence = allowed
         case let .deny(reason):
             journal?.note(ToolCallOutcome(.denied, "the approval policy refused it: \(reason)"), for: toolCallID)
-            throw ToolDeniedError(message: "refused: \(reason)\(readOnlyNote(tool))")
+            throw ToolDeniedError(message: "已拒绝：\(reason)\(readOnlyNote(tool))")
         case let .ask(reason, detail):
             evidence = try await ask(reason, detail)
         }
@@ -452,7 +452,7 @@ actor ToolRunner {
             if cancellation?.isCancelled != true, !Task.isCancelled {
                 journal?.note(ToolCallOutcome(.denied, "the user declined it"), for: toolCallID)
             }
-            throw ToolDeniedError(message: "the user declined this call\(reason.map { ": \($0)" } ?? "")")
+            throw ToolDeniedError(message: "用户拒绝了该调用\(reason.map { "：\($0)" } ?? "")")
         }
     }
 
@@ -504,7 +504,7 @@ actor ToolRunner {
         let files = ProjectFileTools(root: root)
         switch name {
         case .todoList, .todoWrite:
-            guard let todos else { throw ToolDeniedError(message: "Todo storage is unavailable.") }
+            guard let todos else { throw ToolDeniedError(message: "待办存储不可用。") }
             let tools = TodoTools(store: todos, sessionID: sessionID)
             switch name {
             case .todoList: return try json(tools.list())
@@ -512,11 +512,11 @@ actor ToolRunner {
             default: throw ToolDeniedError(message: "unknown tool")
             }
         case .memoryList, .memorySave, .memoryDelete:
-            guard let memory else { throw ToolDeniedError(message: "Memory storage is unavailable.") }
+            guard let memory else { throw ToolDeniedError(message: "记忆存储不可用。") }
             do {
                 if name == .memoryList, arguments.argBool("all_projects") == true {
                     guard arguments.argNonEmptyString("project") == nil else {
-                        throw ToolArgumentError("Name one project with project, or every project with all_projects, not both.")
+                        throw ToolArgumentError("请用 project 指定一个项目，或用 all_projects 指定所有项目，二选一。")
                     }
                     let snapshot = try memory.read()
                     return try await json(MemoryTools.listEveryProject(snapshot, projects: memoryProjects(snapshot)))
@@ -528,15 +528,15 @@ actor ToolRunner {
                 default: return try json(tools.delete(arguments))
                 }
             } catch MemoryStoreError.changed {
-                throw ToolDeniedError(message: "Memory changed. Read apelin_memory_list again and respect the user's latest corrections or deletions; do not blindly retry.")
+                throw ToolDeniedError(message: "记忆已被修改。请重新读取 apelin_memory_list 并尊重用户最新的更正或删除；不要盲目重试。")
             } catch MemoryStoreError.invalidContent {
-                throw ToolArgumentError("Memory needs a nonempty, single-line title and nonempty body, without NUL bytes.")
+                throw ToolArgumentError("记忆需要非空的单行标题和非空正文，且不含 NUL 字节。")
             } catch MemoryStoreError.full {
-                throw ToolArgumentError("Memory is full (\(MemoryStore.maximumRecords) records or \(MemoryStore.maximumContentBytes) content bytes). Consolidate outdated records before adding more.")
+                throw ToolArgumentError("记忆已满（最多 \(MemoryStore.maximumRecords) 条或 \(MemoryStore.maximumContentBytes) 字节内容）。请先合并过时记录再新增。")
             }
 
         case .skillRead:
-            guard let skills else { throw ToolDeniedError(message: "Skills are unavailable.") }
+            guard let skills else { throw ToolDeniedError(message: "技能不可用。") }
             return try text(SkillReader(userDirectory: skills).read(arguments))
 
         case .skillList:
@@ -545,7 +545,7 @@ actor ToolRunner {
         case .skillSave, .skillRemove:
             // The skill the card named, checked again as kwwk reads it.
             guard let change = facts.skillChange else {
-                throw ToolDeniedError(message: "the skill to change could not be identified")
+                throw ToolDeniedError(message: "无法识别要修改的技能")
             }
             let tools = try skillTools()
             return name == .skillSave ? try json(tools.save(change)) : try json(tools.remove(change))
@@ -553,7 +553,7 @@ actor ToolRunner {
         case .notificationSend:
             // No host request: the `notice` event is relayed with the rest,
             // and the host posts it by its own rules (AgentNoticeTrack).
-            guard let record else { throw ToolDeniedError(message: "Notifications are unavailable.") }
+            guard let record else { throw ToolDeniedError(message: "通知不可用。") }
             let notice = try notices.take(arguments, now: Date())
             try await record(.notice(title: notice.title, body: notice.body))
             return text(notices.sentMessage)
@@ -615,7 +615,7 @@ actor ToolRunner {
             // The project the facts resolved, and for another one the
             // rename its card named.
             guard let target = facts.renamedProject else {
-                throw ToolDeniedError(message: "the project to rename could not be identified")
+                throw ToolDeniedError(message: "无法识别要重命名的项目")
             }
             let automatic = arguments.argBool("automatic") ?? false
             var renamed = try await backend.renameProject(ProjectRenameToolRequest(
@@ -635,7 +635,7 @@ actor ToolRunner {
         case .projectDelete:
             // The project the card named.
             guard let deletion = facts.projectDeletion else {
-                throw ToolDeniedError(message: "the project to delete could not be identified")
+                throw ToolDeniedError(message: "无法识别要删除的项目")
             }
             return try await json(backend.deleteProject(ProjectDeleteToolRequest(
                 context: context,
@@ -663,7 +663,7 @@ actor ToolRunner {
 
         case .shellRun:
             guard let invocation = facts.command else {
-                throw ToolArgumentError("shell_run needs argv, command or script")
+                throw ToolArgumentError("shell_run 需要 argv、command 或 script")
             }
             let timeout = min(1800, max(1, arguments.argInt("timeout_seconds") ?? 120))
             let ran = try await backend.runCode(RunCodeRequest(
@@ -687,7 +687,7 @@ actor ToolRunner {
             } else if let state = facts.description {
                 digest = state.digest
             } else {
-                throw ToolDeniedError(message: "the build description could not be checked")
+                throw ToolDeniedError(message: "无法检查构建描述")
             }
             let configuration = BuildConfiguration(rawValue: arguments.argString("configuration") ?? "debug") ?? .debug
             var built = try await backend.build(BuildRequest(
@@ -703,7 +703,7 @@ actor ToolRunner {
 
         case .packageInstall:
             guard let state = facts.description else {
-                throw ToolDeniedError(message: "the packaging description could not be checked")
+                throw ToolDeniedError(message: "无法检查打包描述")
             }
             var installed = try await backend.install(InstallRequest(
                 context: context,
@@ -719,7 +719,7 @@ actor ToolRunner {
         case .packageRemove:
             // The installation the card named, by its id or found for the package.
             guard let installationID = facts.installationID else {
-                throw ToolDeniedError(message: "the package to remove could not be identified")
+                throw ToolDeniedError(message: "无法识别要移除的包")
             }
             do {
                 return try await json(backend.removePackage(RemovePackageRequest(
@@ -734,7 +734,7 @@ actor ToolRunner {
         case .packagePublish:
             // The repository and packages the card named.
             guard let publication = facts.packagePublish else {
-                throw ToolDeniedError(message: "the packages to publish could not be read")
+                throw ToolDeniedError(message: "无法读取要发布的包")
             }
             return try await json(backend.publishPackages(PackagePublishToolRequest(context: context, publication: publication)))
 
@@ -834,7 +834,7 @@ actor ToolRunner {
 
         case .gitStage, .gitUnstage:
             guard let paths = arguments.argStrings("paths"), !paths.isEmpty else {
-                throw ToolArgumentError("paths must be a non-empty list of project-relative paths")
+                throw ToolArgumentError("paths 必须是项目相对路径的非空列表")
             }
             let request = GitPathsToolRequest(context: context, paths: paths)
             return try await json(name == .gitStage ? backend.gitStage(request) : backend.gitUnstage(request))
@@ -842,7 +842,7 @@ actor ToolRunner {
         case .gitCommit:
             let message = try arguments.requireString("message")
             guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw ToolArgumentError("the commit message is empty")
+                throw ToolArgumentError("提交信息为空")
             }
             return try await json(backend.gitCommit(GitCommitToolRequest(
                 context: context,
@@ -911,7 +911,7 @@ actor ToolRunner {
         case .gitTag:
             let tagAction = try arguments.requireString("action")
             guard let action = GitTagToolRequest.Action(rawValue: tagAction) else {
-                throw ToolArgumentError("git_tag needs action create or delete.")
+                throw ToolArgumentError("git_tag 需要 action 为 create 或 delete。")
             }
             return try await json(backend.gitTag(GitTagToolRequest(
                 context: context,
@@ -925,7 +925,7 @@ actor ToolRunner {
         case .gitStash:
             let stashAction = try arguments.requireString("action")
             guard let action = GitStashToolRequest.Action(rawValue: stashAction) else {
-                throw ToolArgumentError("git_stash needs action list, save, apply, drop or clear.")
+                throw ToolArgumentError("git_stash 需要 action 为 list、save、apply、drop 或 clear。")
             }
             return try await json(backend.gitStash(GitStashToolRequest(
                 context: context,
@@ -938,14 +938,14 @@ actor ToolRunner {
 
         case .gitRestore, .gitClean:
             guard let paths = arguments.argStrings("paths"), !paths.isEmpty else {
-                throw ToolArgumentError("paths must be a non-empty list of project-relative paths")
+                throw ToolArgumentError("paths 必须是项目相对路径的非空列表")
             }
             if name == .gitClean {
                 return try await json(backend.gitClean(GitCleanToolRequest(context: context, paths: paths)))
             }
             let source = arguments.argString("source") ?? "head"
             guard let restoreSource = GitRestoreRequest.Source(rawValue: source) else {
-                throw ToolArgumentError("git_restore needs source head or index.")
+                throw ToolArgumentError("git_restore 需要 source 为 head 或 index。")
             }
             return try await json(backend.gitRestore(GitRestoreToolRequest(
                 context: context,
@@ -1002,7 +1002,7 @@ actor ToolRunner {
         case .gitResetToRemote:
             // The reset the card named, held to the state it showed.
             guard let reset = facts.resetToRemote else {
-                throw ToolDeniedError(message: "what the reset would discard could not be read")
+                throw ToolDeniedError(message: "无法读取该重置将丢弃的内容")
             }
             return try await json(backend.gitResetToRemote(GitResetToolRequest(context: context, approval: reset)))
 
@@ -1033,7 +1033,7 @@ actor ToolRunner {
         case .gitCreateRepository:
             // The repository the card named.
             guard let repository = facts.repositoryCreate else {
-                throw ToolDeniedError(message: "the repository to create could not be read")
+                throw ToolDeniedError(message: "无法读取要创建的仓库")
             }
             return try await json(backend.createRepository(RepositoryCreateToolRequest(
                 context: context,
@@ -1046,7 +1046,7 @@ actor ToolRunner {
         case .gitCreateIssue:
             // The repository and the issue the card named.
             guard let issue = facts.issueCreate else {
-                throw ToolDeniedError(message: "the issue to open could not be read")
+                throw ToolDeniedError(message: "无法读取要创建的议题")
             }
             return try await json(backend.createIssue(IssueCreateToolRequest(
                 context: context,
@@ -1058,7 +1058,7 @@ actor ToolRunner {
         case .conversationCreate:
             let prompt = try arguments.requireString("prompt")
             guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw ToolArgumentError("the prompt is empty: say what the other conversation should do and deliver")
+                throw ToolArgumentError("提示为空：请说明另一个对话应做什么、交付什么")
             }
             return try await json(backend.conversationCreate(ConversationCreateToolRequest(
                 context: context,
@@ -1070,15 +1070,15 @@ actor ToolRunner {
         case .conversationSend:
             let target = try Self.conversation(arguments)
             guard target != sessionID else {
-                throw ToolArgumentError("session_id is this conversation; send to another one")
+                throw ToolArgumentError("session_id 是当前对话；请发送到另一个对话")
             }
             let text = try arguments.requireString("text")
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw ToolArgumentError("the message is empty")
+                throw ToolArgumentError("消息为空")
             }
             let deliveryValue = arguments.argString("delivery") ?? "queue"
             guard let delivery = AgentMessageDelivery(rawValue: deliveryValue) else {
-                throw ToolArgumentError("delivery must be queue or steer")
+                throw ToolArgumentError("delivery 必须是 queue 或 steer")
             }
             return try await json(backend.conversationSend(ConversationSendToolRequest(
                 context: context,
@@ -1121,7 +1121,7 @@ actor ToolRunner {
         case .toolchainSetup:
             // The release the card named, by product ID.
             guard let setup = facts.toolchainSetup else {
-                throw ToolDeniedError(message: "the toolchain to set up could not be identified")
+                throw ToolDeniedError(message: "无法识别要安装的工具链")
             }
             return try await json(backend.toolchainSetup(ToolchainSetupToolRequest(
                 context: context,
@@ -1131,7 +1131,7 @@ actor ToolRunner {
 
         case .sdkImport:
             guard let sdkImport = facts.sdkImport else {
-                throw ToolDeniedError(message: "the SDK to import could not be identified")
+                throw ToolDeniedError(message: "无法识别要导入的 SDK")
             }
             return try await json(backend.sdkImport(SDKImportToolRequest(
                 context: context,
@@ -1151,7 +1151,7 @@ actor ToolRunner {
         case .feedbackSend:
             // The issue the card named.
             guard let feedback = facts.feedback else {
-                throw ToolDeniedError(message: "the feedback to send could not be read")
+                throw ToolDeniedError(message: "无法读取要发送的反馈")
             }
             return try await json(backend.sendFeedback(FeedbackToolRequest(
                 context: context,
@@ -1168,7 +1168,7 @@ actor ToolRunner {
         case .feedbackEdit:
             // The edit the card named, against the text read before asking.
             guard let edit = facts.feedbackEdit else {
-                throw ToolDeniedError(message: "the edit to make could not be read")
+                throw ToolDeniedError(message: "无法读取要进行的编辑")
             }
             return try await json(backend.editFeedback(FeedbackEditToolRequest(
                 context: context,
@@ -1192,10 +1192,10 @@ actor ToolRunner {
         let toolchainID = arguments.argNonEmptyString("toolchain_id")
         let sdkID = arguments.argNonEmptyString("sdk_id")
         guard toolchainID != nil || sdkID != nil else {
-            throw ToolArgumentError("name toolchain_id, sdk_id or both")
+            throw ToolArgumentError("请给出 toolchain_id、sdk_id 或两者")
         }
         guard ProjectBuildSystem.read(in: root) != .external else {
-            throw ToolDeniedError(message: "this workspace builds with its own tools through shell_run; it binds no Apelin toolchain or SDK")
+            throw ToolDeniedError(message: "该工作区用自己的工具经 shell_run 构建；它不绑定 Apelin 工具链或 SDK")
         }
         let checked = try await backend.checkEnvironment(EnvironmentCheckToolRequest(
             context: context,
@@ -1234,7 +1234,7 @@ actor ToolRunner {
 
     /// The skills folder's tools; unavailable where the session has none.
     func skillTools() throws -> SkillTools {
-        guard let skills else { throw ToolDeniedError(message: "Skills are unavailable.") }
+        guard let skills else { throw ToolDeniedError(message: "技能不可用。") }
         return SkillTools(directory: skills)
     }
 
@@ -1245,7 +1245,7 @@ actor ToolRunner {
     private func memoryTools(_ store: MemoryStore, naming reference: String?) async throws -> MemoryTools {
         guard let reference else {
             let refusal = project.isTemporary
-                ? "General Chat has no project of its own: name it with project (its projectID or folder name, as apelin_project_list answers them), or use scope global."
+                ? "通用聊天没有自己的项目：请用 project 指定（用其 projectID 或文件夹名，apelin_project_list 可列出）, or use scope global."
                 : nil
             return MemoryTools(store: store, projectID: project.id, newRecordRefusal: refusal)
         }
@@ -1257,10 +1257,10 @@ actor ToolRunner {
             return MemoryTools(
                 store: store,
                 projectID: reference,
-                newRecordRefusal: "No project has the id \(reference) now: its memories can be changed or deleted, not added to.",
+                newRecordRefusal: "当前没有项目使用标识 \(reference)：它的记忆可以修改或删除，但不能新增。",
             )
         }
-        guard !target.isTemporary else { throw ToolDeniedError(message: "a temporary chat keeps no memories of its own") }
+        guard !target.isTemporary else { throw ToolDeniedError(message: "临时对话不保存自己的记忆") }
         return MemoryTools(store: store, projectID: target.id)
     }
 

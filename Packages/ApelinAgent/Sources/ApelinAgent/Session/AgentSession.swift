@@ -648,7 +648,7 @@ public actor AgentSession {
                     try Task.checkCancellation()
                     try cancellation.throwIfCancelled()
                     guard response.stopReason == .stop || response.stopReason == .length else {
-                        throw ApelinError(.unavailable, response.errorMessage ?? "The model did not answer the title request.")
+                        throw ApelinError(.unavailable, response.errorMessage ?? "模型没有回答标题请求。")
                     }
                     let text = Self.text(of: response.content).trimmingCharacters(in: .whitespacesAndNewlines)
                     if let generated = try? JSONDecoder().decode(GeneratedTitle.self, from: Data(Self.unfenced(text).utf8)) {
@@ -858,10 +858,10 @@ public actor AgentSession {
         // by the guard below; a later explicit retry can repair it.
         _ = try? await pendingEvents?.value
         guard generation == stopGeneration else {
-            throw ApelinError(.conflict, "The queue was stopped while this request was preparing. Resume it again to continue.")
+            throw ApelinError(.conflict, "请求准备期间队列被停止。请再次恢复以继续。")
         }
         guard !historyMutation else {
-            throw ApelinError(.conflict, "Wait for the history change before retrying pending input.")
+            throw ApelinError(.conflict, "请等历史更改完成后再重试待处理输入。")
         }
         // An empty queue needs no continuation. Keep a stopped chat paused
         // so a later source delivery does not wake it on its own.
@@ -870,21 +870,21 @@ public actor AgentSession {
         defer { if repairing { endHistoryMutation() } }
         if !pending.state.handoffs.isEmpty {
             guard canMutateHistory else {
-                throw ApelinError(.conflict, "Wait for the current reply before retrying pending input.")
+                throw ApelinError(.conflict, "请等当前回复结束后再重试待处理输入。")
             }
             historyMutation = true
             repairing = true
             pendingBlocked = true
             guard await checkpoint() else {
-                throw ApelinError(.unavailable, "The conversation could not be saved. Pending input stays paused.")
+                throw ApelinError(.unavailable, "无法保存对话。待处理输入保持暂停。")
             }
             await recoverPendingHandoffs(Set(pending.state.handoffs.map(\.id)))
             guard pending.state.handoffs.isEmpty else {
-                throw ApelinError(.unavailable, "A consumed message still awaits durable history. Pending input stays paused.")
+                throw ApelinError(.unavailable, "已处理的消息仍在等待写入历史。待处理输入保持暂停。")
             }
         }
         guard generation == stopGeneration else {
-            throw ApelinError(.conflict, "The queue was stopped while this request was preparing. Resume it again to continue.")
+            throw ApelinError(.conflict, "请求准备期间队列被停止。请再次恢复以继续。")
         }
         try pending.change(.init(sessionID: id, action: .resume))
         pendingBlocked = false
@@ -902,7 +902,7 @@ public actor AgentSession {
             guard let id = request.messageID, !pendingSteers.contains(id),
                   pending.state.messages.contains(where: { $0.id == id && !$0.editing }),
                   runTask != nil, !runEnding, !aborted, !pendingBlocked else {
-                throw ApelinError(.conflict, "Steering requires a pending message and an active run.")
+                throw ApelinError(.conflict, "引导需要一条待处理消息和一个进行中的运行。")
             }
             pendingSteers.insert(id)
         } else {
@@ -922,7 +922,7 @@ public actor AgentSession {
                 await drain.value
             }
             guard dispatchedSteers.contains(id) else {
-                throw ApelinError(.conflict, "The message changed or the run ended before steering could take it.")
+                throw ApelinError(.conflict, "消息已变化或运行已结束，引导未能生效。")
             }
         }
     }
@@ -969,7 +969,7 @@ public actor AgentSession {
                 // persisted-read: read-only image bytes; failure pauses the intact queue, never writes back a partial list.
                 let bytes = try Data(contentsOf: URL(fileURLWithPath: path))
                 guard bytes.count <= Self.maximumAttachmentBytes else {
-                    throw ApelinError(.badRequest, "Attachment too large.")
+                    throw ApelinError(.badRequest, "附件过大。")
                 }
                 return ImageContent(data: bytes.base64EncodedString(), mimeType: attachment.mimeType)
             }
@@ -1151,7 +1151,7 @@ public actor AgentSession {
     /// the legacy self-contained SVG fallback.
     public func generateImage(for prompt: String) async throws -> AgentGenerateImageResponse {
         let prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty else { throw ApelinError(.badRequest, "image prompt is empty") }
+        guard !prompt.isEmpty else { throw ApelinError(.badRequest, "图像提示为空") }
         let conversationModel = agent.state.model
         let conversationAuthResolver = agent.authResolver
         let provider: ProviderConfiguration
@@ -1216,7 +1216,7 @@ public actor AgentSession {
         guard let start = raw.range(of: "<svg"),
               let end = raw.range(of: "</svg>", range: start.lowerBound ..< raw.endIndex)
         else {
-            throw ApelinError(.internal, "the image model did not return SVG")
+            throw ApelinError(.internal, "图像模型没有返回 SVG")
         }
         let svg = String(raw[start.lowerBound ..< end.upperBound])
         return AgentGenerateImageResponse(image: AgentGeneratedImage(
@@ -1249,7 +1249,7 @@ public actor AgentSession {
     /// stops it, and a message sent meanwhile waits for it.
     public func compact() async throws {
         guard runTask == nil, compaction == nil, pendingDrain == nil, !historyMutation else {
-            throw ApelinError(.conflict, "Wait for the current reply to finish, then compact the chat.")
+            throw ApelinError(.conflict, "请等当前回复结束后再压缩对话。")
         }
         aborted = false
         let agent = agent
@@ -1317,7 +1317,7 @@ public actor AgentSession {
         case .refusedTooFewMessages:
             AgentCompactionResult(outcome: .tooShort)
         case .refusedAgentBusy:
-            AgentCompactionResult(outcome: .failed, message: "The chat was busy. Try again when the reply has finished.")
+            AgentCompactionResult(outcome: .failed, message: "对话正忙，请等回复结束后重试。")
         case let .failed(reason):
             aborted
                 ? AgentCompactionResult(outcome: .cancelled)
@@ -1514,7 +1514,7 @@ public actor AgentSession {
                 journal.replyFailed(assistant)
                 await record(.error(
                     message: assistant.errorMessage.map(ErrorDescription.localized)
-                        ?? "The model provider returned an error. Try again.",
+                        ?? "模型供应商返回了错误，请重试。",
                 ))
             }
         case .streamRewind:
@@ -1599,7 +1599,7 @@ public actor AgentSession {
 
     private func saveAttachment(name: String, mimeType: String, data: Data) throws -> AgentAttachment {
         guard data.count <= Self.maximumAttachmentBytes else {
-            throw PathPolicyError.io("The attachment exceeds \(Self.maximumAttachmentBytes >> 20) MB.")
+            throw PathPolicyError.io("附件超过 \(Self.maximumAttachmentBytes >> 20) MB。")
         }
         let path = "Attachments/" + UUID().uuidString.lowercased()
         try workspace.resolveForWrite(path).commit(data, exclusive: true)
@@ -1667,7 +1667,7 @@ public actor AgentSession {
     func settlePendingBeforeHistoryChange() async throws {
         guard !pending.state.handoffs.isEmpty else { return }
         guard await checkpoint(), acceptedPending.isEmpty else {
-            throw ApelinError(.unavailable, "Consumed input still awaits durable history. Retry before changing history.")
+            throw ApelinError(.unavailable, "已处理的输入仍在等待写入历史。请先重试再修改历史。")
         }
     }
 
@@ -1755,7 +1755,7 @@ public actor AgentSession {
             agent.state.messages = saved
             savedMessageCount = saved.count
         } catch {
-            await record(.error(message: "Unable to read the saved conversation: \(error.localizedDescription)"))
+            await record(.error(message: "无法读取已保存的对话：\(error.localizedDescription)"))
         }
     }
 
@@ -1983,7 +1983,7 @@ public actor AgentSession {
             return transcript
         }
         try await log.append(.error(
-            message: "This chat's earlier messages could not be read back, so the conversation goes on from here.",
+            message: "该对话的较早消息无法读取，对话从此处继续。",
         ))
         return transcript
     }

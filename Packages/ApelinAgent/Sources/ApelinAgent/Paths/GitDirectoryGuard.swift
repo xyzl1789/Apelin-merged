@@ -305,6 +305,6 @@ struct GitPointers: Sendable {
     private static func unreadable(_ folder: [UInt8], root: ScopedRoot) -> PathPolicyError {
         let reason = String(cString: strerror(errno))
         let name = root.relative(String(decoding: folder, as: UTF8.self))
-        return .io("could not look for git directories in \(name): \(reason)")
+        return .io("无法在 \(name) 中查找 git 目录：\(reason)")
     }
 }

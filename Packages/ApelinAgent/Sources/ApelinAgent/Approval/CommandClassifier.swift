@@ -16,10 +16,10 @@ public enum CommandClassifier {
         // Two forms that disagree would run whichever came first here, not
         // necessarily the one the model meant.
         if case let .object(fields) = arguments, ["argv", "command", "script"].count(where: { fields[$0] != nil }) > 1 {
-            throw ToolArgumentError("Pass one of argv, command or script, not several.")
+            throw ToolArgumentError("请只传 argv、command 或 script 中的一个，不要多传。")
         }
         if let argv = arguments.argStrings("argv") {
-            guard let first = argv.first, !first.isEmpty else { throw ToolArgumentError("argv is empty") }
+            guard let first = argv.first, !first.isEmpty else { throw ToolArgumentError("argv 为空") }
             return .argv(argv)
         }
         if let script = arguments.argString("script") {
@@ -32,7 +32,7 @@ public enum CommandClassifier {
             }
             return .shell(command)
         }
-        throw ToolArgumentError("shell_run needs argv, command or script")
+        throw ToolArgumentError("shell_run 需要 argv、command 或 script")
     }
 
     /// The words of `text` if it is one simple command, else nil.

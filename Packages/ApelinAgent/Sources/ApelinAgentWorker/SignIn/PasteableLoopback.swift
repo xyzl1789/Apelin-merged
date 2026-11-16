@@ -69,7 +69,7 @@ final class PasteableLoopback: OAuthLoopbackListener, @unchecked Sendable {
         guard let components = URLComponents(string: trimmed), let items = components.queryItems else {
             throw ApelinError(
                 .badRequest,
-                "This is not the address Safari showed after sign-in. Copy the full address from Safari and paste it again.",
+                "这不是登录后 Safari 显示的地址。请从 Safari 复制完整地址后重新粘贴。",
             )
         }
         var parameters: [String: String] = [:]
@@ -84,7 +84,7 @@ final class PasteableLoopback: OAuthLoopbackListener, @unchecked Sendable {
         guard isRedirect else {
             throw ApelinError(
                 .badRequest,
-                "This address does not contain a sign-in code. Copy the full address from Safari and paste it again.",
+                "该地址不包含登录代码。请从 Safari 复制完整地址后重新粘贴。",
             )
         }
         return parameters
@@ -131,9 +131,9 @@ extension PasteableLoopback {
     static let errorPage = """
     <!doctype html>
     <html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-    <title>Sign-In Failed</title>
+    <title>登录失败</title>
     <style>body{font:17px -apple-system,system-ui;padding:3em 1.5em;max-width:30em;margin:0 auto;color:#222}
     @media (prefers-color-scheme:dark){body{background:#000;color:#eee}}</style></head>
-    <body><h1>Unable to Sign In</h1><p>Return to Apelin and try again.</p></body></html>
+    <body><h1>无法登录</h1><p>请返回 Apelin 重试。</p></body></html>
     """
 }

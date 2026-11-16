@@ -216,7 +216,7 @@ public enum KWWKSignIn {
             ]
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let response = response as? HTTPURLResponse, (200 ..< 300).contains(response.statusCode) else {
-                throw ApelinError(.unavailable, "The Copilot account did not allow this model to be enabled.")
+                throw ApelinError(.unavailable, "Copilot 账户不允许启用该模型。")
             }
         }
     }

@@ -97,38 +97,38 @@ public struct GitCommitDetailToolRequest: Sendable, Hashable, Codable {
 /// Test and offline backends may have no repository behind them.
 public extension AgentHostBackend {
     func gitBranches(_: GitBranchesToolRequest) async throws -> GitBranchesResponse {
-        throw ToolDeniedError(message: "branches are not available here")
+        throw ToolDeniedError(message: "此处无法管理分支")
     }
 
     func gitBranchCreate(_: GitBranchCreateToolRequest) async throws -> GitBranchCreateResponse {
-        throw ToolDeniedError(message: "creating branches is not available here")
+        throw ToolDeniedError(message: "此处无法创建分支")
     }
 
     func gitBranchCheckout(_: GitBranchCheckoutToolRequest) async throws -> GitBranchCheckoutResponse {
-        throw ToolDeniedError(message: "switching branches is not available here")
+        throw ToolDeniedError(message: "此处无法切换分支")
     }
 
     func gitBranchDelete(_: GitBranchDeleteToolRequest) async throws -> GitBranchDeleteResponse {
-        throw ToolDeniedError(message: "deleting branches is not available here")
+        throw ToolDeniedError(message: "此处无法删除分支")
     }
 
     func gitBranchRename(_: GitBranchRenameToolRequest) async throws -> GitBranchRenameResponse {
-        throw ToolDeniedError(message: "renaming branches is not available here")
+        throw ToolDeniedError(message: "此处无法重命名分支")
     }
 
     func gitMerge(_: GitMergeToolRequest) async throws -> GitMergeResponse {
-        throw ToolDeniedError(message: "merging branches is not available here")
+        throw ToolDeniedError(message: "此处无法合并分支")
     }
 
     func gitMergeAbort(_: GitMergeAbortToolRequest) async throws -> GitMergeAbortResponse {
-        throw ToolDeniedError(message: "aborting a merge is not available here")
+        throw ToolDeniedError(message: "此处无法中止合并")
     }
 
     func gitLog(_: GitLogToolRequest) async throws -> GitLogResponse {
-        throw ToolDeniedError(message: "git history is not available here")
+        throw ToolDeniedError(message: "此处无法查看 git 历史")
     }
 
     func gitCommitDetail(_: GitCommitDetailToolRequest) async throws -> GitCommitDetailResponse {
-        throw ToolDeniedError(message: "commit details are not available here")
+        throw ToolDeniedError(message: "此处无法查看提交详情")
     }
 }

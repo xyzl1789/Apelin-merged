@@ -46,13 +46,13 @@ struct ProjectFileTools: Sendable {
         let oldText = try arguments.requireString("old_text")
         let newText = try arguments.requireString("new_text")
         let replaceAll = arguments.argBool("replace_all") ?? false
-        guard !oldText.isEmpty else { throw ToolArgumentError("old_text is empty") }
+        guard !oldText.isEmpty else { throw ToolArgumentError("old_text 为空") }
 
         let target = try root.resolveForWrite(path)
         guard target.exists else { throw PathPolicyError.notFound(path) }
         let original = try readText(target.finalPath)
         let occurrences = original.components(separatedBy: oldText).count - 1
-        guard occurrences > 0 else { throw ToolArgumentError("old_text does not occur in \(path)") }
+        guard occurrences > 0 else { throw ToolArgumentError("\(path) 中不存在 old_text") }
         if occurrences > 1, !replaceAll {
             throw ToolArgumentError(
                 "old_text occurs \(occurrences) times in \(path); give more context or set replace_all",
@@ -123,7 +123,7 @@ struct ProjectFileTools: Sendable {
         }
         // Text that begins as an image does is read as text.
         guard !data.prefix(8192).contains(0) else {
-            throw ToolArgumentError("\(name) begins as a \(format) image does, but it could not be decoded")
+            throw ToolArgumentError("\(name) 的开头像 \(format) 图像，但无法解码")
         }
         return nil
     }
@@ -167,7 +167,7 @@ struct ProjectFileTools: Sendable {
         let options: NSRegularExpression.Options = (arguments.argBool("ignore_case") ?? false) ? [.caseInsensitive] : []
         let expression: NSRegularExpression
         do { expression = try NSRegularExpression(pattern: pattern, options: options) } catch {
-            throw ToolArgumentError("invalid regular expression: \(pattern)")
+            throw ToolArgumentError("正则表达式无效：\(pattern)")
         }
         let real = try root.resolveExisting(path)
         var results: [String] = []
@@ -238,7 +238,7 @@ struct ProjectFileTools: Sendable {
         guard root.contains(canonical) else { throw PathPolicyError.outsideRoot(canonical) }
         let fd = open(canonical, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else {
-            throw PathPolicyError.io("could not open \(shown(canonical)): \(String(cString: strerror(errno)))")
+            throw PathPolicyError.io("无法打开 \(shown(canonical))：\(String(cString: strerror(errno)))")
         }
         var info = stat()
         guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else {

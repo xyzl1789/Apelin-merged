@@ -945,7 +945,7 @@ public struct ToolArgumentError: Error, LocalizedError {
 
 extension JSONValue {
     func requireString(_ key: String) throws -> String {
-        guard let value = argString(key) else { throw ToolArgumentError("missing string argument '\(key)'") }
+        guard let value = argString(key) else { throw ToolArgumentError("缺少字符串参数「\(key)」") }
         return value
     }
 }

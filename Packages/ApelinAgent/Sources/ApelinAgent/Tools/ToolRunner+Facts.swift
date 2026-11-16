@@ -64,7 +64,7 @@ extension ToolRunner {
             if ProjectBuildSystem.read(in: root) == .external {
                 let artifact = try arguments.requireString("artifact_id")
                 guard let state = try? await digests.packagingState(ofArtifact: artifact, for: project) else {
-                    throw ToolArgumentError("No build of this workspace made a package \(artifact): build it again with apelin_project_build, then install the artifact that build answers.")
+                    throw ToolArgumentError("该工作区没有构建产出包 \(artifact)：请用 apelin_project_build 重新构建，然后安装其返回的产物。")
                 }
                 facts.description = state
             } else {
@@ -100,7 +100,7 @@ extension ToolRunner {
         case .gitTag:
             let action = try arguments.requireString("action")
             guard let tagAction = GitTagToolRequest.Action(rawValue: action) else {
-                throw ToolArgumentError("git_tag needs action create or delete.")
+                throw ToolArgumentError("git_tag 需要 action 为 create 或 delete。")
             }
             let name = try arguments.requireString("name")
             try GitBranchTools.checkName(name)
@@ -118,19 +118,19 @@ extension ToolRunner {
         case .gitStash:
             let action = try arguments.requireString("action")
             guard let stashAction = GitStashToolRequest.Action(rawValue: action) else {
-                throw ToolArgumentError("git_stash needs action list, save, apply, drop or clear.")
+                throw ToolArgumentError("git_stash 需要 action 为 list、save、apply、drop 或 clear。")
             }
             let index = arguments.argInt("index") ?? 0
-            guard index >= 0 else { throw ToolArgumentError("a stash index cannot be negative.") }
+            guard index >= 0 else { throw ToolArgumentError("贮藏索引不能为负。") }
             facts.stashReads = stashAction == .list
         case .gitRestore, .gitClean:
             guard let paths = arguments.argStrings("paths"), !paths.isEmpty else {
-                throw ToolArgumentError("paths must be a non-empty list of project-relative paths")
+                throw ToolArgumentError("paths 必须是项目相对路径的非空列表")
             }
             if name == .gitRestore {
                 let source = arguments.argString("source") ?? "head"
                 guard GitRestoreRequest.Source(rawValue: source) != nil else {
-                    throw ToolArgumentError("git_restore needs source head or index.")
+                    throw ToolArgumentError("git_restore 需要 source 为 head 或 index。")
                 }
             }
             facts.discardedPaths = paths
@@ -142,7 +142,7 @@ extension ToolRunner {
             let limit = arguments.argInt("limit") ?? 50
             let skip = arguments.argInt("skip") ?? 0
             guard (1 ... 1000).contains(limit), skip >= 0 else {
-                throw ToolArgumentError("git_log needs limit from 1 to 1000 and a nonnegative skip.")
+                throw ToolArgumentError("git_log 需要 1 到 1000 的 limit 和非负的 skip。")
             }
         case .gitRemoteSet:
             try GitRemoteTools.checkSet(arguments)
@@ -188,7 +188,7 @@ extension ToolRunner {
             // github.com is the user's Sign In with GitHub, never a token
             // passed through the conversation; refused before anyone is asked.
             guard host.trimmingCharacters(in: .whitespaces).lowercased() != "github.com" else {
-                throw ToolArgumentError("github.com takes no token here: ask the user to sign in with Sign In with GitHub in Settings ▸ Git.")
+                throw ToolArgumentError("此处 github.com 不接受令牌：请让用户在设置 ▸ Git 里用 Sign In with GitHub 登录。")
             }
             let username = arguments.argString("username") ?? ""
             facts.gitSettings = "the credential for \(host) (user \(username))"
@@ -199,7 +199,7 @@ extension ToolRunner {
             // the card names what is created. The visibility has no default:
             // it is the user's to choose.
             guard let visibility = arguments.argString("visibility").flatMap(GitRepositoryVisibility.init(rawValue:)) else {
-                throw ToolArgumentError("Not created: visibility is public or private, as the user chose; ask them when they have not said.")
+                throw ToolArgumentError("未创建：可见性为 public 或 private，由用户选择；未说明时请先询问。")
             }
             let request = try GitRepositoryCreateRequest(
                 name: arguments.requireString("name").trimmingCharacters(in: .whitespaces),
@@ -208,7 +208,7 @@ extension ToolRunner {
                 description: arguments.argNonEmptyString("description"),
             )
             if let problem = request.problem {
-                throw ToolArgumentError("Not created: \(problem)")
+                throw ToolArgumentError("未创建：\(problem)")
             }
             facts.repositoryCreate = RepositoryCreateApproval(
                 owner: request.owner,
@@ -226,13 +226,13 @@ extension ToolRunner {
                 body: arguments.requireString("body"),
             )
             if let problem = request.problem {
-                throw ToolArgumentError("Nothing was posted: \(problem)")
+                throw ToolArgumentError("未发布：\(problem)")
             }
             guard request.repository.lowercased() != FeedbackRules.repository.lowercased() else {
-                throw ToolArgumentError("Nothing was posted: feedback about Apelin itself goes to \(FeedbackRules.repository) with apelin_feedback_send.")
+                throw ToolArgumentError("未发布：关于 Apelin 本身的反馈请用 apelin_feedback_send 发到 \(FeedbackRules.repository)。")
             }
             if let problem = FeedbackRules.problem(title: request.title, body: request.body) {
-                throw ToolArgumentError("Nothing was posted: \(problem).")
+                throw ToolArgumentError("未发布：\(problem).")
             }
             facts.issueCreate = IssueCreateApproval(repository: request.repository, title: request.title, body: request.body)
         case .packageConfirmLoaded where arguments.argBool("respring") == true:
@@ -258,7 +258,7 @@ extension ToolRunner {
             let title = try arguments.requireString("title").trimmingCharacters(in: .whitespaces)
             let body = try arguments.requireString("body")
             if let problem = FeedbackRules.problem(title: title, body: body) {
-                throw ToolArgumentError("Not sent: \(problem).")
+                throw ToolArgumentError("未发送：\(problem)。")
             }
             facts.feedback = FeedbackApproval(repository: FeedbackRules.repository, title: title, body: body)
         case .feedbackEdit:
@@ -298,13 +298,13 @@ extension ToolRunner {
     ) async throws {
         guard let reference = arguments.argNonEmptyString("project") else {
             if project.isTemporary, name != .conversationList {
-                throw ToolArgumentError("General Chat has no conversations of its own: name the project with project (its projectID or folder name; apelin_conversation_list gives each conversation's, apelin_project_list every project's)")
+                throw ToolArgumentError("通用聊天没有自己的对话：请用 project 指定项目（用其 projectID 或文件夹名；apelin_conversation_list 列出各项目的对话，apelin_project_list 列出所有项目）")
             }
             return
         }
         let target = try await backend.resolveProject(reference)
         guard target.id != project.id else { return }
-        guard !target.isTemporary else { throw ToolDeniedError(message: "a temporary chat's conversations are the user's alone") }
+        guard !target.isTemporary else { throw ToolDeniedError(message: "临时对话的对话只属于用户") }
         facts.targetProject = target
         let action = switch name {
         case .conversationCreate: "create"
@@ -329,21 +329,21 @@ extension ToolRunner {
     private func gatherRename(_ arguments: JSONValue, into facts: inout InvocationFacts) async throws {
         let name = try arguments.requireString("display_name").trimmingCharacters(in: .whitespaces)
         guard ProjectDisplayName.isValid(name) else {
-            throw ToolArgumentError("The name is 1 to \(ProjectDisplayName.maximumLength) characters on one line.")
+            throw ToolArgumentError("名称为单行 1 到 \(ProjectDisplayName.maximumLength) 个字符。")
         }
         let target: ProjectIdentity
         if let reference = arguments.argNonEmptyString("project") {
             target = try await backend.resolveProject(reference)
         } else if project.isTemporary {
-            throw ToolArgumentError("General Chat has no project of its own: name it with project (its projectID or folder name, as apelin_project_list answers them)")
+            throw ToolArgumentError("通用聊天没有自己的项目：请用 project 指定（用其 projectID 或文件夹名，apelin_project_list 可列出）")
         } else {
             target = project
         }
-        guard !target.isTemporary else { throw ToolDeniedError(message: "a temporary chat has no project to rename") }
+        guard !target.isTemporary else { throw ToolDeniedError(message: "临时对话没有可重命名的项目") }
         facts.renamedProject = target
         guard target.id != project.id else { return }
         if arguments.argBool("automatic") == true {
-            throw ToolArgumentError("automatic naming is for this conversation's own project; rename another only when the user asks, without automatic")
+            throw ToolArgumentError("自动命名只用于本对话自己的项目；重命名其他项目须用户要求，且不带 automatic")
         }
         let listed = try? await backend.projects().projects.first { $0.projectID == target.id }
         facts.projectRename = ProjectRenameApproval(
@@ -360,9 +360,9 @@ extension ToolRunner {
     /// the host deletes that one only.
     private func deletionToAsk(_ arguments: JSONValue) async throws -> ProjectDeleteApproval {
         let target = try await backend.resolveProject(arguments.requireString("project"))
-        guard !target.isTemporary else { throw ToolDeniedError(message: "a temporary chat has no project to delete") }
+        guard !target.isTemporary else { throw ToolDeniedError(message: "临时对话没有可删除的项目") }
         guard target.id != project.id else {
-            throw ToolDeniedError(message: "this conversation's own project cannot be deleted from here, since this conversation runs in it: the user deletes it in Projects ▸ All Projects…, or asks from General Chat or another project's conversation")
+            throw ToolDeniedError(message: "无法从这里删除本对话自己的项目，因为本对话就运行在其中：用户可在项目 ▸ 所有项目… 中删除，或从通用聊天或其他项目的对话中提出")
         }
         let listed = try? await backend.projects().projects.first { $0.projectID == target.id }
         return ProjectDeleteApproval(
@@ -379,27 +379,27 @@ extension ToolRunner {
     private func setupToAsk(_ arguments: JSONValue) async throws -> ToolchainSetupApproval {
         let listed = try await backend.toolchains(context: probeContext)
         if let problem = listed.catalogProblem, listed.available.isEmpty {
-            throw ToolDeniedError(message: "Apple's catalog could not be read: \(problem)")
+            throw ToolDeniedError(message: "无法读取 Apple 的目录：\(problem)")
         }
         let product: AvailableToolchain
         if let id = arguments.argNonEmptyString("product_id") {
             guard let match = listed.available.first(where: { $0.productID == id }) else {
-                throw ToolArgumentError("no release \(id) in apelin_toolchain_list's available")
+                throw ToolArgumentError("apelin_toolchain_list 的可用列表中没有发行版 \(id)")
             }
             product = match
         } else if let version = arguments.argNonEmptyString("version") {
             guard let match = listed.available.first(where: { $0.version == version }) else {
-                throw ToolArgumentError("no Command Line Tools \(version) in apelin_toolchain_list's available")
+                throw ToolArgumentError("apelin_toolchain_list 的可用列表中没有 Command Line Tools \(version)")
             }
             product = match
         } else {
             guard let newest = listed.available.first(where: { $0.unavailable == nil }) else {
-                throw ToolDeniedError(message: "no release in Apple's catalog can be set up on this device")
+                throw ToolDeniedError(message: "Apple 目录中没有可在此设备上安装的发行版")
             }
             product = newest
         }
         if let reason = product.unavailable {
-            throw ToolDeniedError(message: "Command Line Tools \(product.version) cannot be set up here: \(reason)")
+            throw ToolDeniedError(message: "无法在此设备上安装 Command Line Tools \(product.version)：\(reason)")
         }
         let swift = arguments.argBool("swift") ?? false
         if swift, product.swift == nil {
@@ -410,7 +410,7 @@ extension ToolRunner {
         if let installed = listed.installed.first(where: { record in
             record.version == product.version && components.allSatisfy(record.components.contains) && record.problem == nil
         }) {
-            throw ToolArgumentError("Command Line Tools \(product.version) is already set up as \(installed.id); bind it with apelin_project_set_environment")
+            throw ToolArgumentError("Command Line Tools \(product.version) 已安装为 \(installed.id)；请用 apelin_project_set_environment 绑定")
         }
         return ToolchainSetupApproval(
             productID: product.productID,
@@ -426,14 +426,14 @@ extension ToolRunner {
         let version = try arguments.requireString("version").trimmingCharacters(in: .whitespaces)
         let listed = try await backend.sdks(context: probeContext)
         if let registered = listed.installed.first(where: { $0.version == version }) {
-            throw ToolArgumentError("iPhoneOS \(version) is already registered as \(registered.id); bind it with apelin_project_set_environment")
+            throw ToolArgumentError("iPhoneOS \(version) 已注册为 \(registered.id)；请用 apelin_project_set_environment 绑定")
         }
         let source = arguments.argNonEmptyString("source")
         guard let offer = listed.available.first(where: {
             $0.version == version && (source == nil || $0.source == source)
         }) else {
             let problems = listed.sourceProblems.isEmpty ? "" : " (\(listed.sourceProblems.joined(separator: "; ")))"
-            throw ToolArgumentError("no enabled source offers iPhoneOS \(version)\(source.map { " in \($0)" } ?? "")\(problems); apelin_sdk_list names what they offer")
+            throw ToolArgumentError("没有启用的源提供 iPhoneOS \(version)\(source.map { "（\($0)）" } ?? "")\(problems)；apelin_sdk_list 列出它们提供的版本")
         }
         return SDKImportApproval(source: offer.source, url: offer.sourceURL, branch: offer.branch, version: offer.version)
     }
@@ -447,9 +447,9 @@ extension ToolRunner {
     private func removalToAsk(_ arguments: JSONValue) async throws -> (installationID: String, listed: ListedInstallation?) {
         switch (arguments.argNonEmptyString("installation_id"), arguments.argNonEmptyString("package_id")) {
         case (nil, nil):
-            throw ToolArgumentError("Give installation_id, from apelin_package_install or apelin_package_list, or package_id.")
+            throw ToolArgumentError("请给 installation_id（来自 apelin_package_install 或 apelin_package_list）或 package_id。")
         case (.some, .some):
-            throw ToolArgumentError("Give installation_id or package_id, not both.")
+            throw ToolArgumentError("请给 installation_id 或 package_id，二选一。")
         case let (installationID?, nil):
             guard let all = try? await backend.installations(InstallationListToolRequest()) else {
                 return (installationID, nil)
@@ -458,7 +458,7 @@ extension ToolRunner {
                 if all.truncated {
                     return (installationID, nil)
                 }
-                throw ToolDeniedError(message: "Apelin has no installation \(installationID) it can remove: the package is gone, a later install replaced it, or the id is not one apelin_package_install or apelin_package_list gave." + Self.removable(in: all.installations))
+                throw ToolDeniedError(message: "Apelin 没有可移除的安装 \(installationID)：包已不在、被后来的安装替换，或该 id 不是 apelin_package_install 或 apelin_package_list 给出的。" + Self.removable(in: all.installations))
             }
             guard listed.removable else {
                 throw ToolDeniedError(message: Self.notRemovable(listed))

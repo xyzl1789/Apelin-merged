@@ -60,7 +60,7 @@ enum PromptRewriter {
     ) async throws -> AgentRewritePromptResponse {
         let draft = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !draft.isEmpty else {
-            throw ApelinError(.badRequest, "There is nothing to rewrite.")
+            throw ApelinError(.badRequest, "没有可改写的内容。")
         }
         let systemPrompt = try instructions(home: home, installRoot: installRoot)
         // The app names the provider and model it is about to message with, as
@@ -68,7 +68,7 @@ enum PromptRewriter {
         // without a model is refused rather than answered by another provider:
         // the text would come back in a voice the reader did not pick.
         guard let provider = request.provider else {
-            throw ApelinError(.badRequest, "Choose a model before rewriting.")
+            throw ApelinError(.badRequest, "请先选择模型再改写。")
         }
         let configuration = try AgentWorker.provider(
             provider: provider,
@@ -108,7 +108,7 @@ enum PromptRewriter {
             guard final.stopReason == .stop || final.stopReason == .length else {
                 throw ApelinError(
                     .badRequest,
-                    final.providerFailure?.message ?? "The model did not answer the rewrite.",
+                    final.providerFailure?.message ?? "模型没有回答改写请求。",
                 )
             }
             return text(of: final.content)
@@ -120,7 +120,7 @@ enum PromptRewriter {
 
         let rewritten = unfenced(answer).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !rewritten.isEmpty else {
-            throw ApelinError(.badRequest, "The model returned nothing to use.")
+            throw ApelinError(.badRequest, "模型没有返回可用内容。")
         }
         return AgentRewritePromptResponse(text: rewritten)
     }

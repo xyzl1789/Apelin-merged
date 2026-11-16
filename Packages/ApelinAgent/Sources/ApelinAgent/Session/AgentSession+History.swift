@@ -36,7 +36,7 @@ extension AgentSession {
     /// `id` and everything after it out of the conversation.
     public func rewind(to id: UUID, truncate: Bool) async throws {
         guard !historyMutation else {
-            throw ApelinError(.conflict, "Wait for the history change before retrying pending input.")
+            throw ApelinError(.conflict, "请等历史更改完成后再重试待处理输入。")
         }
         // Own the boundary before suspending. A Stop's pending Resume must
         // not start another run while this rewind waits for the old one.
@@ -69,7 +69,7 @@ extension AgentSession {
     /// the text `text`. `expected` is the reply's text as the app shows it.
     public func edit(_ id: UUID, reply: Bool, text: String, expected: String?) async throws {
         guard text.count <= AgentHistoryRules.maximumEditLength else {
-            throw ApelinError(.badRequest, "The text is longer than \(AgentHistoryRules.maximumEditLength) characters.")
+            throw ApelinError(.badRequest, "文本超过 \(AgentHistoryRules.maximumEditLength) 个字符。")
         }
         try beginHistoryMutation()
         defer { endHistoryMutation() }
@@ -139,13 +139,13 @@ extension AgentSession {
     /// wrote, so a compaction cannot take an older turn away.
     public func fork(through id: UUID, as newSessionID: String) async throws {
         guard SessionEventLog.isValidSessionID(newSessionID), newSessionID.lowercased() != self.id.lowercased() else {
-            throw ApelinError(.badRequest, "a fork's session ID must be a new UUID")
+            throw ApelinError(.badRequest, "分叉的会话 ID 必须是新的 UUID")
         }
         guard var metadata = try await log.readMetadata() else {
-            throw ApelinError(.notFound, "This chat's record could not be read.")
+            throw ApelinError(.notFound, "该对话的记录无法读取。")
         }
         guard let forked = try await forkedContext(through: id) else {
-            throw ApelinError(.conflict, "No saved model context exists for this message. Older versions did not preserve context removed by compaction or rewind; queued messages have no model context until taken.")
+            throw ApelinError(.conflict, "该消息没有保存的模型上下文。旧版本不保留压缩或回退时移除的上下文；队列中的消息在被处理前也没有模型上下文。")
         }
         let context = forked.context
         // persisted-read: an unreadable log leaves the fork to the snapshot's
@@ -203,12 +203,12 @@ extension AgentSession {
     private static var notInHistory: ApelinError {
         ApelinError(
             .conflict,
-            "This message is no longer in the conversation the model reads: the chat was compacted since, or it was taken back.",
+            "该消息已不在模型读取的对话中：对话在此之后经过了压缩，或消息被撤回。",
         )
     }
 
     private static var replyNotFound: ApelinError {
-        ApelinError(.conflict, "This reply changed since it was shown. Try again.")
+        ApelinError(.conflict, "该回复在显示后已被修改，请重试。")
     }
 
     private func beginHistoryMutation() throws {
@@ -219,7 +219,7 @@ extension AgentSession {
     /// Refuses while a run, queue preparation or another history edit goes.
     private func requireIdle() throws {
         guard canMutateHistory else {
-            throw ApelinError(.conflict, "Wait for the current reply to finish, then try again.")
+            throw ApelinError(.conflict, "请等当前回复结束后重试。")
         }
     }
 
@@ -233,7 +233,7 @@ extension AgentSession {
             try await startConversationSegment(messages)
         } catch {
             agent.state.messages = before
-            throw ApelinError(.unavailable, "Unable to save the conversation history: \(error.localizedDescription)")
+            throw ApelinError(.unavailable, "无法保存对话历史：\(error.localizedDescription)")
         }
     }
 

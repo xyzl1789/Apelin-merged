@@ -115,18 +115,18 @@ public struct GitCleanToolRequest: Sendable, Hashable, Codable {
 /// Test and offline backends may have no repository behind them.
 public extension AgentHostBackend {
     func gitTag(_: GitTagToolRequest) async throws -> GitTagToolResponse {
-        throw ToolDeniedError(message: "tags are not available here")
+        throw ToolDeniedError(message: "此处无法管理标签")
     }
 
     func gitStash(_: GitStashToolRequest) async throws -> GitStashToolResponse {
-        throw ToolDeniedError(message: "stashes are not available here")
+        throw ToolDeniedError(message: "此处无法管理贮藏")
     }
 
     func gitRestore(_: GitRestoreToolRequest) async throws -> GitRestoreResponse {
-        throw ToolDeniedError(message: "restoring paths is not available here")
+        throw ToolDeniedError(message: "此处无法还原路径")
     }
 
     func gitClean(_: GitCleanToolRequest) async throws -> GitDeletePathsResponse {
-        throw ToolDeniedError(message: "cleaning untracked files is not available here")
+        throw ToolDeniedError(message: "此处无法清理未跟踪文件")
     }
 }

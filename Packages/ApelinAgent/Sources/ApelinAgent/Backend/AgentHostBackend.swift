@@ -195,11 +195,11 @@ public extension AgentHostBackend {
 /// projects (a test double, a live test): those tools say so.
 public extension AgentHostBackend {
     func installations(_: InstallationListToolRequest) async throws -> InstallationListToolResponse {
-        throw ToolDeniedError(message: "installed packages are not available here")
+        throw ToolDeniedError(message: "此处无法管理已安装的包")
     }
 
     func resolveProject(_ reference: String) async throws -> ProjectIdentity {
-        throw ToolDeniedError(message: "no project \(reference) is reachable here")
+        throw ToolDeniedError(message: "此处无法访问项目 \(reference)")
     }
 
     func projects() async throws -> ProjectListToolResponse {
@@ -207,77 +207,77 @@ public extension AgentHostBackend {
     }
 
     func renameProject(_: ProjectRenameToolRequest) async throws -> ProjectRenameToolResponse {
-        throw ToolDeniedError(message: "renaming projects is not available here")
+        throw ToolDeniedError(message: "此处无法重命名项目")
     }
 
     func deleteProject(_: ProjectDeleteToolRequest) async throws -> ProjectDeleteToolResponse {
-        throw ToolDeniedError(message: "deleting projects is not available here")
+        throw ToolDeniedError(message: "此处无法删除项目")
     }
 
     func toolchains(context _: HostCallContext) async throws -> ToolchainListToolResponse {
-        throw ToolDeniedError(message: "toolchains are not available here")
+        throw ToolDeniedError(message: "此处无法管理工具链")
     }
 
     func sdks(context _: HostCallContext) async throws -> SDKListToolResponse {
-        throw ToolDeniedError(message: "SDKs are not available here")
+        throw ToolDeniedError(message: "此处无法管理 SDK")
     }
 
     func toolchainSetup(_: ToolchainSetupToolRequest) async throws -> ToolchainTaskToolResponse {
-        throw ToolDeniedError(message: "toolchain setup is not available here")
+        throw ToolDeniedError(message: "此处无法安装工具链")
     }
 
     func toolchainSelfTest(_: ToolchainSelfTestToolRequest) async throws -> ToolchainTaskToolResponse {
-        throw ToolDeniedError(message: "toolchain self-tests are not available here")
+        throw ToolDeniedError(message: "此处无法运行工具链自测")
     }
 
     func sdkImport(_: SDKImportToolRequest) async throws -> SDKImportToolResponse {
-        throw ToolDeniedError(message: "SDK import is not available here")
+        throw ToolDeniedError(message: "此处无法导入 SDK")
     }
 
     func checkEnvironment(_: EnvironmentCheckToolRequest) async throws -> EnvironmentCheckToolResponse {
-        throw ToolDeniedError(message: "project checks are not available here")
+        throw ToolDeniedError(message: "此处无法运行项目检查")
     }
 
     func sendFeedback(_: FeedbackToolRequest) async throws -> FeedbackToolResponse {
-        throw ToolDeniedError(message: "sending feedback is not available here")
+        throw ToolDeniedError(message: "此处无法发送反馈")
     }
 
     func gitSquash(_: GitSquashToolRequest) async throws -> GitSquashResponse {
-        throw ToolDeniedError(message: "squashing commits is not available here")
+        throw ToolDeniedError(message: "此处无法压缩提交")
     }
 
     func readFeedback(_: FeedbackReadToolRequest) async throws -> FeedbackReadToolResponse {
-        throw ToolDeniedError(message: "reading feedback is not available here")
+        throw ToolDeniedError(message: "此处无法读取反馈")
     }
 
     func editFeedback(_: FeedbackEditToolRequest) async throws -> FeedbackEditToolResponse {
-        throw ToolDeniedError(message: "editing feedback is not available here")
+        throw ToolDeniedError(message: "此处无法编辑反馈")
     }
 
     func createRepository(_: RepositoryCreateToolRequest) async throws -> RepositoryCreateToolResponse {
-        throw ToolDeniedError(message: "creating repositories is not available here")
+        throw ToolDeniedError(message: "此处无法创建仓库")
     }
 
     func createIssue(_: IssueCreateToolRequest) async throws -> IssueCreateToolResponse {
-        throw ToolDeniedError(message: "opening issues is not available here")
+        throw ToolDeniedError(message: "此处无法创建议题")
     }
 
     func openToolExtension(id _: String) async throws -> String {
-        throw ToolDeniedError(message: "agent tool extensions are not available here")
+        throw ToolDeniedError(message: "此处无法使用代理工具扩展")
     }
 
     func callToolExtension(_: ToolExtensionCallRequest) async throws -> ToolExtensionCallResponse {
-        throw ToolDeniedError(message: "agent tool extensions are not available here")
+        throw ToolDeniedError(message: "此处无法使用代理工具扩展")
     }
 
     func closeToolExtension(sessionID _: String) async throws {}
 
     func packagePublication(_: PackagePublicationRequest) async throws -> PackagePublication {
-        throw ToolDeniedError(message: "publishing packages is not available here")
+        throw ToolDeniedError(message: "此处无法发布包")
     }
 
     func publishPackages(_: PackagePublishToolRequest) async throws -> PackagePublishToolResponse {
-        throw ToolDeniedError(message: "publishing packages is not available here")
+        throw ToolDeniedError(message: "此处无法发布包")
     }
 }
 

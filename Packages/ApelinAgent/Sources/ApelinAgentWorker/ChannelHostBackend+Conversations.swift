@@ -75,7 +75,7 @@ public extension ChannelHostBackend {
         }
         let note = listed.unreachedProjects.map { count in
             let projects = count == 1 ? "1 more project" : "\(count) more projects"
-            return "The conversations of \(projects) are not listed: name one with project to list its conversations; the user is asked each time in Strict mode. apelin_project_list names every project."
+            return "未列出 \(projects) 的对话：请用 project 参数指定一个项目来列出它的对话（Strict 模式下每次都会询问用户）。apelin_project_list 可列出所有项目。"
         }
         return ConversationListToolResponse(conversations: conversations, note: note)
     }

@@ -84,11 +84,11 @@ extension ToolRunner {
     /// uncommitted changes.
     func squashPlan(_ arguments: JSONValue) async throws -> SquashApproval {
         let message = try arguments.requireString("message").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !message.isEmpty else { throw ToolArgumentError("Nothing was squashed: the message is empty.") }
+        guard !message.isEmpty else { throw ToolArgumentError("没有进行压缩：提交信息为空。") }
         let count = arguments.argInt("count")
         let base = arguments.argNonEmptyString("base")
         guard (count == nil) != (base == nil) else {
-            throw ToolArgumentError("Nothing was squashed: give count or base, one of the two.")
+            throw ToolArgumentError("没有进行压缩：请给 count 或 base，二选一。")
         }
         let preview = try await backend.gitSquash(GitSquashToolRequest(
             context: HostCallContext(sessionID: sessionID, project: project, toolCallID: "", approval: .notRequired),
@@ -112,7 +112,7 @@ extension ToolRunner {
     /// The squash the card named, with the base, head and message it showed,
     /// which the host holds the request to.
     func squash(_ plan: SquashApproval?, context: HostCallContext) async throws -> GitSquashToolResponse {
-        guard let plan else { throw ToolArgumentError("Nothing was squashed: what to combine could not be read.") }
+        guard let plan else { throw ToolArgumentError("没有进行压缩：无法读取要合并的内容。") }
         let squashed = try await backend.gitSquash(GitSquashToolRequest(
             context: context,
             base: plan.base,

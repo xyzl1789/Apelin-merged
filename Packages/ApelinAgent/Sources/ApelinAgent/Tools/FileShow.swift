@@ -72,10 +72,10 @@ extension ProjectFileTools {
     /// and when a copy fails, those already made are taken back.
     func show(_ arguments: JSONValue) throws -> AgentToolResult {
         guard let paths = arguments.argStrings("paths"), !paths.isEmpty else {
-            throw ToolArgumentError("paths must be a non-empty list of project-relative paths")
+            throw ToolArgumentError("paths 必须是项目相对路径的非空列表")
         }
         guard paths.count <= FileShow.maximumFiles else {
-            throw ToolArgumentError("paths names \(paths.count) files; show at most \(FileShow.maximumFiles) at a time")
+            throw ToolArgumentError("paths 指名了 \(paths.count) 个文件；一次最多显示 \(FileShow.maximumFiles) 个")
         }
         let limit = AgentSession.maximumAttachmentBytes
         var files: [String] = []

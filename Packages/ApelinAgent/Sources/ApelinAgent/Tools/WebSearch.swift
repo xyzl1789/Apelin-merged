@@ -33,7 +33,7 @@ struct WebSearch: Sendable {
     func search(_ arguments: JSONValue) async throws -> WebSearchResult {
         let query = try arguments.requireString("query")
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ToolArgumentError("query cannot be empty")
+            throw ToolArgumentError("查询不能为空")
         }
         
         return try await Self.withinTimeout { try await self.performSearch(query: query) }
@@ -55,11 +55,11 @@ struct WebSearch: Sendable {
         ]
         
         guard let jsonData = try? JSONSerialization.data(withJSONObject: requestBody) else {
-            throw ToolDeniedError(message: "failed to encode search request")
+            throw ToolDeniedError(message: "搜索请求编码失败")
         }
         
         guard let url = URL(string: Self.mcpURL) else {
-            throw ToolDeniedError(message: "invalid MCP URL")
+            throw ToolDeniedError(message: "MCP URL 无效")
         }
         
         var request = URLRequest(url: url)
@@ -70,11 +70,11 @@ struct WebSearch: Sendable {
         let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw ToolDeniedError(message: "search service did not answer over HTTP")
+            throw ToolDeniedError(message: "搜索服务没有通过 HTTP 响应")
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw ToolDeniedError(message: "search service returned HTTP \(httpResponse.statusCode)")
+            throw ToolDeniedError(message: "搜索服务返回 HTTP \(httpResponse.statusCode)")
         }
         
         return try Self.parseResponse(data, query: query)
@@ -130,7 +130,7 @@ struct WebSearch: Sendable {
             }
         }
         
-        throw ToolDeniedError(message: "search service returned no readable results")
+        throw ToolDeniedError(message: "搜索服务没有返回可读的结果")
     }
     
     private static func withinTimeout(_ body: @escaping @Sendable () async throws -> WebSearchResult) async throws -> WebSearchResult {

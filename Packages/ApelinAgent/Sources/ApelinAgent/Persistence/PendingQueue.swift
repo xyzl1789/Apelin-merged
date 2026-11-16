@@ -73,7 +73,7 @@ struct PendingQueue {
             state = try JSONDecoder().decode(State.self, from: Data(contentsOf: URL(fileURLWithPath: root.resolveExisting("pending.json"))))
             let ids = (state.messages + state.handoffs).map(\.id)
             guard Set(ids).count == ids.count, Set(ids).isSubset(of: state.seen) else {
-                throw ApelinError(.conflict, "The saved pending queue has inconsistent message identifiers.")
+                throw ApelinError(.conflict, "保存的待处理队列的消息标识不一致。")
             }
             let recovered = state.handoffs.filter { !taken.contains($0.id) }
             state.messages = recovered + state.messages.filter { !taken.contains($0.id) }
@@ -114,7 +114,7 @@ struct PendingQueue {
     mutating func beginDirect(_ message: PendingMessage) throws {
         guard state.messages.isEmpty, state.handoffs.isEmpty,
               !state.seen.contains(message.id) else {
-            throw ApelinError(.conflict, "Direct input requires an empty queue and no outstanding handoff.")
+            throw ApelinError(.conflict, "直接输入要求队列为空且没有未完成的移交。")
         }
         try update {
             $0.seen.insert(message.id)
@@ -129,7 +129,7 @@ struct PendingQueue {
             case .reorder:
                 guard let order = request.order, order.count == state.messages.count,
                       Set(order).count == order.count, Set(order) == Set(state.messages.map(\.id)) else {
-                    throw ApelinError(.conflict, "The pending queue changed; refresh it before reordering.")
+                    throw ApelinError(.conflict, "待处理队列已变化，请先刷新再重新排序。")
                 }
                 let byID = Dictionary(uniqueKeysWithValues: state.messages.map { ($0.id, $0) })
                 state.messages = order.compactMap { byID[$0] }
@@ -140,14 +140,14 @@ struct PendingQueue {
             case .edit, .delete, .hold, .resume:
                 guard let id = request.messageID,
                       let index = state.messages.firstIndex(where: { $0.id == id }) else {
-                    throw ApelinError(.conflict, "The message is no longer pending.")
+                    throw ApelinError(.conflict, "该消息已不在待处理状态。")
                 }
                 switch request.action {
                 case .edit:
                     guard let text = request.text, text.count <= AgentHistoryRules.maximumEditLength,
                           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             || !state.messages[index].attachments.isEmpty else {
-                        throw ApelinError(.badRequest, "Invalid pending message text.")
+                        throw ApelinError(.badRequest, "待处理消息文本无效。")
                     }
                     state.messages[index].text = text
                     state.messages[index].editing = false
@@ -162,7 +162,7 @@ struct PendingQueue {
 
     mutating func take(_ id: UUID) throws -> PendingMessage {
         guard let message = state.messages.first(where: { $0.id == id && !$0.editing }) else {
-            throw ApelinError(.conflict, "The message is no longer pending.")
+            throw ApelinError(.conflict, "该消息已不在待处理状态。")
         }
         try update {
             $0.messages.removeAll { $0.id == id }

@@ -17,7 +17,7 @@ public extension ChannelHostBackend {
             ))
         }
         guard let preview = try? json?.decode(GitResetPreview.self) else {
-            throw GitToolFailure(message: "What a reset to \(request.remote) would discard could not be read.")
+            throw GitToolFailure(message: "无法读取重置到 \(request.remote) 将丢弃的内容。")
         }
         return GitResetPreviewToolResponse(approval: Self.approval(preview, projectID: project.id), upToDate: preview.upToDate)
     }

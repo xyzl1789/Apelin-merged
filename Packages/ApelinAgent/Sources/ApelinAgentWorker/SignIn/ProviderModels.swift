@@ -205,13 +205,13 @@ enum ProviderModels {
                   data.count <= 4 * 1024 * 1024,
                   let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let models = (root["data"] ?? root["models"]) as? [[String: Any]]
-            else { throw ApelinError(.unavailable, "The provider did not return a model list.") }
+            else { throw ApelinError(.unavailable, "供应商没有返回模型列表。") }
             let ids = models.compactMap { ($0["id"] ?? $0["name"]) as? String }
                 .map { $0.hasPrefix("models/") ? String($0.dropFirst(7)) : $0 }
                 .filter { !$0.isEmpty && $0.count <= 256 }
             return Array(Set(ids)).sorted()
         } catch is CancellationError { throw CancellationError() }
-        catch { throw ApelinError(.unavailable, "Unable to fetch models. You can retry or add a model ID manually.") }
+        catch { throw ApelinError(.unavailable, "无法获取模型。你可以重试或手动添加模型 ID。") }
     }
 
     static func modelRequest(_ provider: AgentProvider, credentials: OAuthCredentials) -> URLRequest? {

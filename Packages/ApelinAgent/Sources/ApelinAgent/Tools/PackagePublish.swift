@@ -20,15 +20,15 @@ public enum PackagePublish {
         guard let ids = arguments.argStrings(buildIDsKey)?.map({ $0.trimmingCharacters(in: .whitespaces) }),
               !ids.isEmpty, !ids.contains(where: \.isEmpty)
         else {
-            throw ToolArgumentError("Nothing was published: name the build_id of each release build to publish, as apelin_project_build answered it.")
+            throw ToolArgumentError("没有发布任何内容：请给出每个要发布的发行版构建的 build_id（apelin_project_build 的返回值）。")
         }
         guard ids.count <= DistributionPublishRequest.maximumFiles else {
-            throw ToolArgumentError("Nothing was published: publish at most \(DistributionPublishRequest.maximumFiles) packages at a time.")
+            throw ToolArgumentError("没有发布任何内容：一次最多发布 \(DistributionPublishRequest.maximumFiles) 个包。")
         }
         var seen: Set<String> = []
         for id in ids {
             guard seen.insert(id).inserted else {
-                throw ToolArgumentError("Nothing was published: \(id) is named twice.")
+                throw ToolArgumentError("没有发布任何内容：\(id) 被指名了两次。")
             }
         }
         return ids
@@ -38,13 +38,13 @@ public enum PackagePublish {
     /// `ids` names, in their order; every problem at once, else.
     static func approval(for ids: [String], publication: PackagePublication) throws -> PackagePublishApproval {
         guard publication.builds.count == ids.count else {
-            throw ToolDeniedError(message: "Nothing was published: the builds' package records could not be read.")
+            throw ToolDeniedError(message: "没有发布任何内容：无法读取构建的包记录。")
         }
         var problems: [String] = []
         var packages: [PackagePublishApproval.Package] = []
         for (id, record) in zip(ids, publication.builds) {
             guard let record else {
-                problems.append("No build \(id) made a package: give the build_id apelin_project_build answered, which is also its package artifact's id.")
+                problems.append("构建 \(id) 没有产出包：请给出 apelin_project_build 返回的 build_id，它也是包产物的 id。")
                 continue
             }
             let package = "\(record.packageID) \(record.version) for \(record.architecture)"
@@ -55,7 +55,7 @@ public enum PackagePublish {
                 continue
             }
             guard record.present else {
-                problems.append("The package of \(id), \(package), is no longer in Apelin's build folder: build it again.")
+                problems.append("\(id) 的包 \(package) 已不在 Apelin 的构建文件夹中：请重新构建。")
                 continue
             }
             if let twin = packages.first(where: {
@@ -75,7 +75,7 @@ public enum PackagePublish {
             ))
         }
         guard problems.isEmpty else {
-            throw ToolArgumentError("Nothing was published. " + problems.joined(separator: " "))
+            throw ToolArgumentError("没有发布任何内容。" + problems.joined(separator: " "))
         }
         guard let repository = publication.repository else {
             throw ToolDeniedError(message: Self.noRepository)

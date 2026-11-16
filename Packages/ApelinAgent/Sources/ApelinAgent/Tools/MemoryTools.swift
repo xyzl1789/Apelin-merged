@@ -56,7 +56,7 @@ struct MemoryTools {
                     throw ToolArgumentError(newRecordRefusal)
                 }
                 scope = projectID
-            default: throw ToolArgumentError("scope must be global or project")
+            default: throw ToolArgumentError("scope 必须是 global 或 project")
             }
         }
         let record = try MemoryRecord(
@@ -84,10 +84,10 @@ struct MemoryTools {
     /// of a record another project keeps, which the call reaches by naming it.
     private static func unknown(_ id: String, in all: MemorySnapshot, creating: Bool) -> ToolArgumentError {
         if let owner = all.records.first(where: { $0.id == id })?.projectID {
-            return ToolArgumentError("Memory \(id) is kept for another project: pass project: \(owner) to change it.")
+            return ToolArgumentError("记忆 \(id) 属于另一个项目：请传 project: \(owner) 来修改它。")
         }
         let hint = creating ? " To add a new record, leave id out." : ""
-        return ToolArgumentError("No memory has id \(id); apelin_memory_list shows the ids.\(hint)")
+        return ToolArgumentError("没有标识为 \(id) 的记忆；apelin_memory_list 可列出全部标识。\(hint)")
     }
 
     /// The section for `records`, the ones this session sees; nil when the
@@ -103,7 +103,7 @@ struct MemoryTools {
         encoder.outputFormatting = [.sortedKeys]
         let contents = records.flatMap { try? encoder.encode(PromptRecords(records: $0)) }
             .map { String(decoding: $0, as: UTF8.self) }
-            ?? "Memory storage is unavailable. Do not invent saved memories."
+            ?? "记忆存储不可用。 Do not invent saved memories."
         return SystemPromptText.memory(
             maximumRecords: String(MemoryStore.maximumRecords),
             maximumContentBytes: String(MemoryStore.maximumContentBytes),

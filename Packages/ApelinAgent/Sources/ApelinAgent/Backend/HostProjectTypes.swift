@@ -192,7 +192,7 @@ public struct ProjectDeleteToolResponse: Sendable, Hashable, Codable {
     public init(projectID: String, folder: String) {
         self.projectID = projectID
         self.folder = folder
-        deleted = "The project's folder with every file in it, and its conversations, which were closed first; Apelin no longer lists them."
+        deleted = "项目的文件夹（含其中所有文件）及其对话（对话会先关闭）；Apelin 不再列出它们。"
     }
 }
 

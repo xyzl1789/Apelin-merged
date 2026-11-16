@@ -31,11 +31,11 @@ extension SessionEventLog {
         let url = directory.appendingPathComponent("anchors.json")
         let temporary = directory.appendingPathComponent(".anchors.json.\(UUID().uuidString)")
         guard FileManager.default.createFile(atPath: temporary.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
-            throw SessionStoreError.io("could not write anchors.json")
+            throw SessionStoreError.io("无法写入 anchors.json")
         }
         guard rename(temporary.path, url.path) == 0 else {
             unlink(temporary.path)
-            throw SessionStoreError.io("could not replace anchors.json")
+            throw SessionStoreError.io("无法替换 anchors.json")
         }
     }
 
@@ -110,7 +110,7 @@ extension SessionEventLog {
             for (name, data) in files {
                 let path = folder.appendingPathComponent(name).path
                 guard FileManager.default.createFile(atPath: path, contents: data, attributes: [.posixPermissions: 0o600]) else {
-                    throw SessionStoreError.io("could not write \(name)")
+                    throw SessionStoreError.io("无法写入 \(name)")
                 }
             }
         } catch {

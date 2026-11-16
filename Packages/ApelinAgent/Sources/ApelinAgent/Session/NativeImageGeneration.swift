@@ -25,20 +25,20 @@ enum NativeImageGeneration {
         var errorDescription: String? {
             switch self {
             case .unsupported:
-                return "This provider does not expose a native image-generation endpoint."
+                return "该供应商没有提供原生图像生成端点。"
             case .missingAuthentication:
-                return "The image provider did not return authentication credentials."
+                return "图像供应商未返回身份凭证。"
             case .invalidEndpoint:
-                return "The image provider has an invalid endpoint."
+                return "图像供应商的端点无效。"
             case let .requestFailed(status, message):
                 if let message, !message.isEmpty { return "Image generation failed (HTTP \(status)): \(message)" }
                 return "Image generation failed (HTTP \(status))."
             case .malformedResponse:
-                return "The image provider returned an invalid response."
+                return "图像供应商返回了无效响应。"
             case .invalidImage:
-                return "The image provider returned data that is not a supported image."
+                return "图像供应商返回的数据不是受支持的图像。"
             case .imageTooLarge:
-                return "The generated image is too large to display."
+                return "生成的图像过大，无法显示。"
             }
         }
     }

@@ -15,32 +15,32 @@ enum UserQuestions {
     /// not, in words the model can act on.
     static func question(_ arguments: JSONValue) throws -> AgentQuestion {
         guard let question = plain(arguments.argString("question")) else {
-            throw ToolArgumentError("question is empty: ask it in a sentence or two, in the user's language")
+            throw ToolArgumentError("问题为空：请用一两句话、以用户的语言提问")
         }
         guard question.count <= AgentQuestionRules.maximumQuestionLength else {
-            throw ToolArgumentError("question is \(question.count) characters; keep it to \(AgentQuestionRules.maximumQuestionLength) and put what explains it in your message before the call")
+            throw ToolArgumentError("问题有 \(question.count) 个字符；不超过 \(AgentQuestionRules.maximumQuestionLength)，需要解释的内容写在调用前的消息里")
         }
         guard case let .object(object) = arguments, case let .array(entries)? = object["options"] else {
-            throw ToolArgumentError("options is a list of \(AgentQuestionRules.minimumOptions) to \(AgentQuestionRules.maximumOptions) objects, each with a label")
+            throw ToolArgumentError("options 是 \(AgentQuestionRules.minimumOptions) 到 \(AgentQuestionRules.maximumOptions) 个对象的列表，每个都有 label")
         }
         guard (AgentQuestionRules.minimumOptions ... AgentQuestionRules.maximumOptions).contains(entries.count) else {
-            throw ToolArgumentError("options has \(entries.count); give \(AgentQuestionRules.minimumOptions) to \(AgentQuestionRules.maximumOptions). Other is added by Apelin: do not list it. A question with no options to offer goes in your reply.")
+            throw ToolArgumentError("options 有 \(entries.count) 个；请给 \(AgentQuestionRules.minimumOptions) 到 \(AgentQuestionRules.maximumOptions) 个。「其他」由 Apelin 自动添加，不要列出。没有可选选项的问题请写在回复里。")
         }
         var options: [AgentQuestion.Option] = []
         var seen: Set<String> = []
         for entry in entries {
             guard let label = plain(entry.argString("label")) else {
-                throw ToolArgumentError("Every option needs a label.")
+                throw ToolArgumentError("每个选项都需要一个标签。")
             }
             guard label.count <= AgentQuestionRules.maximumLabelLength else {
-                throw ToolArgumentError("The label \"\(label.prefix(20))…\" is \(label.count) characters; keep each to \(AgentQuestionRules.maximumLabelLength) and put the rest in its detail.")
+                throw ToolArgumentError("选项「\(label.prefix(20))…」有 \(label.count) 个字符；每个标签不超过 \(AgentQuestionRules.maximumLabelLength) 个字符，其余内容放进它的说明里。")
             }
             guard seen.insert(label.lowercased()).inserted else {
-                throw ToolArgumentError("Two options are labelled \"\(label)\"; give each a label of its own.")
+                throw ToolArgumentError("两个选项都标为「\(label)」；请给每个选项一个不同的标签。")
             }
             let detail = plain(entry.argString("detail"))
             if let detail, detail.count > AgentQuestionRules.maximumDetailLength {
-                throw ToolArgumentError("The detail of \"\(label)\" is \(detail.count) characters; keep it to \(AgentQuestionRules.maximumDetailLength), one line.")
+                throw ToolArgumentError("「\(label)」的说明有 \(detail.count) 个字符；不超过 \(AgentQuestionRules.maximumDetailLength) 个字符，且为一行。")
             }
             options.append(AgentQuestion.Option(label: label, detail: detail))
         }
@@ -51,18 +51,18 @@ enum UserQuestions {
     static func answered(_ answer: AgentQuestionAnswer) -> String {
         var lines: [String] = []
         if !answer.selected.isEmpty {
-            lines.append("The user chose " + answer.selected.map { "\"\($0)\"" }.joined(separator: ", ") + ".")
+            lines.append("用户选择了 " + answer.selected.map { "\"\($0)\"" }.joined(separator: ", ") + ".")
         }
         let other = answer.other?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !other.isEmpty {
-            lines.append("The user wrote their own answer:\n\(other)")
+            lines.append("用户自己输入的回答：\n\(other)")
         }
         lines.append("Go on from their answer. It answers this question only: it is not consent to a step that needs the user's explicit consent in their reply.")
         return lines.joined(separator: "\n\n")
     }
 
     /// What the model reads when the reader skipped the question.
-    static let skipped = "The user skipped the question without answering. Do not ask it again now: go on with an assumption you state in your reply, or ask in your reply if you cannot."
+    static let skipped = "用户跳过了问题未作回答。现在不要重复提问：在回复中说明你的假设并继续；无法假设时在回复中询问。"
 
     /// One line, as a card shows it: runs of white space one space, control
     /// characters and bidirectional overrides out. Nil when nothing is left.

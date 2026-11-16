@@ -56,16 +56,16 @@ enum GitFailure {
         // A reason the host named comes before any guess from the words,
         // which a project's name or a URL could set off.
         if reason == ApelinError.Reason.notARepository.rawValue {
-            return "This project has no repository yet: make one with git_init, then commit with git_commit and all: true."
+            return "该项目还没有仓库：先用 git_init 创建，再用 git_commit（all: true）提交。"
         }
         if reason == ApelinError.Reason.noSuchRemote.rawValue {
             guard operation == "git push" else {
-                return "The project has no remote of that name: git_remote_list lists the ones it has, and git_remote_set adds one at the address the user gave you."
+                return "项目没有该名称的远程：git_remote_list 列出现有远程，git_remote_set 按用户给出的地址添加。"
             }
-            return "The project has no such remote yet: ask the user whether to create a GitHub repository for it with apelin_git_create_repository, and with which owner, name and visibility, or for the HTTPS address of an empty repository they made (no README, licence or .gitignore); then git_push with url."
+            return "项目还没有这样的远程：询问用户是否用 apelin_git_create_repository 为它创建 GitHub 仓库（用哪个所有者、名称和可见性），或请用户提供他们创建的空仓库（无 README、许可或 .gitignore）的 HTTPS 地址；然后用带 url 的 git_push 推送。"
         }
         if reason == ApelinError.Reason.headChanged.rawValue {
-            return "The branch moved after the user saw what would be squashed, so nothing was squashed. Tell the user; to squash it still, call git_squash again, which reads the commits again and asks again."
+            return "在用户看到将要合并的内容后分支又变了，因此没有压缩。请告知用户；若仍要压缩，再次调用 git_squash，它会重新读取提交并再次询问。"
         }
         if reason == ApelinError.Reason.remoteURLDiffers.rawValue {
             // The message says where the remote points and what to do instead.
@@ -73,24 +73,24 @@ enum GitFailure {
         }
         if isAuthentication(message, reason: reason) {
             if host == "github.com" {
-                return "The remote wants a credential Apelin does not have for github.com, or refused the saved one: ask the user to sign in with Sign In with GitHub in Settings ▸ Git, then try again."
+                return "远程需要 Apelin 没有的 github.com 凭据，或拒绝了已保存的凭据：请让用户在设置 ▸ Git 里用 Sign In with GitHub 登录后重试。"
             }
             let place = host.map { "for \($0) " } ?? ""
-            return "The remote wants a credential Apelin does not have, or refused the saved one: ask the user for a token \(place)to save with apelin_git_save_credential, then try again."
+            return "远程需要 Apelin 没有的凭据，或拒绝了已保存的凭据：请让用户提供令牌 \(place)并用 apelin_git_save_credential 保存后重试。"
         }
         if operation == "git commit", message.lowercased().contains("author") {
-            return "Ask the user to set the commit author in Settings ▸ Git."
+            return "请让用户在设置 ▸ Git 中设置提交作者。"
         }
         guard code == .conflict else { return nil }
         switch operation {
         case "git pull":
-            return "Pull only fast-forwards: the branch has diverged from its upstream, or a local change is in the way. Tell the user; do not force it."
+            return "pull 只做快进：分支已与其上游分叉，或有本地更改挡路。请告知用户；不要强行推送。"
         case "git push":
-            return "The remote has commits this branch does not. Fetch and pull first (pull only fast-forwards), then merge or rebase as the user agrees. A refused push is never a reason to force it: force_with_lease is only for a forced push the user explicitly asked for."
+            return "远程有本分支没有的提交。请先 fetch 并 pull（pull 只做快进），再在用户同意下 merge 或 rebase。推送被拒绝绝不是强推的理由：force_with_lease 只用于用户明确要求的强制推送。"
         case "git reset to remote":
-            return "Nothing was changed. Call git_reset_to_remote again, so the user sees what it would discard now and decides again."
+            return "未做更改。请再次调用 git_reset_to_remote，让用户看到现在会丢弃什么并重新决定。"
         case "git clone":
-            return "The workspace already has a repository, or files with the same names as the repository's. Tell the user; do not delete their files to make room."
+            return "工作区已有仓库，或存在与仓库同名的文件。请告知用户，不要删除他们的文件来腾位置。"
         default:
             return nil
         }
@@ -101,12 +101,12 @@ enum GitFailure {
     private static func forcedHint(code: ApelinError.Code?, reason: String?) -> String? {
         switch reason {
         case ApelinError.Reason.remoteChanged.rawValue:
-            return "The remote's branch changed after the user approved overwriting it, so nothing was pushed. Tell the user what it is at now; to overwrite it still, call git_push with force_with_lease again, which fetches and asks them again with what would be lost now."
+            return "在用户批准覆盖后远程分支又变了，因此没有推送。请告知用户它现在的状态；若仍要覆盖，再次调用 git_push 并带 force_with_lease，它会重新拉取并以当前将丢失的内容再次询问。"
         case ApelinError.Reason.localChanged.rawValue:
-            return "This branch moved after the user approved the forced push, so nothing was pushed. Tell the user; to push it still, call git_push with force_with_lease again, which asks them again with the commit sent now."
+            return "在用户批准强制推送后分支又变了，因此没有推送。请告知用户；若仍要推送，再次调用 git_push 并带 force_with_lease，它会以当前提交再次询问。"
         default:
             guard code == .conflict else { return nil }
-            return "The remote refused the forced push in its own words above, and nothing was pushed: a protected branch, for one, is the user's to change on the remote. Tell the user what blocks it; never try to get around it."
+            return "远程以原话拒绝了强制推送，什么都没有推送：比如受保护分支只能由用户在远程更改。请告知用户是什么在阻止，绝不要绕过它。"
         }
     }
 }

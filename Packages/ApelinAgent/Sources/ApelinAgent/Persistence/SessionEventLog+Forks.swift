@@ -33,20 +33,20 @@ struct ForkContext: Sendable {
                     continue
                 }
                 guard outstanding.isEmpty else {
-                    throw SessionStoreError.corrupt("an assistant message follows unfinished tool calls")
+                    throw SessionStoreError.corrupt("助手消息后跟着未完成的工具调用")
                 }
                 for block in assistant.content {
                     if case let .toolCall(call) = block, !outstanding.insert(call.id).inserted {
-                        throw SessionStoreError.corrupt("duplicate tool call in a message")
+                        throw SessionStoreError.corrupt("一条消息里出现重复的工具调用")
                     }
                 }
             case let .toolResult(result):
                 guard outstanding.remove(result.toolCallId) != nil else {
-                    throw SessionStoreError.corrupt("tool result has no pending call")
+                    throw SessionStoreError.corrupt("工具结果没有对应的待处理调用")
                 }
             default:
                 guard outstanding.isEmpty else {
-                    throw SessionStoreError.corrupt("a message follows unfinished tool calls")
+                    throw SessionStoreError.corrupt("一条消息后跟着未完成的工具调用")
                 }
             }
             if outstanding.isEmpty { boundary = index + 1 }
@@ -108,7 +108,7 @@ extension SessionEventLog {
     func writeHistorySnapshot(_ messages: [Message], anchors: [String: HistoryAnchor], seal: Bool = false) throws {
         guard !messages.isEmpty else { return }
         guard ForkContext.hasCompleteToolResults(messages) else {
-            throw SessionStoreError.corrupt("cannot archive a conversation with unfinished tool calls")
+            throw SessionStoreError.corrupt("无法归档一个带未完成工具调用的会话")
         }
         // The pending delta belongs to this snapshot too. On a reopened
         // session the opening summary is not a complete event history.
@@ -257,7 +257,7 @@ extension SessionEventLog {
             guard let context = try readForkContext(messageID),
                   try ForkContext.completePrefix(of: context.messages) == context.messages
             else {
-                throw SessionStoreError.corrupt("saved boundary has unfinished tool calls")
+                throw SessionStoreError.corrupt("保存的边界处存在未完成的工具调用")
             }
             manifest.sealed = true
             pending.append((messageID, manifest))
@@ -289,7 +289,7 @@ extension SessionEventLog {
         if case .finished(reason: let reason)? = ending?.event, reason != .aborted {
             // A run that claims it ended cleanly or with a failure yet left
             // calls unanswered is damage, not an interruption: refuse it.
-            throw SessionStoreError.corrupt("unfinished tool calls after a recorded \(reason) run")
+            throw SessionStoreError.corrupt("一次已记录为 \(reason) 的运行之后仍有未完成的工具调用")
         }
         // No recorded stop means the worker died mid-run: the same case an
         // explicit stop lands in, and recovered the same way. The prefix

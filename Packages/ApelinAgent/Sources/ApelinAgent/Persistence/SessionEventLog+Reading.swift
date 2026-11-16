@@ -201,7 +201,7 @@ extension SessionEventLog {
                         let record = (try? decoder.decode(SessionEventRecord.self, from: data)) ?? SessionEventRecord(
                             seq: seq + 1,
                             date: Date(),
-                            event: .error(message: "Part of this chat's history could not be read."),
+                            event: .error(message: "该对话的一部分历史无法读取。"),
                         )
                         seq = record.seq
                         records.append(record)
@@ -220,7 +220,7 @@ extension SessionEventLog {
                 continuation.yield(SessionEventRecord(
                     seq: lastSeq,
                     date: Date(),
-                    event: .error(message: "The rest of this chat's history could not be read: \(error.localizedDescription)"),
+                    event: .error(message: "该对话的其余历史无法读取：\(error.localizedDescription)"),
                 ))
             }
         }

@@ -211,10 +211,10 @@ public actor AccountDesk {
     /// created and neither account listings nor sign-in events expose it.
     public func apiConfiguration(for provider: AgentProvider) async throws -> AgentAPIConfigurationResponse {
         guard let credentials = try await store.credentials(for: provider.storeID) else {
-            throw ApelinError(.notFound, "No saved API configuration was found. Sign in to the provider first.")
+            throw ApelinError(.notFound, "没有找到已保存的 API 配置，请先登录该供应商。")
         }
         guard ProviderModels.usesAPIKey(provider, credentials: credentials) else {
-            throw ApelinError(.denied, "This account does not use an editable API key.")
+            throw ApelinError(.denied, "该账户不使用可编辑的 API 密钥。")
         }
         var values: [String: String] = [:]
         for field in provider.keyFields {
@@ -235,7 +235,7 @@ public actor AccountDesk {
         } catch {
             throw ApelinError(
                 .internal,
-                "Unable to remove the saved sign-in: \(error.localizedDescription). Try again.",
+                "无法移除已保存的登录：\(error.localizedDescription)。请重试。",
             )
         }
     }
@@ -296,7 +296,7 @@ public actor AccountDesk {
         guard let run = running, run.taskID == request.taskID else {
             throw ApelinError(
                 .notFound,
-                "Sign-in \(request.taskID) is no longer waiting for a response. Start signing in again.",
+                "登录 \(request.taskID) 已不在等待响应。请重新开始登录。",
             )
         }
         var values: [AgentSignInField: String] = [:]
@@ -310,11 +310,11 @@ public actor AccountDesk {
         case .deviceCode:
             throw ApelinError(
                 .badRequest,
-                "Complete sign-in on the provider’s website. No response is needed in Apelin.",
+                "请在供应商网站上完成登录。Apelin 中无需响应。",
             )
         case .browser:
             guard values.count == 1, let text = values[.callbackURL] else {
-                throw ApelinError(.badRequest, "a browser sign-in takes only \(AgentSignInField.callbackURL.rawValue)")
+                throw ApelinError(.badRequest, "浏览器登录只接受 \(AgentSignInField.callbackURL.rawValue)")
             }
             guard let loopback = run.loopback else {
                 throw ApelinError(.conflict, "\(run.provider.rawValue) is not waiting for a pasted address")
@@ -322,7 +322,7 @@ public actor AccountDesk {
             try loopback.paste(text)
         case .apiKey:
             guard keyVerification == nil else {
-                throw ApelinError(.conflict, "Provider verification is already running.")
+                throw ApelinError(.conflict, "供应商验证已在进行中。")
             }
             let accepted = try Self.validated(
                 values,
@@ -349,7 +349,7 @@ public actor AccountDesk {
 
     public func models(for provider: AgentProvider) async throws -> AgentModelListResponse {
         guard let credentials = try await store.credentials(for: provider.storeID) else {
-            throw ApelinError(.notFound, "Sign in to the provider first.")
+            throw ApelinError(.notFound, "请先登录该供应商。")
         }
         return try await AgentModelListResponse(models: ProviderModels.fetch(provider, credentials: credentials))
     }
@@ -361,13 +361,13 @@ public actor AccountDesk {
     ) async throws {
         guard !request.models.isEmpty, request.models.count <= 64,
               request.models.allSatisfy({ !$0.isEmpty && $0.count <= 256 && !$0.contains(where: \.isNewline) })
-        else { throw ApelinError(.badRequest, "Select between 1 and 64 valid model IDs.") }
+        else { throw ApelinError(.badRequest, "请选择 1 到 64 个有效模型 ID。") }
         guard let credentials = try await store.credentials(for: request.provider.storeID) else {
-            throw ApelinError(.notFound, "Sign in to the provider first.")
+            throw ApelinError(.notFound, "请先登录该供应商。")
         }
         let usesAPIKey = ProviderModels.usesAPIKey(request.provider, credentials: credentials)
         guard usesAPIKey || request.provider == .githubCopilot else {
-            throw ApelinError(.badRequest, "This OAuth provider does not require model verification.")
+            throw ApelinError(.badRequest, "该 OAuth 供应商不需要模型验证。")
         }
         await stopRunning()
         let run = SignInRun(taskID: taskID, provider: request.provider, method: .apiKey)
@@ -391,7 +391,7 @@ public actor AccountDesk {
                 reporter.finish(
                     taskID,
                     run.isCancelled ? .cancelled : .failed,
-                    run.isCancelled ? nil : "Unable to verify model \(currentModel). Check the model ID and provider access, then try again.",
+                    run.isCancelled ? nil : "无法验证模型 \(currentModel)。请检查模型 ID 与供应商访问权限后重试。",
                 )
             }
             await self?.clear(run)
@@ -437,7 +437,7 @@ public actor AccountDesk {
             switch field.field {
             case .apiKey:
                 guard value.count <= 4096, !value.unicodeScalars.contains(where: Self.isSpaceOrControl) else {
-                    throw ApelinError(.badRequest, "Enter a valid API key without spaces or line breaks.")
+                    throw ApelinError(.badRequest, "请输入不含空格或换行的有效 API 密钥。")
                 }
             case .baseURL:
                 guard value.count <= 2048, let url = URLComponents(string: value),
@@ -445,11 +445,11 @@ public actor AccountDesk {
                       url.host?.isEmpty == false, url.user == nil, url.password == nil,
                       url.query == nil, url.fragment == nil
                 else {
-                    throw ApelinError(.badRequest, "Enter a valid HTTP or HTTPS address.")
+                    throw ApelinError(.badRequest, "请输入有效的 HTTP 或 HTTPS 地址。")
                 }
             case .defaultModel:
                 guard value.count <= 256, !value.unicodeScalars.contains(where: Self.isSpaceOrControl) else {
-                    throw ApelinError(.badRequest, "Enter a valid model ID without spaces or line breaks.")
+                    throw ApelinError(.badRequest, "请输入不含空格或换行的有效模型 ID。")
                 }
             case .callbackURL:
                 throw ApelinError(.badRequest, "\(provider.rawValue) does not ask for \(field.field.rawValue)")
@@ -462,10 +462,10 @@ public actor AccountDesk {
     /// The refusal for an empty required field, which names it.
     private static func missing(_ field: AgentSignInField) -> String {
         switch field {
-        case .apiKey: "Enter an API key."
-        case .baseURL: "Enter the endpoint address."
-        case .defaultModel: "Enter a model ID."
-        case .callbackURL: "Paste the address the browser opened."
+        case .apiKey: "请输入 API 密钥。"
+        case .baseURL: "请输入端点地址。"
+        case .defaultModel: "请输入模型 ID。"
+        case .callbackURL: "请粘贴浏览器打开的地址。"
         }
     }
 
@@ -511,7 +511,7 @@ public actor AccountDesk {
                 try await store.store(signedIn, for: run.provider.storeID)
             } catch {
                 // A store error names a status, never the secret.
-                throw ApelinError(.internal, "Unable to save your sign-in: \(error.localizedDescription). Try again.")
+                throw ApelinError(.internal, "无法保存登录信息：\(error.localizedDescription)。请重试。")
             }
             reporter.finish(taskID, .succeeded, "You are signed in.")
         } catch {
@@ -538,7 +538,7 @@ public actor AccountDesk {
         case is CancellationError: return "Sign-in was cancelled."
         case let error as OAuthLoginError where error == .cancelled: return "Sign-in was declined or cancelled."
         case OAuthLoginError.timedOut, SignInDeadline.passed:
-            return "Sign-in timed out. Try again."
+            return "登录超时，请重试。"
         case let error as ApelinError: return error.message
         default: break
         }
@@ -692,7 +692,7 @@ final class SignInRun: @unchecked Sendable {
     /// Hands the accepted key to the flow, once.
     func deliver(_ values: [AgentSignInField: String]) throws {
         let waiter = try lock.withLock { () throws -> CheckedContinuation<[AgentSignInField: String], Error>? in
-            guard keys == nil, !cancelled else { throw ApelinError(.conflict, "the sign-in has its key already") }
+            guard keys == nil, !cancelled else { throw ApelinError(.conflict, "该登录已有密钥") }
             keys = values
             defer { keyWaiter = nil }
             return keyWaiter

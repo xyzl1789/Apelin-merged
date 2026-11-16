@@ -16,7 +16,7 @@ struct SkillReader {
         let skills = SkillCatalog.load(userDirectory: userDirectory).skills
         let name = skills.contains { $0.name == asked } ? asked : BuiltInSkills.legacyNames[asked] ?? asked
         guard let skill = skills.first(where: { $0.name == name }) else {
-            throw ToolArgumentError("No skill named \(name). Skills: \(skills.map(\.name).joined(separator: ", ")).")
+            throw ToolArgumentError("没有名为 \(name) 的技能。现有技能：\(skills.map(\.name).joined(separator: "、"))。")
         }
         if let file = arguments.argNonEmptyString("file") {
             if let contents = skill.files[file] {

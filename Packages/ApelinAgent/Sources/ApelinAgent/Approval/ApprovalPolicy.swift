@@ -312,7 +312,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
             return .allow(.relaxed)
         }
         guard let command = facts.command else {
-            return .ask(reason: "Apelin could not read this command. Review it before running.", detail: .none)
+            return .ask(reason: "Apelin 无法读取该命令。运行前请先审查。", detail: .none)
         }
         return .ask(
             reason: "Runs as root, with full control of this device. Each command that runs as root needs your approval.",
@@ -337,7 +337,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
             return nil
         }
         guard let use = facts.screenControl else {
-            return .ask(reason: "What this call does on the screen could not be read. \(Self.screenNote)", detail: .none)
+            return .ask(reason: "无法读取该调用在屏幕上的操作。\(Self.screenNote)", detail: .none)
         }
         return .ask(reason: "\(Self.screenPhrase(use)) \(Self.screenNote)", detail: .screenControl(use))
     }
@@ -347,7 +347,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
     /// spends that one approval.
     static func resetVerdict(_ facts: InvocationFacts) -> GateVerdict {
         guard let reset = facts.resetToRemote else {
-            return .ask(reason: "What this reset would discard could not be read.", detail: .none)
+            return .ask(reason: "无法读取该重置将丢弃的内容。", detail: .none)
         }
         return .ask(reason: reset.reason, detail: .resetToRemote(reset))
     }
@@ -357,7 +357,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
     /// say, the card naming the branch and where it goes.
     static func branchDeletionVerdict(_ deletion: InvocationFacts.BranchDeletion?) -> GateVerdict {
         guard let deletion else {
-            return .ask(reason: "What this deletion would remove could not be read.", detail: .none)
+            return .ask(reason: "无法读取该删除将移除的内容。", detail: .none)
         }
         let place = deletion.remote.map { " on \($0)" } ?? ""
         let unmerged = deletion.remote == nil && deletion.force
@@ -499,7 +499,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // skill, and none is granted for the session.
         case .skillSave, .skillRemove:
             guard let change = facts.skillChange else {
-                return .ask(reason: "The skill to change could not be read.", detail: .none)
+                return .ask(reason: "无法读取要修改的技能。", detail: .none)
             }
             return .ask(reason: Self.skillReason(change), detail: .skillChange(change))
 
@@ -514,13 +514,13 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // Irisin: every setup and import asks, naming what is downloaded.
         case .toolchainSetup:
             guard let setup = facts.toolchainSetup else {
-                return .ask(reason: "The toolchain to set up could not be identified.", detail: .none)
+                return .ask(reason: "无法识别要安装的工具链。", detail: .none)
             }
             return .ask(reason: Self.setupReason(setup), detail: .toolchainSetup(setup))
 
         case .sdkImport:
             guard let sdkImport = facts.sdkImport else {
-                return .ask(reason: "The SDK to import could not be identified.", detail: .none)
+                return .ask(reason: "无法识别要导入的 SDK。", detail: .none)
             }
             return .ask(
                 reason: "Imports the iPhoneOS \(sdkImport.version) SDK onto this device from \(sdkImport.source) (branch \(sdkImport.branch) of \(sdkImport.url)): one branch is downloaded, checked and registered for every project. Each import needs your approval.",
@@ -555,7 +555,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // the session.
         case .projectDelete:
             guard let deletion = facts.projectDeletion else {
-                return .ask(reason: "The project to delete could not be identified.", detail: .none)
+                return .ask(reason: "无法识别要删除的项目。", detail: .none)
             }
             return .ask(reason: Self.deletionReason(deletion), detail: .projectDelete(deletion))
 
@@ -571,7 +571,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
 
         case .gitBranchCreate, .gitBranchCheckout, .gitBranchRename, .gitMerge, .gitMergeAbort:
             return .ask(
-                reason: "This changes the project's branches or merge state. Review the named operation before running; each call needs your approval.",
+                reason: "这会改变项目的分支或合并状态。运行前请审查所指名的操作；每次调用都需要你的批准。",
                 detail: .none,
             )
 
@@ -585,17 +585,17 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // the card naming the tag; listing stashes changes nothing.
         case .gitTag:
             guard let tag = facts.tagChange else {
-                return .ask(reason: "This changes the project's tags.", detail: .none)
+                return .ask(reason: "这会改变项目的标签。", detail: .none)
             }
             return tag.deleting
                 ? .ask(reason: "Deletes the tag \(tag.name): nothing in this conversation brings it back.", detail: .none)
                 : .ask(reason: "Makes the \(tag.annotated ? "annotated " : "")tag \(tag.name).", detail: .none)
         case .gitStash:
             guard facts.stashReads != true else { return .allow(.notRequired) }
-            return .ask(reason: "This changes the project's saved work (its stash). Review the named operation before running.", detail: .none)
+            return .ask(reason: "这会改变项目保存的工作（贮藏）。运行前请审查所指名的操作。", detail: .none)
         case .gitRestore, .gitClean:
             guard let paths = facts.discardedPaths else {
-                return .ask(reason: "This discards project files.", detail: .none)
+                return .ask(reason: "这会丢弃项目文件。", detail: .none)
             }
             return Self.discardedPathsVerdict(paths, discarding: facts.tool == .local(.gitRestore))
 
@@ -613,7 +613,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // and the card names where it goes.
         case .gitPush:
             guard let target = facts.push else {
-                return .ask(reason: "Where this push goes could not be read.", detail: .none)
+                return .ask(reason: "无法读取该推送的目标。", detail: .none)
             }
             let branch = target.branch ?? "the checked-out branch"
             let place = target.url.map { "\(target.remote) at \($0)" } ?? target.remote
@@ -628,7 +628,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // commit and the new message, and none is granted for the session.
         case .gitSquash:
             guard let squash = facts.squash else {
-                return .ask(reason: "What this squash combines could not be read.", detail: .none)
+                return .ask(reason: "无法读取该压缩会合并的内容。", detail: .none)
             }
             return .ask(reason: Self.squashReason(squash), detail: .squash(squash))
 
@@ -636,7 +636,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // publishes: every one asks, the card showing the whole text.
         case .feedbackSend:
             guard let feedback = facts.feedback else {
-                return .ask(reason: "The feedback to send could not be read.", detail: .none)
+                return .ask(reason: "无法读取要发送的反馈。", detail: .none)
             }
             return .ask(reason: Self.feedbackReason(feedback), detail: .feedback(feedback))
 
@@ -644,7 +644,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // showing the whole new text.
         case .feedbackEdit:
             guard let edit = facts.feedbackEdit else {
-                return .ask(reason: "The edit to make could not be read.", detail: .none)
+                return .ask(reason: "无法读取要进行的编辑。", detail: .none)
             }
             return .ask(reason: Self.feedbackEditReason(edit), detail: .feedbackEdit(edit))
 
@@ -653,7 +653,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // and visibility.
         case .gitCreateRepository:
             guard let repository = facts.repositoryCreate else {
-                return .ask(reason: "The repository to create could not be read.", detail: .none)
+                return .ask(reason: "无法读取要创建的仓库。", detail: .none)
             }
             return .ask(reason: Self.repositoryReason(repository), detail: .repositoryCreate(repository))
 
@@ -662,7 +662,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // repository and the whole text.
         case .gitCreateIssue:
             guard let issue = facts.issueCreate else {
-                return .ask(reason: "The issue to open could not be read.", detail: .none)
+                return .ask(reason: "无法读取要创建的议题。", detail: .none)
             }
             return .ask(reason: Self.issueReason(issue), detail: .issueCreate(issue))
 
@@ -671,7 +671,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // asks, the card naming the repository and each package's digest.
         case .packagePublish:
             guard let publication = facts.packagePublish else {
-                return .ask(reason: "The packages to publish could not be read.", detail: .none)
+                return .ask(reason: "无法读取要发布的包。", detail: .none)
             }
             return .ask(reason: Self.publishReason(publication), detail: .packagePublish(publication))
 
@@ -680,7 +680,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
         case .gitSetAuthor, .gitSaveCredential, .gitRemoveCredential:
             let summary = facts.gitSettings ?? "a change to the git settings"
             return .ask(
-                reason: "This changes \(summary) for every project. Each change needs your approval.",
+                reason: "这会改变所有项目的 \(summary)。每次更改都需要你的批准。",
                 detail: .gitSettings(summary: summary),
             )
 
@@ -694,17 +694,17 @@ public struct ApprovalPolicy: Sendable, Hashable {
             if presets.readTools.contains(tool) {
                 return .allow(.preset(tool.rawValue))
             }
-            return .ask(reason: "This action is not in your approved presets. Review it before running.", detail: .none)
+            return .ask(reason: "该操作不在你批准的预设中。运行前请先审查。", detail: .none)
 
         case .deviceRespring, .screenInteract:
             if presets.systemTools.contains(tool) {
                 return .allow(.preset(tool.rawValue))
             }
-            return .ask(reason: "This action changes this device. Review it before running.", detail: .none)
+            return .ask(reason: "该操作会更改此设备。运行前请先审查。", detail: .none)
 
         case .shellRun:
             guard let command = facts.command else {
-                return .ask(reason: "Apelin could not read this command. Review it before running.", detail: .none)
+                return .ask(reason: "Apelin 无法读取该命令。运行前请先审查。", detail: .none)
             }
             if case let .argv(argv) = command,
                let preset = presets.commands.first(where: {
@@ -716,12 +716,12 @@ public struct ApprovalPolicy: Sendable, Hashable {
             switch command {
             case .argv:
                 return .ask(
-                    reason: "This command is not in your approved presets. Review it before running.",
+                    reason: "该命令不在你批准的预设中。运行前请先审查。",
                     detail: .command(command),
                 )
             case .shell:
                 return .ask(
-                    reason: "This command uses shell features such as pipes or redirection. Review it before running.",
+                    reason: "该命令使用了管道或重定向等 shell 特性。运行前请先审查。",
                     detail: .command(command),
                 )
             case .script: return .ask(reason: "Scripts require approval each time they run.", detail: .command(command))
@@ -739,14 +739,14 @@ public struct ApprovalPolicy: Sendable, Hashable {
             }
             let kind: DescriptionKind = tool == .projectBuild ? .build : .packaging
             guard let state = facts.description else {
-                return .ask(reason: "The \(kind.rawValue) description could not be checked.", detail: .none)
+                return .ask(reason: "无法检查 \(kind.rawValue) 描述。", detail: .none)
             }
             switch state.baseline {
             case .matchesTemplate: return .allow(.templateMatch(digest: state.digest))
             case .approved: return .allow(.digestApproved(digest: state.digest))
             case let .changed(diff):
                 return .ask(
-                    reason: "The \(kind.rawValue) description changed since the template or your last approval. Review the changes before continuing.",
+                    reason: "\(kind.rawValue) 描述自模板或你上次批准后已更改。继续前请审查更改。",
                     detail: .descriptionChanged(kind: kind, digest: state.digest, diff: diff),
                 )
             }
@@ -755,7 +755,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
             // The session host grants the removal from this detail alone
             // (`allowRemoval`), so a request without it could never be spent.
             guard let installationID = facts.installationID else {
-                return .ask(reason: "The package to remove could not be identified.", detail: .none)
+                return .ask(reason: "无法识别要移除的包。", detail: .none)
             }
             return .ask(
                 reason: Self.removalReason(facts.removedPackage),
@@ -832,7 +832,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
         case "list": "lists the conversations of the project \(reach.projectName)"
         default: "reads a conversation of the project \(reach.projectName)"
         }
-        return "This \(what). Each call that reaches another project needs your approval."
+        return "这\(what)。每次涉及其他项目的调用都需要你的批准。"
     }
 }
 

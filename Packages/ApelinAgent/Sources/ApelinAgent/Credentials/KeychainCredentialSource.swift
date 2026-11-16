@@ -9,7 +9,7 @@ public enum KeychainCredentialError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .status(status): "keychain error \(status)"
-        case let .undecodable(providerID): "Unable to read the saved sign-in for \(providerID). Sign in again."
+        case let .undecodable(providerID): "无法读取 \(providerID) 的已保存登录，请重新登录。"
         }
     }
 }

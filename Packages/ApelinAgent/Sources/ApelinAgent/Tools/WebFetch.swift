@@ -51,10 +51,10 @@ struct WebFetch: Sendable {
     static func target(_ address: String) throws -> URL {
         let address = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: address) else {
-            throw ToolArgumentError("url does not read as an address: \(address)")
+            throw ToolArgumentError("url 不像一个地址：\(address)")
         }
         if let refusal = refusal(url) {
-            throw ToolArgumentError("not fetched: \(refusal); apelin_web_fetch reads public http and https pages")
+            throw ToolArgumentError("未获取：\(refusal)；apelin_web_fetch 只读取公开的 http 和 https 页面")
         }
         return withoutFragment(url)
     }
@@ -97,14 +97,14 @@ struct WebFetch: Sendable {
             }
             bytes.task.cancel()
             guard let next = URL(string: location, relativeTo: url)?.absoluteURL else {
-                throw ToolDeniedError(message: "not followed: \(url.absoluteString) redirects to \(location), which does not read as an address")
+                throw ToolDeniedError(message: "未跟随：\(url.absoluteString) 重定向到 \(location)，它不像一个地址")
             }
             if let refusal = refusal(next) {
-                throw ToolDeniedError(message: "not followed: \(url.absoluteString) redirects to \(next.absoluteString), but \(refusal)")
+                throw ToolDeniedError(message: "未跟随：\(url.absoluteString) 重定向到 \(next.absoluteString)，但\(refusal)")
             }
             url = withoutFragment(next)
         }
-        throw ToolDeniedError(message: "not followed: \(start.absoluteString) redirects more than \(maximumRedirects) times")
+        throw ToolDeniedError(message: "未跟随：\(start.absoluteString) 重定向超过 \(maximumRedirects) 次")
     }
 
     private static func read(_ bytes: URLSession.AsyncBytes, response: HTTPURLResponse, url: URL) async throws -> FetchedPage {
@@ -117,7 +117,7 @@ struct WebFetch: Sendable {
             let size = response.expectedContentLength >= 0
                 ? ByteCountFormatter.string(fromByteCount: response.expectedContentLength, countStyle: .file)
                 : "of unknown size"
-            throw ToolDeniedError(message: "not read: \(url.absoluteString) is \(type ?? ""), \(size); apelin_web_fetch reads text, HTML, JSON and XML")
+            throw ToolDeniedError(message: "未读取：\(url.absoluteString) 的类型是 \(type ?? "")，\(size)；apelin_web_fetch 读取文本、HTML、JSON 和 XML")
         }
         var body: [UInt8] = []
         body.reserveCapacity(Int(min(Int64(maximumBodyBytes), max(0, response.expectedContentLength))))
@@ -131,7 +131,7 @@ struct WebFetch: Sendable {
         }
         // A type that says nothing of the body: text unless it holds a NUL.
         if kind == .unknown, body.prefix(8192).contains(0) {
-            throw ToolDeniedError(message: "not read: \(url.absoluteString) is \(type ?? "of no stated type") and its body is not text")
+            throw ToolDeniedError(message: "未读取：\(url.absoluteString) 的类型是 \(type ?? "未声明类型")，且其正文不是文本")
         }
         let html = kind == .html
         let text = decode(body, charset: header.flatMap(charset), html: html)
@@ -255,7 +255,7 @@ private struct FetchedPage {
     func page(from offset: Int) throws -> WebPage {
         let utf8 = Array(text.utf8)
         guard offset == 0 || offset < utf8.count else {
-            throw ToolArgumentError("offset \(offset) is past the end of the page's text, which is \(utf8.count) bytes")
+            throw ToolArgumentError("offset \(offset) 超过了页面文本的末尾（共 \(utf8.count) 字节）")
         }
         var start = offset
         while start < utf8.count, utf8[start] & 0xC0 == 0x80 {

@@ -50,7 +50,7 @@ public enum AgentWorker {
         case .agentOpen:
             await WorkerMain.serve(AgentOpenRequest.self, request) { open in
                 guard let taskID = request.taskID else {
-                    throw ApelinError(.badRequest, "agentOpen comes with its task")
+                    throw ApelinError(.badRequest, "agentOpen 随其任务一起提供")
                 }
                 try await state.open(open, taskID: taskID, context: context)
                 return AgentOpenResponse(
@@ -84,12 +84,12 @@ public enum AgentWorker {
                         parameters: prompt.modelParameters ?? .init(), defaults: prompt.modelDefaults)
                 }
                 guard (prompt.attachments?.count ?? 0) <= 8 else {
-                    throw ApelinError(.badRequest, "invalid attachment descriptor")
+                    throw ApelinError(.badRequest, "附件描述无效")
                 }
                 let limit = AgentSession.maximumAttachmentBytes
                 let files = try (prompt.attachments ?? []).map { attachment -> (name: String, mimeType: String, data: Data) in
                     guard request.descriptors.indices.contains(attachment.descriptor.index) else {
-                        throw ApelinError(.badRequest, "invalid attachment descriptor")
+                        throw ApelinError(.badRequest, "附件描述无效")
                     }
                     let descriptor = request.descriptors[attachment.descriptor.index]
                     var info = stat()
@@ -104,7 +104,7 @@ public enum AgentWorker {
                     let handle = FileHandle(fileDescriptor: descriptor.rawValue, closeOnDealloc: false)
                     try handle.seek(toOffset: 0)
                     let data = try handle.read(upToCount: limit + 1) ?? Data()
-                    guard data.count <= limit else { throw ApelinError(.badRequest, "attachment too large") }
+                    guard data.count <= limit else { throw ApelinError(.badRequest, "附件过大") }
                     return (attachment.name, attachment.mimeType, data)
                 }
                 // A queued reader choice owns its auxiliary defaults too;
@@ -229,7 +229,7 @@ public enum AgentWorker {
         case .agentModelTest:
             await WorkerMain.serve(AgentModelTestRequest.self, request) { query in
                 guard let taskID = request.taskID else {
-                    throw ApelinError(.badRequest, "a model test requires a task")
+                    throw ApelinError(.badRequest, "模型测试需要一个任务")
                 }
                 // The probe can take a minute: the handle goes back at once and
                 // each stage is emitted as it starts and ends, then the report
@@ -274,7 +274,7 @@ public enum AgentWorker {
         case .agentModelActivate:
             await WorkerMain.serve(AgentModelActivateRequest.self, request) { query in
                 guard let taskID = request.taskID else {
-                    throw ApelinError(.badRequest, "model verification requires a task")
+                    throw ApelinError(.badRequest, "模型验证需要一个任务")
                 }
                 try await accounts.activateModels(query, taskID: taskID, reporter: SignInReporter(context: context))
                 return TaskHandle(taskID: taskID, kind: .signIn)
@@ -282,7 +282,7 @@ public enum AgentWorker {
         case .agentSignIn:
             await WorkerMain.serve(AgentSignInRequest.self, request) { signIn in
                 guard let taskID = request.taskID else {
-                    throw ApelinError(.badRequest, "agentSignIn comes with its task")
+                    throw ApelinError(.badRequest, "agentSignIn 随其任务一起提供")
                 }
                 try await accounts.start(signIn, taskID: taskID, reporter: SignInReporter(context: context))
                 return TaskHandle(taskID: taskID, kind: .signIn)
@@ -341,13 +341,13 @@ public enum AgentWorker {
         case .githubCopilot:
             return .githubCopilot(model: model ?? defaultCopilotModel)
         case .anthropic:
-            guard let model else { throw ApelinError(.badRequest, "name the model for \(provider.rawValue)") }
+            guard let model else { throw ApelinError(.badRequest, "请给出 \(provider.rawValue) 的模型") }
             return .anthropic(model: model, oauth: false)
         case .anthropicOAuth:
-            guard let model else { throw ApelinError(.badRequest, "name the model for \(provider.rawValue)") }
+            guard let model else { throw ApelinError(.badRequest, "请给出 \(provider.rawValue) 的模型") }
             return .anthropic(model: model, oauth: true)
         case .openAICompatible:
-            guard let model else { throw ApelinError(.badRequest, "name the model for \(provider.rawValue)") }
+            guard let model else { throw ApelinError(.badRequest, "请给出 \(provider.rawValue) 的模型") }
             return .openAICompatible(model: model)
         case .openAICodex, .cursor, .devin, .kiro, .antigravity, .qoder, .qoderCN, .workBuddy, .workBuddyAI,
              .trae, .traeIntl, .raccoon,
@@ -357,7 +357,7 @@ public enum AgentWorker {
         case .openAICompatibleEndpoint:
             // As the first endpoint: its base URL is with its key, and the
             // model is named.
-            guard let model else { throw ApelinError(.badRequest, "name the model for \(provider.rawValue)") }
+            guard let model else { throw ApelinError(.badRequest, "请给出 \(provider.rawValue) 的模型") }
             return .stored(storeID: provider.storeID, model: model)
         }
     }
@@ -380,13 +380,13 @@ actor WorkerState {
 
     func open(_ open: AgentOpenRequest, taskID: TaskID, context: WorkerContext) async throws {
         guard session == nil, !opening else {
-            throw ApelinError(.conflict, "this process already serves or is opening a session")
+            throw ApelinError(.conflict, "该进程已在服务或正在打开一个会话")
         }
         guard let sessionID = context.assignment.sessionID, SessionEventLog.isValidSessionID(sessionID) else {
-            throw ApelinError(.badRequest, "an agent session needs a session id from the host")
+            throw ApelinError(.badRequest, "代理会话需要宿主给出的会话 id")
         }
         guard let projectID = open.projectID, let projectName = open.projectName else {
-            throw ApelinError(.badRequest, "the host did not name the session's project")
+            throw ApelinError(.badRequest, "宿主没有指明会话的项目")
         }
         let identity: ApelinAgent.ProjectIdentity
         do {
@@ -516,7 +516,7 @@ actor WorkerState {
 
     func session(_ id: String) throws -> AgentSession {
         guard let session, id == session.id else {
-            throw ApelinError(.notFound, "this process does not serve session \(id)")
+            throw ApelinError(.notFound, "该进程不服务会话 \(id)")
         }
         return session
     }
@@ -524,7 +524,7 @@ actor WorkerState {
     func approve(_ approve: AgentApproveRequest) async throws {
         let session = try session(approve.sessionID)
         guard await session.pendingApprovals.contains(where: { $0.id == approve.approvalID }) else {
-            throw ApelinError(.notFound, "This approval request is no longer waiting for a decision.")
+            throw ApelinError(.notFound, "该审批请求已不在等待决定。")
         }
         // The host records a description or removal approval in its own
         // ledger as it relays this decision; the agent keeps nothing. An

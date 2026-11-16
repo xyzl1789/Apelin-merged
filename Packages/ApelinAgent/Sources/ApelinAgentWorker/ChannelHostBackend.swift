@@ -245,7 +245,7 @@ public struct ChannelHostBackend: AgentHostBackend {
             ready: issues.isEmpty,
             issues: Self.diagnostics(issues),
             note: check.buildSystem == .external
-                ? "This workspace's package is checked when its build script writes it: a release build lists what it finds among its diagnostics."
+                ? "该工作区的包在其构建脚本写出时被检查：发行版构建会在诊断中列出发现的问题。"
                 : nil,
         )
     }
@@ -254,7 +254,7 @@ public struct ChannelHostBackend: AgentHostBackend {
     static func bootstrap(_ raw: String?) throws -> ApelinProtocol.BuildBootstrap? {
         let bootstrap = raw.flatMap(ApelinProtocol.BuildBootstrap.init(rawValue:))
         guard raw == nil || bootstrap != nil else {
-            throw ApelinError(.badRequest, "unknown build bootstrap")
+            throw ApelinError(.badRequest, "未知的构建 bootstrap")
         }
         return bootstrap
     }
@@ -286,7 +286,7 @@ public struct ChannelHostBackend: AgentHostBackend {
     public func createProject(_ request: ProjectCreateToolRequest) async throws -> ProjectCreateToolResponse {
         let format = try request.outputFormat.map { raw -> ProjectOutputFormat in
             guard let format = ProjectOutputFormat(rawValue: raw) else {
-                throw ApelinError(.badRequest, "unknown output_format \(raw); use deb or ipa")
+                throw ApelinError(.badRequest, "未知 output_format \(raw)；请用 deb 或 ipa")
             }
             return format
         }
@@ -509,9 +509,9 @@ public struct ChannelHostBackend: AgentHostBackend {
         let wanted = request.sdkID ?? Self.pinnedSDK(projectURL: projectURL)
         let record = wanted.flatMap { id in list.sdks.first { $0.id == id || $0.canonicalName == id } }
             ?? list.sdks.first
-        guard let record else { throw ApelinError(.notFound, "no SDK is registered; add one in Apelin's SDK manager") }
+        guard let record else { throw ApelinError(.notFound, "没有已注册的 SDK；请在 Apelin 的 SDK 管理器中添加") }
         if let asked = request.sdkID, record.id != asked, record.canonicalName != asked {
-            throw ApelinError(.notFound, "no registered SDK matches \(asked)")
+            throw ApelinError(.notFound, "没有与 \(asked) 匹配的已注册 SDK")
         }
         return RegisteredSDKResponse(
             sdkID: record.id,
@@ -678,11 +678,11 @@ public struct ChannelHostBackend: AgentHostBackend {
             fullName: response.fullName,
             cloneURL: response.cloneURL,
             url: response.url,
-            next: "It is empty. To publish the project there, git_push with url \(response.cloneURL): it adds the remote as origin (or as the remote you name, when the user wants another), and asks the user in Strict mode as every push does.",
+            next: "它是空的。要把项目发布到那里，请用带 url \(response.cloneURL) 的 git_push：它会把远程添加为 origin（用户想用其他名字时用那个名字），并在 Strict 模式下像每次推送一样询问用户。",
         )
     }
 
-    static let repositorySignInNeeded = "Nothing was created: GitHub authorization is needed. Ask the user to Sign In with GitHub in Settings ▸ Git, then try again."
+    static let repositorySignInNeeded = "Nothing was created: 需要 GitHub 授权。请让用户在设置 ▸ Git 里用 Sign In with GitHub 登录后重试。"
 
     // MARK: apelin_git_create_issue
 
@@ -702,11 +702,11 @@ public struct ChannelHostBackend: AgentHostBackend {
         return IssueCreateToolResponse(repository: response.repository, issue: response.number, url: response.url)
     }
 
-    static let issueSignInNeededToPost = "Nothing was posted: GitHub authorization is needed. Ask the user to Sign In with GitHub in Settings ▸ Git, then try again."
+    static let issueSignInNeededToPost = "Nothing was posted: 需要 GitHub 授权。请让用户在设置 ▸ Git 里用 Sign In with GitHub 登录后重试。"
 
     static func issueRefused(_ message: String, repository: String) -> String {
         let words = message.hasSuffix(".") ? message : message + "."
-        return "Nothing was posted on \(repository): \(words) Tell the user what blocks it; never post it to another repository, or through a browser or the screen, instead."
+        return "未发布到 \(repository)：\(words)请告知用户是什么在阻止；绝不要改发到另一个仓库，也不要改用浏览器或屏幕操作。"
     }
 
     // MARK: apelin_feedback_send
@@ -723,7 +723,7 @@ public struct ChannelHostBackend: AgentHostBackend {
         return FeedbackToolResponse(repository: FeedbackRules.repository, issue: response.number, url: response.url)
     }
 
-    static let gitHubSignInNeeded = "Nothing was posted: GitHub authorization is needed. Ask the user to Sign In with GitHub in Settings ▸ Git, then send again."
+    static let gitHubSignInNeeded = "未发布：需要 GitHub 授权。请让用户在设置 ▸ Git 里用 Sign In with GitHub 登录后重新发送。"
 
     // MARK: apelin_feedback_read, apelin_feedback_edit
 
@@ -760,7 +760,7 @@ public struct ChannelHostBackend: AgentHostBackend {
                 expectedBody: request.expectedBody,
             ))
         } catch let error as ApelinError where error.reason == .authenticationRequired {
-            throw FeedbackToolFailure(message: "Nothing was changed: " + Self.issueSignInNeeded)
+            throw FeedbackToolFailure(message: "未做更改：" + Self.issueSignInNeeded)
         }
         let changed: [String] = [request.title.map { _ in "title" }, request.body.map { _ in "body" }].compactMap(\.self)
         return FeedbackEditToolResponse(
@@ -773,7 +773,7 @@ public struct ChannelHostBackend: AgentHostBackend {
         )
     }
 
-    static let issueSignInNeeded = "GitHub authorization is needed. Ask the user to Sign In with GitHub in Settings ▸ Git, then try again."
+    static let issueSignInNeeded = "需要 GitHub 授权。请让用户在设置 ▸ Git 里用 Sign In with GitHub 登录后重试。"
 
     static func settings(_ response: GitSettingsResponse) -> GitSettingsToolResponse {
         GitSettingsToolResponse(
@@ -948,7 +948,7 @@ public struct ChannelHostBackend: AgentHostBackend {
                 continue
             }
             if count < 0 {
-                throw ApelinError(.internal, "read: \(String(cString: strerror(errno)))")
+                throw ApelinError(.internal, "读取失败：\(String(cString: strerror(errno)))")
             }
             if count == 0 {
                 break

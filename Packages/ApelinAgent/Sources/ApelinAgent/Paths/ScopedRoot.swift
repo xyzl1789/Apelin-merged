@@ -230,7 +230,7 @@ public struct WriteTarget: Sendable {
             directory = (directory as NSString).appendingPathComponent(component)
             if mkdir(directory, 0o755) != 0, errno != EEXIST {
                 throw PathPolicyError.io(
-                    "could not create \(root.relative(directory)): \(String(cString: strerror(errno)))",
+                    "无法创建 \(root.relative(directory))：\(String(cString: strerror(errno)))",
                 )
             }
             var info = stat()
@@ -256,7 +256,7 @@ public struct WriteTarget: Sendable {
         let temporary = (directory as NSString).appendingPathComponent(".\(fileName).apelin-\(UUID().uuidString)")
         let fd = open(temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, mode)
         guard fd >= 0 else {
-            throw PathPolicyError.io("could not write \(root.relative(target)): \(String(cString: strerror(errno)))")
+            throw PathPolicyError.io("无法写入 \(root.relative(target))：\(String(cString: strerror(errno)))")
         }
         var ok = true
         data.withUnsafeBytes { buffer in
@@ -275,7 +275,7 @@ public struct WriteTarget: Sendable {
         close(fd)
         guard ok else {
             unlink(temporary)
-            throw PathPolicyError.io("could not write \(root.relative(target))")
+            throw PathPolicyError.io("无法写入 \(root.relative(target))")
         }
         if exclusive {
             // link(2) fails if the name exists, so creation stays exclusive.
@@ -287,13 +287,13 @@ public struct WriteTarget: Sendable {
                     throw PathPolicyError.alreadyExists(root.relative(target))
                 }
                 throw PathPolicyError.io(
-                    "could not create \(root.relative(target)): \(String(cString: strerror(linkErrno)))",
+                    "无法创建 \(root.relative(target))：\(String(cString: strerror(linkErrno)))",
                 )
             }
         } else if rename(temporary, target) != 0 {
             let reason = String(cString: strerror(errno))
             unlink(temporary)
-            throw PathPolicyError.io("could not replace \(root.relative(target)): \(reason)")
+            throw PathPolicyError.io("无法替换 \(root.relative(target))：\(reason)")
         }
     }
 }

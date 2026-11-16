@@ -15,7 +15,7 @@ enum GitBranchTools {
               !revision.hasPrefix("-"),
               !revision.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
         else {
-            throw ToolArgumentError("Name a branch, tag or commit, without control characters or a leading dash.")
+            throw ToolArgumentError("请给出分支、标签或提交名，不含控制字符且不以短横线开头。")
         }
     }
 }

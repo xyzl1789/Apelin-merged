@@ -86,7 +86,7 @@ enum ProjectEnvironmentEdit {
         before["environment"] = beforeEnvironment
         after["environment"] = afterEnvironment
         guard NSDictionary(dictionary: before).isEqual(to: after) else {
-            throw ToolArgumentError("rewriting \(fileName) would have changed more than its environment")
+            throw ToolArgumentError("改写 \(fileName) 将改变其环境之外的内容")
         }
     }
 

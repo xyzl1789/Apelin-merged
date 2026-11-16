@@ -83,7 +83,7 @@ struct FileImage: Sendable {
             ] as CFDictionary
             guard let picture = CGImageSourceCreateThumbnailAtIndex(source, index, options) else { return nil }
             guard let encoded = encode(picture, transparent: facts.transparent) else {
-                throw ToolArgumentError("\(name) is a \(format) image that could not be encoded to be shown")
+                throw ToolArgumentError("\(name) 是 \(format) 图像，但无法编码以显示")
             }
             guard encoded.data.count <= maxBytes else { continue }
             var summary = "Read image \(name): \(format), \(facts.width)×\(facts.height)"

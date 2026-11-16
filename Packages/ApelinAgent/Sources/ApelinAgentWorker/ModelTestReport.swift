@@ -114,7 +114,7 @@ final class ModelTestReport: @unchecked Sendable {
             announced.append(AgentModelTestProgress(phase: .total, milliseconds: total))
         }
         let empty = (text + thinking).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let failure = failure ?? (empty ? "The model returned an empty response." : nil)
+        let failure = failure ?? (empty ? "模型返回了空响应。" : nil)
         let result = AgentModelTestResponse(
             success: failure == nil,
             stages: AgentModelTestPhase.allCases.compactMap { phase in

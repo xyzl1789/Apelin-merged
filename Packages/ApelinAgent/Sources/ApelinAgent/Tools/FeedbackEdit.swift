@@ -26,7 +26,7 @@ enum FeedbackEdit {
     /// The issue a call names.
     static func number(_ arguments: JSONValue) throws -> Int {
         guard let number = arguments.argInt(numberKey), number >= 1 else {
-            throw ToolArgumentError("Name the issue by its number on \(FeedbackRules.repository), such as 12.")
+            throw ToolArgumentError("请按 \(FeedbackRules.repository) 上的编号指名议题，例如 12。")
         }
         return number
     }
@@ -35,20 +35,20 @@ enum FeedbackEdit {
     /// with what to do, when no edit could be made.
     static func approval(for arguments: JSONValue, issue: FeedbackReadToolResponse) throws -> FeedbackEditApproval {
         guard issue.openedByUser else {
-            throw ToolDeniedError(message: "Nothing was changed: #\(issue.issue) was opened by \(issue.author), not by the user's GitHub account, and only an issue the account opened can be edited. The user can comment on it on GitHub.")
+            throw ToolDeniedError(message: "未做更改：#\(issue.issue) 由 \(issue.author) 打开，而非用户的 GitHub 账户，只有该账户打开的议题才能编辑。用户可以在 GitHub 上评论它。")
         }
         guard let revision = arguments.argNonEmptyString(revisionKey) else {
-            throw ToolArgumentError("Nothing was changed: read the issue with apelin_feedback_read first and pass the revision it answered.")
+            throw ToolArgumentError("未做更改：请先用 apelin_feedback_read 读取议题，并传入它返回的 revision。")
         }
         guard revision == issue.revision else {
-            throw ToolDeniedError(message: "Nothing was changed: #\(issue.issue) changed on GitHub since the read that revision came from, perhaps by the user. Read it again with apelin_feedback_read, keep what changed there, and show the user the edit against what it says now before asking again.")
+            throw ToolDeniedError(message: "未做更改：自读取该版本后 #\(issue.issue) 在 GitHub 上已变化（可能被用户修改）。请用 apelin_feedback_read 重新读取，保留那里的更改，并在再次询问前向用户展示基于当前内容的编辑。")
         }
         let title = arguments.argString("title").map { $0.trimmingCharacters(in: .whitespaces) }
         let body = arguments.argString("body")
         let newTitle = title == issue.title ? nil : title
         let newBody = body == issue.body ? nil : body
         if let problem = FeedbackRules.editProblem(title: newTitle, body: newBody) {
-            throw ToolArgumentError("Nothing was changed: \(problem).")
+            throw ToolArgumentError("未做更改：\(problem).")
         }
         return FeedbackEditApproval(
             repository: issue.repository,

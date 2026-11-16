@@ -18,7 +18,7 @@ public extension ChannelHostBackend {
         do {
             arguments = try JSONCoding.decode(ApelinCore.JSONValue.self, from: JSONEncoder().encode(request.arguments))
         } catch {
-            throw ApelinError(.badRequest, "the arguments are not JSON the extension takes")
+            throw ApelinError(.badRequest, "参数不是该扩展接受的 JSON")
         }
         let (response, files) = try await service.toolHostCall(
             ToolHostCallRequest(

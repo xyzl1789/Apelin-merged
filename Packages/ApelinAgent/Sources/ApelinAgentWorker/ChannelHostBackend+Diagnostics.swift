@@ -61,7 +61,7 @@ public extension ChannelHostBackend {
 
     func readCrash(_ request: ReadCrashRequest) async throws -> ReadCrashResponse {
         let (response, descriptor) = try await service.crashOpen(id: request.reportID)
-        guard let descriptor else { throw ApelinError(.internal, "the host returned no file for the crash report") }
+        guard let descriptor else { throw ApelinError(.internal, "宿主没有返回崩溃报告的文件") }
         defer { descriptor.close() }
         let budget = min(max(1, request.maxBytes), 4 * 1024 * 1024)
         let data = try Self.read(descriptor.rawValue, upTo: budget)
@@ -97,7 +97,7 @@ public extension ChannelHostBackend {
         _ request: ApelinAgent.CaptureScreenRequest,
     ) async throws -> ApelinAgent.CaptureScreenResponse {
         let (response, descriptor) = try await service.captureScreen(targetID: request.targetID)
-        guard let descriptor else { throw ApelinError(.internal, "the host returned no file for the screenshot") }
+        guard let descriptor else { throw ApelinError(.internal, "宿主没有返回截图文件") }
         defer { descriptor.close() }
         let data = try Self.read(descriptor.rawValue, upTo: Self.maximumScreenshotBytes)
         return ApelinAgent.CaptureScreenResponse(
@@ -153,13 +153,13 @@ public extension ChannelHostBackend {
     /// action, which answers neither.
     internal static func afterWake(_ response: ApelinProtocol.UIActionResponse) -> String {
         if response.screenOff == true {
-            return "The screen is still off. Press wake once more; if it stays off, ask the user to wake the device."
+            return "屏幕仍处于关闭状态。请再按一次唤醒；如果仍未亮起，请让用户唤醒设备。"
         }
         if response.locked == true {
-            return "The screen is on, but the device is still locked: a device with a passcode stays on its lock screen after a wake. For anything past the lock screen, ask the user to unlock the device, and never ask for or type the passcode."
+            return "屏幕亮着，但设备仍锁定：带密码的设备唤醒后仍停留在锁屏。锁屏以外的操作请让用户解锁设备，绝不要索要或输入密码。"
         }
         if response.locked == false {
-            return "The screen is on and the device is unlocked."
+            return "屏幕亮着，设备已解锁。"
         }
         return ""
     }
@@ -168,9 +168,9 @@ public extension ChannelHostBackend {
     internal static func readBackMessage(_ response: ApelinProtocol.UIActionResponse) -> String {
         guard response.typedTextMatches == false else { return "" }
         if response.fieldValues?.isEmpty ?? true {
-            return "No field changed: the text did not go in. Tap the field to focus it, then type again."
+            return "没有字段发生变化：文本没有输入。请点击字段使其获得焦点后重新输入。"
         }
-        return "The fields that changed do not hold the typed text; fieldValues is what they hold now. Correct it before going on."
+        return "发生变化的字段并不持有输入的文本；fieldValues 是它们现在持有的内容。请修正后再继续。"
     }
 
     internal static func action(_ action: ApelinAgent.UIAction) throws -> ApelinProtocol.UIAction {

@@ -33,7 +33,7 @@ enum GitRemoteTools {
             throw ToolArgumentError(problem)
         }
         if let problem = try GitRemoteURL.problem(arguments.requireString("url")) {
-            throw ToolArgumentError("Nothing was changed: \(problem)")
+            throw ToolArgumentError("未做更改：\(problem)")
         }
     }
 }

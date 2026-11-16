@@ -21,7 +21,7 @@ extension ToolRunner {
         }
         let reset = preview.approval
         guard !preview.upToDate else {
-            throw ToolArgumentError("Nothing to do: the project already is \(reset.remote)/\(reset.branch) at \(reset.remoteCommit.prefix(7)), with no local change.")
+            throw ToolArgumentError("无需操作：项目已经就是 \(reset.remote)/\(reset.branch)（\(reset.remoteCommit.prefix(7))），没有本地更改。")
         }
         return reset
     }

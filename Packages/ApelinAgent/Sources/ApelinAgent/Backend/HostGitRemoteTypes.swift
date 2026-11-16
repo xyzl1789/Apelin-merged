@@ -70,14 +70,14 @@ public struct GitRemoteRemoveToolRequest: Sendable, Hashable, Codable {
 /// A backend without a repository behind it (a test double, a live test).
 public extension AgentHostBackend {
     func gitRemoteList(_: GitRemoteListToolRequest) async throws -> GitRemoteListToolResponse {
-        throw ToolDeniedError(message: "remotes are not available here")
+        throw ToolDeniedError(message: "此处无法管理远程")
     }
 
     func gitRemoteSet(_: GitRemoteSetToolRequest) async throws -> GitRemoteSetToolResponse {
-        throw ToolDeniedError(message: "remotes are not available here")
+        throw ToolDeniedError(message: "此处无法管理远程")
     }
 
     func gitRemoteRemove(_: GitRemoteRemoveToolRequest) async throws -> GitRemoteListToolResponse {
-        throw ToolDeniedError(message: "remotes are not available here")
+        throw ToolDeniedError(message: "此处无法管理远程")
     }
 }

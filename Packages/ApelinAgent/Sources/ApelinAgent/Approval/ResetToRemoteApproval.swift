@@ -93,14 +93,14 @@ public struct ResetToRemoteApproval: Sendable, Hashable, Codable {
         } ?? ""
         var parts = ["Makes this project exactly \(remote)/\(branch) (\(url)) at \(short(remoteCommit))\(subject)."]
         if let currentBranch, currentBranch != branch {
-            parts.append("The project switches from the branch \(currentBranch), which stays as it is, to \(branch).")
+            parts.append("项目从分支 \(currentBranch)（保持原样）切换到 \(branch)。")
         } else if currentBranch == nil, let head {
             parts.append("HEAD moves from \(short(head)), where it was detached, to the branch \(branch).")
         } else if let head {
-            parts.append("The branch \(branch) moves there from \(short(head)).")
+            parts.append("分支 \(branch) 从 \(short(head)) 移到该处。")
         }
         if unrelatedHistories {
-            parts.append("The project's history and the remote's have nothing in common.")
+            parts.append("项目的历史与远程毫无共同提交。")
         }
         if lostCommitCount > 0 {
             let subjects = lostCommits.prefix(5).map { "“\($0.subject)”" }.joined(separator: ", ")
