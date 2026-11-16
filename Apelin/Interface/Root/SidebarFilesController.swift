@@ -304,6 +304,8 @@ final class SidebarFilesController: UIViewController {
                 relativePath: relativePath,
                 line: line,
                 highlight: highlight,
+                gitScopeID: project?.name,
+                gitFilePath: relativePath,
             ) else {
                 presentNotice(
                     title: "Unable to Open File",

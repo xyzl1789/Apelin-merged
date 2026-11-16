@@ -8,6 +8,7 @@ import UIKit
 final class GitCommitDialogController: UIViewController {
     private let staged: [GitFileItem]
     private let hasIdentity: Bool
+    private let scopeID: String?
     private let onCommit: (String, Bool) -> Void
 
     private let chips = UIScrollView()
@@ -19,15 +20,18 @@ final class GitCommitDialogController: UIViewController {
     private var generating = false {
         didSet { updateGenerateButton() }
     }
+    /// 「AI 生成」的任务，对话框关闭时取消。
+    private var generateTask: Task<Void, Never>?
 
     private let commitButton = GitGlassButton.make(
         title: String(localized: "Commit"), prominent: true,
     )
     private let types = ["feat", "fix", "refactor", "chore", "docs", "style", "perf", "test"]
 
-    init(staged: [GitFileItem], hasIdentity: Bool, onCommit: @escaping (String, Bool) -> Void) {
+    init(staged: [GitFileItem], hasIdentity: Bool, scopeID: String? = nil, onCommit: @escaping (String, Bool) -> Void) {
         self.staged = staged
         self.hasIdentity = hasIdentity
+        self.scopeID = scopeID
         self.onCommit = onCommit
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .pageSheet
@@ -184,7 +188,13 @@ final class GitCommitDialogController: UIViewController {
     }
 
     @objc private func dismissSelf() {
+        generateTask?.cancel()
         dismiss(animated: true)
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        generateTask?.cancel()
     }
 
     private func messageText() -> String {
@@ -203,11 +213,81 @@ final class GitCommitDialogController: UIViewController {
     }
 
     private func generate() {
-        guard !generating, hasIdentity else { return }
+        guard !generating else { return }
+        guard let scopeID else {
+            // 没有项目上下文（理论上来不到）：退回本地拼装的建议。
+            localSuggestion()
+            return
+        }
+        guard let selection = ComposerModelSelection.current else {
+            presentNotice(
+                title: "Unable to Generate",
+                message: String(localized: "Choose a model before generating."),
+            )
+            return
+        }
         generating = true
-        // A local suggestion from what is staged. The reference app asks its
-        // model with the staged diff; Apelin's app has no model of its own,
-        // so the button composes the message the diff already names.
+        generateTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let diff = try await ApelinService.app.gitDiff(projectID: scopeID, staged: true).diff
+                guard !Task.isCancelled else { return }
+                let prompt = Self.commitMessagePrompt(diff: diff, files: self.staged.map { $0.entry.path })
+                let answer = try await ApelinService.app.agentRewritePrompt(
+                    text: prompt,
+                    provider: selection.provider,
+                    model: selection.model,
+                )
+                try Task.checkCancellation()
+                // 模型偶尔带引号或代码栅栏，剥掉再填。
+                var message = answer.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if message.hasPrefix("```") {
+                    message = message
+                        .split(separator: "\n").dropFirst().dropLast()
+                        .joined(separator: "\n")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if (message.hasPrefix("\"") && message.hasSuffix("\"")) || message.count > 1 {
+                    message = message.trimmingCharacters(in: CharacterSet(charactersIn: "\"“”"))
+                }
+                message = message.replacingOccurrences(of: "\n\n+", with: "\n", options: .regularExpression)
+                guard !message.isEmpty else { throw ApelinError(.internal, "empty commit message") }
+                self.field.text = message
+                self.generating = false
+                self.textChanged()
+            } catch is CancellationError {
+                self.generating = false
+            } catch {
+                self.generating = false
+                guard !Task.isCancelled else { return }
+                self.presentNotice(
+                    title: "Unable to Generate",
+                    message: error.readableMessage,
+                )
+            }
+        }
+    }
+
+    /// 提示词：只给 staged diff，要一条 conventional 提交信息，一行标题
+    /// 加可选的正文，不要多余的客套话。
+    private static func commitMessagePrompt(diff: String, files: [String]) -> String {
+        let capped = diff.count > 24_000
+            ? String(diff.prefix(24_000)) + "\n… (diff truncated)"
+            : diff
+        let listing = files.joined(separator: ", ")
+        return """
+        Write one git commit message for the staged changes below. Reply with the message only — no quotes, no code fences, no explanation. Use the Conventional Commits style: a "type: summary" first line of at most 72 characters (type is one of feat, fix, refactor, chore, docs, style, perf, test), then a blank line and a short body listing the notable changes if they add anything. Write the message in Simplified Chinese, keeping the type prefix in English.
+
+        Files changed: \(listing)
+
+        Staged diff:
+        \(capped)
+        """
+    }
+
+    /// 没有模型可用时的本地建议，沿用了旧的拼法。
+    private func localSuggestion() {
+        generating = true
         let names = staged.map { ($0.entry.path as NSString).lastPathComponent }
         let type: String
         if staged.contains(where: { $0.code == "A" || $0.code == "?" }) {

@@ -219,6 +219,7 @@ final class GitStatusPage: UIViewController, GitPage {
         let dialog = GitCommitDialogController(
             staged: stagedFiles,
             hasIdentity: session.hasIdentity,
+            scopeID: session.scopeID,
             onCommit: { [weak self] message, amend in
                 guard let self else { return }
                 self.busy = true

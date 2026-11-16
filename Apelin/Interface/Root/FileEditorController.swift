@@ -1,4 +1,6 @@
 import AlertController
+import ApelinCore
+import ApelinProtocol
 import Runestone
 import RunestoneLanguageSupport
 import SnapKit
@@ -31,6 +33,10 @@ final class FileEditorController: UIViewController {
     /// what it captures has to be safe there. A page that leaves it nil, as the
     /// sidebar's files page does, asks nothing and writes as it always did.
     var writeGuard: (@Sendable () -> String?)?
+
+    /// 进编辑模式前把文件在 Git 里存一次底：有的话，第一次保存覆盖前先
+    /// 提交一次原文件，之后撤销得到 Git 页里做。
+    var gitSnapshot: GitFileSnapshotter?
 
     private let url: URL
     private let relativePath: String
@@ -216,6 +222,8 @@ final class FileEditorController: UIViewController {
         relativePath: String,
         line: Int?,
         highlight: String? = nil,
+        gitScopeID: String? = nil,
+        gitFilePath: String? = nil,
     ) async -> FileEditorController? {
         // A trailing closure inside a `guard` condition does not parse under
         // Swift 6.4: the task is made first, and its value asked for after.
@@ -234,6 +242,9 @@ final class FileEditorController: UIViewController {
             highlight: highlight,
         )
         controller.preloaded = (text, state)
+        if let gitScopeID, let gitFilePath {
+            controller.gitSnapshot = GitFileSnapshotter(scopeID: gitScopeID, path: gitFilePath)
+        }
         return controller
     }
 
@@ -468,6 +479,11 @@ final class FileEditorController: UIViewController {
         if let refusal = writeRefusal?() {
             presentNotice(title: "Unable to Edit", message: refusal)
             return
+        }
+        // 进入可写之前把当前文件在 Git 里存一次底：静默进行，失败不打扰
+        // 编辑本身——快照是保底，不是闸门。
+        if let snapshot = gitSnapshot {
+            Task { await snapshot.takeOnce() }
         }
         isWriting = true
         textView.isEditable = true

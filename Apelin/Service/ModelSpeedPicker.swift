@@ -26,6 +26,14 @@ enum ModelSpeedPicker {
     static func pickFastest(
         progress: @MainActor (_ measured: Int, _ total: Int) -> Void = { _, _ in },
     ) async throws -> ComposerModelSelection? {
+        try await measureAll(progress: progress).fastest
+    }
+
+    /// 每个候选模型各测一次，返回完整排名（快到慢，失败的除外）与最快者。
+    /// 排名留在原地供「测量结果」页读取；`Result` 的 Selection 也照旧带出。
+    static func measureAll(
+        progress: @MainActor (_ measured: Int, _ total: Int) -> Void = { _, _ in },
+    ) async throws -> (results: [Result], fastest: ComposerModelSelection?) {
         let selected = EnabledModels.selectedModelIDs()
         let listed = try await ApelinService.app
             .agentAccountList(extraModels: selected, onlyExtraModels: true).accounts
@@ -39,30 +47,29 @@ enum ModelSpeedPicker {
                 candidates.append((account, model))
             }
         }
-        guard !candidates.isEmpty else { return nil }
+        guard !candidates.isEmpty else { return ([], nil) }
 
-        var fastest: Result?
+        var measured: [Result] = []
         for (index, candidate) in candidates.enumerated() {
             try Task.checkCancellation()
             await progress(index, candidates.count)
             guard let milliseconds = try? await measure(candidate.account, model: candidate.model),
                   milliseconds.isFinite, milliseconds > 0
             else { continue }
-            if fastest == nil || milliseconds < fastest!.milliseconds {
-                var selection = ComposerModelSelection(
-                    provider: candidate.account.provider,
-                    model: candidate.model,
-                    supportedEfforts: candidate.account.reasoningEfforts?[candidate.model] ?? [],
-                    supportedTiers: candidate.account.serviceTiers?[candidate.model],
-                )
-                selection.conversationScoped = nil
-                selection.preferredEffort = nil
-                selection.preferredTier = nil
-                fastest = Result(selection: selection, milliseconds: milliseconds)
-            }
+            var selection = ComposerModelSelection(
+                provider: candidate.account.provider,
+                model: candidate.model,
+                supportedEfforts: candidate.account.reasoningEfforts?[candidate.model] ?? [],
+                supportedTiers: candidate.account.serviceTiers?[candidate.model],
+            )
+            selection.conversationScoped = nil
+            selection.preferredEffort = nil
+            selection.preferredTier = nil
+            measured.append(Result(selection: selection, milliseconds: milliseconds))
         }
+        measured.sort { $0.milliseconds < $1.milliseconds }
         await progress(candidates.count, candidates.count)
-        return fastest?.selection
+        return (measured, measured.first?.selection)
     }
 
     /// The total time of one successful probe, or nil when it failed, the

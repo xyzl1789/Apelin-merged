@@ -735,6 +735,18 @@ final class FileBrowserController: UIViewController {
                 writeGuard.didSave()
                 self?.load()
             }
+            // 浏览器的文件在项目根之下才有 Git 快照：从项目打开时 projectRoot
+            // 指着项目，相对路径从它算起；别处打开的文件不拍。
+            if let projectRoot = self.projectRoot {
+                let root = CanonicalPath.resolve(projectRoot.path)
+                let file = CanonicalPath.resolve(url.path)
+                if let root, let file, file.hasPrefix(root + "/") {
+                    editor.gitSnapshot = GitFileSnapshotter(
+                        scopeID: root.lastPathComponent,
+                        path: String(file.dropFirst(root.count + 1)),
+                    )
+                }
+            }
             presentPageAsFormSheet(editor)
         }
     }
