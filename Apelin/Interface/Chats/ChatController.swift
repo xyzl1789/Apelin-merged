@@ -1356,12 +1356,11 @@ extension ChatController {
     /// With no model picked, or one no longer offered, the first offered
     /// model is picked; with none offered the bar keeps asking. A model the
     /// catalog still lists takes the catalog's efforts and tiers again. The
-    /// catalogue — not the manual enabled whitelist — is the judge here: the
-    /// auto-switch picks candidates from the measured full catalog, and a
-    /// whitelist-only check would revert the switch the moment the reader
-    /// touched the composer. Explicitly hidden or excluded models still lose
-    /// the seat. A signed-in account whose sign-in did not read this time
-    /// lists no models; its model is kept rather than swapped for another's.
+    /// catalogue is the judge here: a model the reader picked by hand stays,
+    /// whatever the exclusions say — they only narrow what the auto-switch
+    /// may pick, never what the reader may. A signed-in account whose
+    /// sign-in did not read this time lists no models; its model is kept
+    /// rather than swapped for another's.
     func ensureModelSelection() {
         selectionCheck?.cancel()
         guard let id = chat?.id else { return }
@@ -1370,8 +1369,6 @@ extension ChatController {
                   !Task.isCancelled, self.chat?.id == id
             else { return }
             if let current = ComposerModelSelection.selection(for: id),
-               !EnabledModels.hiddenIDs(for: current.provider).contains(current.model),
-               !ModelExclusions.isModelExcluded(current.provider, model: current.model),
                let account = listed.first(where: { $0.provider == current.provider && $0.signedIn })
             {
                 if account.models == nil || account.models?.contains(current.model) == true {
