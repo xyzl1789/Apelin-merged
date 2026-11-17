@@ -67,12 +67,12 @@ final class AutoAssistantSheet: UITableViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // 排除页可能改了排除名单，回来时开关状态重读一遍。
+        // 排除页可能改了排除名单，测速也可能在后台结束，回来时重读一遍。
         tableView.reloadData()
     }
 
-    /// 上一次测量的完整排名，快到慢；没有测过就是空。结果落盘，设置页与
-    /// 对话菜单共用同一份，重启后仍在。
+    /// 上一次测量的完整结果，成功在前、失败在后；没有测过就是空。结果落盘，
+    /// 设置页与对话菜单共用同一份，重启后仍在。
     static var lastResults: [ModelSpeedPicker.Result] {
         get { MeasurementStore.load().results }
         set { MeasurementStore.save(results: newValue) }
@@ -115,12 +115,13 @@ final class AutoAssistantSheet: UITableViewController {
             cell.accessoryType = settings.retryOnTimeout ? .checkmark : .none
             cell.selectionStyle = .default
         case .measure:
+            let running = MeasurementRunner.shared.isRunning
             cell.contentConfiguration = Self.content(
-                text: String(localized: "Measure Now and Use Fastest"),
+                text: String(localized: running ? "Measuring Models in Background" : "Measure Models in Background"),
                 image: UIImage(systemName: "speedometer"),
             )
             cell.accessoryType = .none
-            cell.selectionStyle = .default
+            cell.selectionStyle = running ? .none : .default
         case .measureResults:
             let has = !Self.lastResults.isEmpty
             cell.contentConfiguration = Self.content(
@@ -165,7 +166,7 @@ final class AutoAssistantSheet: UITableViewController {
             AutoAssistantPolicy.set(next, for: id)
             tableView.reloadData()
         case .measure:
-            measureAndUseFastest(for: id, from: self)
+            MeasurementRunner.shared.start(from: self)
         case .measureResults:
             navigationController?.pushViewController(
                 MeasurementResultsController(style: .insetGrouped), animated: true,
@@ -182,57 +183,53 @@ final class AutoAssistantSheet: UITableViewController {
             break
         }
     }
+}
 
-    /// 同 `AutoAssistantMenu` 早期的实现：测速选中最快的模型，落到这条对话上，
-    /// 完整排名留给「上次测量」页看。
-    private func measureAndUseFastest(for id: UUID, from controller: UIViewController) {
-        Task { @MainActor in
+/// 测速只在后台跑：没有进度卡片，不切换模型，也不拦着读者留在测速界面。
+/// 谁发起都行（设置页或任意会话），同一时间只跑一轮；完成的结果落盘，
+/// 「上次测量」页下次打开就能看到全部模型，自动切换从成功的里面选。
+@MainActor
+final class MeasurementRunner {
+    static let shared = MeasurementRunner()
+
+    private(set) var isRunning = false
+
+    private init() {}
+
+    /// 界面订阅这个通知刷新「正在后台测速」的状态。
+    static let changed = Notification.Name("autoAssistant.measurementChanged")
+
+    func start(from presenter: UIViewController?) {
+        guard !isRunning else { return }
+        isRunning = true
+        post()
+        Task { @MainActor [weak presenter] in
+            defer {
+                isRunning = false
+                post()
+            }
             do {
-                let measured = try await ProgressCard.run(
-                    title: String(localized: "Measuring Models"),
-                    message: String(localized: "Testing each signed-in model…"),
-                    cancellable: true,
-                    from: controller,
-                ) { update in
-                    try await ModelSpeedPicker.measureAll(progress: { measured, total in
-                        update(ProgressCard.Status(
-                            subtitle: String(localized: "Testing each signed-in model…"),
-                            fraction: Double(measured) / Double(max(total, 1)),
-                            count: "\(measured) / \(total)",
-                        ))
-                    })
-                }
-                guard !Task.isCancelled else { return }
-                Self.lastResults = measured.results
-                guard let selected = measured.fastest else {
-                    controller.presentNotice(
+                let measured = try await ModelSpeedPicker.measureAll()
+                AutoAssistantSheet.lastResults = measured.results
+                let successful = measured.results.filter(\.success).count
+                if successful == 0 {
+                    presenter?.presentNotice(
                         title: "No Model Available",
                         message: "None of the signed-in models answered, or all were excluded.",
                     )
-                    self.tableView.reloadData()
-                    return
                 }
-                ComposerModelSelection.choose(selected, for: id)
-                ComposerModelSelection.rememberSelection(selected)
-                self.tableView.reloadData()
-                controller.presentNotice(
-                    title: "Fastest Model Selected",
-                    message: String(
-                        format: String(localized: "Now using %@ from %@."),
-                        selected.model,
-                        selected.provider.displayName,
-                    ),
-                )
-            } catch is CancellationError {
-                // The reader cancelled: nothing to say.
             } catch {
-                controller.presentNotice(title: "Unable to Measure Models", message: error.readableMessage)
+                presenter?.presentNotice(title: "Unable to Measure Models", message: error.readableMessage)
             }
         }
     }
+
+    private func post() {
+        NotificationCenter.default.post(name: Self.changed, object: self)
+    }
 }
 
-/// 「上次测量」的落盘：`UserDefaults` 一个键存整份排名。设置页与对话菜单
+/// 「上次测量」的落盘：`UserDefaults` 一个键存整份结果。设置页与对话菜单
 /// 读同一份，重启后仍在。
 enum MeasurementStore {
     private struct Stored: Codable {
@@ -256,64 +253,113 @@ enum MeasurementStore {
     }
 }
 
-/// 「上次测量」的结果页：每个成功的模型一行，快到慢，点击切到那个模型。
+/// 「上次测量」的结果页：所有参与测速的模型都在，成功的快到慢排在前，
+/// 失败的在后并写明原因。点击成功的模型可以切过去；失败的不响应点击。
 @MainActor
 final class MeasurementResultsController: UITableViewController {
+    private enum Section: Int {
+        case successful
+        case failed
+    }
+
+    private var results: [ModelSpeedPicker.Result] = []
+    private var sections: [Section] = []
+
     override func viewDidLoad() {
         super.viewDidLoad()
         title = String(localized: "Last Measurement")
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(measurementChanged),
+            name: MeasurementRunner.changed, object: nil,
+        )
+        reload()
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
+    @objc private func measurementChanged() {
+        reload()
+    }
+
+    private func reload() {
+        results = AutoAssistantSheet.lastResults
+        sections = []
+        if results.contains(where: \.success) { sections.append(.successful) }
+        if results.contains(where: { !$0.success }) { sections.append(.failed) }
+        if sections.isEmpty { sections.append(.successful) }
         tableView.reloadData()
     }
 
-    override func tableView(_: UITableView, numberOfRowsInSection _: Int) -> Int {
-        max(AutoAssistantSheet.lastResults.count, 1)
+    private func results(in section: Int) -> [ModelSpeedPicker.Result] {
+        guard let kind = Section(rawValue: sections[section]) else { return [] }
+        return results.filter { kind == .successful ? $0.success : !$0.success }
+    }
+
+    override func numberOfSections(in _: UITableView) -> Int {
+        sections.count
+    }
+
+    override func tableView(_: UITableView, titleForHeaderInSection section: Int) -> String? {
+        guard let kind = Section(rawValue: sections[section]) else { return nil }
+        return String(localized: kind == .successful ? "Successful Models" : "Failed Models")
+    }
+
+    override func tableView(_: UITableView, numberOfRowsInSection section: Int) -> Int {
+        if sections.isEmpty { return 1 }
+        return max(results(in: section).count, 1)
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "measurement")
-            ?? UITableViewCell(style: .value1, reuseIdentifier: "measurement")
-        let results = AutoAssistantSheet.lastResults
-        guard indexPath.row < results.count else {
-            var config = cell.defaultContentConfiguration()
+            ?? UITableViewCell(style: .subtitle, reuseIdentifier: "measurement")
+        var config = cell.defaultContentConfiguration()
+        guard let kind = Section(rawValue: sections[indexPath.section]) else { return cell }
+        let rows = results(in: indexPath.section)
+        guard indexPath.row < rows.count else {
             config.text = String(localized: "No Model Answered")
             config.textProperties.color = .secondaryLabel
             cell.contentConfiguration = config
             cell.accessoryType = .none
+            cell.accessoryView = nil
+            cell.selectionStyle = .none
             return cell
         }
-        let result = results[indexPath.row]
-        var config = cell.defaultContentConfiguration()
+        let result = rows[indexPath.row]
         config.text = result.selection.model
-        config.secondaryText = result.selection.provider.displayName
-        config.textProperties.color = .label
-        config.secondaryTextProperties.color = .secondaryLabel
-        config.image = UIImage(systemName: indexPath.row == 0 ? "trophy" : "clock")
+        if kind == .successful {
+            config.secondaryText = result.selection.provider.displayName
+            config.secondaryTextProperties.color = .secondaryLabel
+            config.image = UIImage(systemName: indexPath.row == 0 ? "trophy" : "clock")
+            let label = UILabel()
+            label.text = String(format: "%.0f ms", result.milliseconds)
+            label.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+            label.textColor = indexPath.row == 0 ? .systemGreen : .secondaryLabel
+            label.sizeToFit()
+            label.accessibilityLabel = String(
+                format: String(localized: "%@ milliseconds"), NSNumber(value: result.milliseconds),
+            )
+            cell.accessoryView = label
+            cell.accessoryType = .none
+            cell.selectionStyle = .default
+        } else {
+            config.secondaryText = result.failure ?? String(localized: "Unavailable")
+            config.secondaryTextProperties.color = .secondaryLabel
+            config.secondaryTextProperties.numberOfLines = 0
+            config.image = UIImage(systemName: "xmark.circle")
+            cell.accessoryView = nil
+            cell.accessoryType = .none
+            cell.selectionStyle = .none
+        }
         config.imageToTextPadding = 12
+        config.textProperties.color = .label
         cell.contentConfiguration = config
-        cell.detailTextLabel?.text = nil
-        // 附件用 accessoryView 放毫秒数，value1 的 detailTextLabel 与
-        // contentConfiguration 并存时后者的 secondaryText 已经承担了它。
-        let label = UILabel()
-        label.text = String(format: "%.0f ms", result.milliseconds)
-        label.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
-        label.textColor = indexPath.row == 0 ? .systemGreen : .secondaryLabel
-        label.sizeToFit()
-        label.accessibilityLabel = String(
-            format: String(localized: "%@ milliseconds"), NSNumber(value: result.milliseconds),
-        )
-        cell.accessoryView = label
         return cell
     }
 
-    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+    override func tableView(_: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let results = AutoAssistantSheet.lastResults
-        guard indexPath.row < results.count else { return }
-        let selection = results[indexPath.row].selection
+        guard let kind = Section(rawValue: sections[indexPath.section]), kind == .successful else { return }
+        let rows = results(in: indexPath.section)
+        guard indexPath.row < rows.count else { return }
+        let selection = rows[indexPath.row].selection
         ComposerModelSelection.current = selection
         presentNotice(
             title: "Model Selected",

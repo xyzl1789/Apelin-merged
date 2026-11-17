@@ -36,8 +36,6 @@ final class AutoAssistantController: TableController {
         self?.cell(in: table, content: row)
     }
 
-    private var measuring = false
-
     init() {
         super.init(style: .insetGrouped)
     }
@@ -58,6 +56,12 @@ final class AutoAssistantController: TableController {
             self,
             selector: #selector(updateRows),
             name: .modelExclusionsChanged,
+            object: nil,
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(updateRows),
+            name: MeasurementRunner.changed,
             object: nil,
         )
     }
@@ -95,7 +99,9 @@ final class AutoAssistantController: TableController {
     private func title(for row: Row) -> String {
         switch row {
         case .whereItIs: String(localized: "Turn It On in a Conversation")
-        case .pickFastest: String(localized: "Measure Now and Use Fastest")
+        case .pickFastest:
+            String(localized: MeasurementRunner.shared.isRunning
+                ? "Measuring Models in Background" : "Measure Models in Background")
         case .lastMeasurement: String(localized: "Last Measurement")
         case .excludeProviders: String(localized: "Excluded Providers")
         case .excludeModels: String(localized: "Excluded Models")
@@ -117,7 +123,7 @@ final class AutoAssistantController: TableController {
         } else {
             cell.accessoryView = nil
             cell.accessoryType = .disclosureIndicator
-            if value.row == .pickFastest, measuring {
+            if value.row == .pickFastest, MeasurementRunner.shared.isRunning {
                 let spinner = UIActivityIndicatorView(style: .medium)
                 spinner.startAnimating()
                 cell.accessoryView = spinner
@@ -132,7 +138,9 @@ final class AutoAssistantController: TableController {
     }
 
     override func tableView(_: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
-        dataSource.value(at: indexPath)?.row != .whereItIs
+        guard let row = dataSource.value(at: indexPath)?.row else { return false }
+        if row == .pickFastest, MeasurementRunner.shared.isRunning { return false }
+        return row != .whereItIs
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -142,7 +150,7 @@ final class AutoAssistantController: TableController {
         case .whereItIs:
             break
         case .pickFastest:
-            measureAndUseFastest()
+            MeasurementRunner.shared.start(from: self)
         case .lastMeasurement:
             push(MeasurementResultsController(style: .insetGrouped))
         case .excludeProviders:
@@ -154,57 +162,5 @@ final class AutoAssistantController: TableController {
 
     private func push(_ page: UIViewController) {
         navigationController?.pushViewController(page, animated: true)
-    }
-
-    // MARK: - Measure every signed-in model, use the fastest
-
-    /// From here there is no conversation to apply it to, so it only sets the
-    /// default the next new conversation starts on; a conversation's own menu
-    /// has the same action, and applies it to that conversation.
-    private func measureAndUseFastest() {
-        guard !measuring else { return }
-        measuring = true
-        updateRows()
-        Task { [weak self] in
-            guard let self else { return }
-            defer {
-                measuring = false
-                updateRows()
-            }
-            do {
-                let selected = try await ProgressCard.run(
-                    title: String(localized: "Measuring Models"),
-                    message: String(localized: "Testing each signed-in model…"),
-                    cancellable: true,
-                    from: self,
-                ) { update in
-                    try await ModelSpeedPicker.pickFastest { measured, total in
-                        update(ProgressCard.Status(
-                            subtitle: String(localized: "Testing each signed-in model…"),
-                            fraction: Double(measured) / Double(max(total, 1)),
-                            count: "\(measured) / \(total)",
-                        ))
-                    }
-                }
-                guard !Task.isCancelled else { return }
-                guard let selected else {
-                    presentNotice(
-                        title: "No Model Available",
-                        message: "None of the signed-in models answered, or all were excluded.",
-                    )
-                    return
-                }
-                // 这里没有具体对话可改，只记成下一次新对话用的默认。
-                ComposerModelSelection.current = selected
-                presentNotice(
-                    title: "Fastest Model Selected",
-                    message: String(format: String(localized: "Now using %1$@ from %2$@. New conversations start with it."), selected.model, selected.provider.displayName),
-                )
-            } catch is CancellationError {
-                // 用户取消，无需提示。
-            } catch {
-                presentNotice(title: "Unable to Measure Models", message: error.readableMessage)
-            }
-        }
     }
 }

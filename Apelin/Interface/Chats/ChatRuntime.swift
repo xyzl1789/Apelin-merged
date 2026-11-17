@@ -1345,16 +1345,15 @@ final class ChatRuntime {
         }
     }
 
-    /// 从上次测速的成功结果里挑一个可用的模型，按快到慢。只从测速成功过的
-    /// 模型里选（用户的选择）：没测过、或测速时失败的模型不进候选，免得切到
-    /// 一个同样用不了的模型。`skipping` 是本轮已经试过又失败的键，随新一轮
-    /// 清零——失败记忆只限本轮。
+    // 只从上次测速成功的模型里选，按快到慢；失败模型即使留在结果页
+    // 也不会进候选，免得切到一个同样用不了的模型。`skipping` 是本轮
+    // 已经试过又失败的键，随新一轮清零——失败记忆只限本轮。
     private func firstAvailableModel(
         around current: ComposerModelSelection?,
         skipping tried: Set<String> = [],
     ) async -> ComposerModelSelection? {
         guard !Task.isCancelled else { return nil }
-        for result in MeasurementStore.load().results {
+        for result in MeasurementStore.load().results where result.success {
             let selection = result.selection
             guard !ModelExclusions.isModelExcluded(selection.provider, model: selection.model) else { continue }
             if let current, current.provider == selection.provider, current.model == selection.model { continue }
