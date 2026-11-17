@@ -927,6 +927,7 @@ public actor AgentSession {
             guard dispatchedSteers.contains(id) else {
                 throw ApelinError(.conflict, "消息已变化或运行已结束，引导未能生效。")
             }
+        }
     }
 
     var canMutateHistory: Bool {
