@@ -6,8 +6,10 @@ import UIKit
 /// 交给它，也就连占位都不显示；本来支持但本次失败时保留圆环并显示
 /// 上次缓存或「--」。
 final class ProviderBalanceButton: UIControl {
-    /// 与上下文圆环同尺寸，保持一行对齐。
-    static let size: CGFloat = 24
+    /// 与上下文圆环同高，宽度按金额撑开，读作一个椭圆环。
+    static let height: CGFloat = 24
+    /// 文字两侧的内边距：环贴着文字画。
+    private static let padding: CGFloat = 3
 
     private let ring = ProgressRing()
     private let label = UILabel()
@@ -20,10 +22,8 @@ final class ProviderBalanceButton: UIControl {
 
         ring.isUserInteractionEnabled = false
         addSubview(ring)
-        label.font = .monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
+        label.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
         label.textAlignment = .center
-        label.adjustsFontSizeToFitWidth = true
-        label.minimumScaleFactor = 0.5
         label.isUserInteractionEnabled = false
         addSubview(label)
 
@@ -43,13 +43,26 @@ final class ProviderBalanceButton: UIControl {
     }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: Self.size, height: Self.size)
+        CGSize(width: Self.minimumWidth, height: Self.height)
+    }
+
+    /// 金额文字占位前的最小宽度，与上下文圆环的视觉重量相近。
+    static var minimumWidth: CGFloat { height }
+
+    /// 按当前金额文字算出的椭圆宽度，布局时用。
+    func preferredWidth() -> CGFloat {
+        guard let balance else { return Self.minimumWidth }
+        let text = Self.amountText(balance) as NSString
+        let size = text.size(
+            withAttributes: [.font: label.font as Any],
+        )
+        return max(Self.minimumWidth, ceil(size.width) + Self.padding * 2 + 2)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         ring.frame = bounds
-        label.frame = bounds.insetBy(dx: 1, dy: 1)
+        label.frame = bounds.insetBy(dx: Self.padding, dy: 0)
     }
 
     func set(_ balance: ProviderBalance?) {
@@ -62,6 +75,8 @@ final class ProviderBalanceButton: UIControl {
         tintColor = balance.stale ? .systemOrange : .secondaryLabel
         label.textColor = tintColor
         label.text = Self.amountText(balance)
+        invalidateIntrinsicContentSize()
+        setNeedsLayout()
         accessibilityValue = Self.spoken(balance)
         ring.set(.progress(balance.fraction ?? 1), animated: hadFigure)
     }

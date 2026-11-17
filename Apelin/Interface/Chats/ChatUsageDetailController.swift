@@ -542,9 +542,10 @@ final class ChatUsageDetailController: UIViewController {
                 entry.output + record.output,
             )
         }
-        for entry in byProvider
+        let entries: [(name: String, count: Int, input: Int, output: Int)] = byProvider
             .map { (name: $0.key, count: $0.value.count, input: $0.value.input, output: $0.value.output) }
-            .sorted(by: { $0.input + $0.output > $1.input + $1.output }) {
+            .sorted { ($0.input + $0.output) > ($1.input + $1.output) }
+        for entry in entries {
             providersStack.addArrangedSubview(statRow(
                 title: entry.name,
                 value: "\(Self.tokenText(entry.input + entry.output)) · \(entry.count) 次",
