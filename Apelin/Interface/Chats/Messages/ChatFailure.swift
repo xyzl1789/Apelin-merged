@@ -38,6 +38,7 @@ struct ChatFailure: Hashable {
         case .rateLimit: String(localized: "Too Many Requests")
         case .server: String(localized: "Model Provider Error")
         case .contextOverflow: String(localized: "Chat Too Long")
+        case .invalidRequest: String(localized: "Request Not Accepted")
         default: nil
         }
     }
@@ -51,6 +52,7 @@ struct ChatFailure: Hashable {
         case .timeout: String(localized: "The model provider did not answer in time. Send your message again.")
         case .authentication: String(localized: "Check this provider’s sign-in in Settings ▸ Model Providers.")
         case .contextOverflow: String(localized: "Compact the context or start a new chat, then send your message again.")
+        case .invalidRequest: String(localized: "The provider refused this request. Check the model name and your message, then try again.")
         default: nil
         }
     }

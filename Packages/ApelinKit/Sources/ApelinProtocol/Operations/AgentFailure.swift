@@ -25,4 +25,8 @@ public extension ApelinError.Reason {
     static let server = Self(rawValue: "server")
     /// The conversation no longer fits the model's context.
     static let contextOverflow = Self(rawValue: "contextOverflow")
+    /// The provider refused the request as made: an unknown model, a bad
+    /// parameter, a message it will not take. Switching models does not
+    /// answer for it, so the app leaves it out of its switch set.
+    static let invalidRequest = Self(rawValue: "invalidRequest")
 }

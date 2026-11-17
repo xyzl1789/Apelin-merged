@@ -32,7 +32,7 @@ public enum FailureReason {
         case .invalidRequest:
             // kwwk never asks a failed handshake again, and so does not
             // count it as the connection's failure; for the reader it is
-            return NetworkRecovery.isFailedHandshake(failure) ? .network : nil
+            return NetworkRecovery.isFailedHandshake(failure) ? .network : .invalidRequest
         case .cancelled, .refusal, .unknown:
             return nil
         }
