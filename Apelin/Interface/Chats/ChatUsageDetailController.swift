@@ -31,6 +31,10 @@ final class ChatUsageDetailController: UIViewController {
     private let sessionID: String
     private var totals = Totals()
     private var usage: ChatContextUsage?
+    /// 全量记录（不分会话），供「总览」与「最大会话 TOP8」两卡用。
+    private var allRecords: [UsageRecord] = []
+    /// 会话 id → 标题，TOP 卡的行名。
+    private var sessionTitles: [String: String] = [:]
 
     private let scrollView = UIScrollView()
     private let stack = UIStackView()
@@ -43,6 +47,10 @@ final class ChatUsageDetailController: UIViewController {
     private let contextNoteLabel = UILabel()
     private let statsCard = UIView()
     private let statsStack = UIStackView()
+    private let overviewCard = UIView()
+    private let overviewStack = UIStackView()
+    private let rankingCard = UIView()
+    private let rankingStack = UIStackView()
     private let modelsCard = UIView()
     private let modelsStack = UIStackView()
 
@@ -77,6 +85,8 @@ final class ChatUsageDetailController: UIViewController {
 
         buildContextCard()
         buildStatsCard()
+        buildOverviewCard()
+        buildRankingCard()
 
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -175,15 +185,62 @@ final class ChatUsageDetailController: UIViewController {
         stack.addArrangedSubview(modelsCard)
     }
 
+    /// 「总览」卡（TrollAgent 同构）：会话数、消息数无法从这里拿到，
+    /// 用请求次数、总输入（含缓存）、总输出与最大会话代替。
+    private func buildOverviewCard() {
+        overviewCard.backgroundColor = .secondarySystemGroupedBackground
+        overviewCard.layer.cornerRadius = 14
+        overviewCard.layer.cornerCurve = .continuous
+
+        let title = UILabel()
+        title.text = String(localized: "总览")
+        title.font = Self.weighted(.preferredFont(forTextStyle: .subheadline), .semibold)
+        title.textColor = .label
+        title.adjustsFontForContentSizeCategory = true
+
+        overviewStack.axis = .vertical
+        overviewStack.spacing = 10
+
+        for subview in [title, overviewStack] {
+            subview.translatesAutoresizingMaskIntoConstraints = false
+            overviewCard.addSubview(subview)
+        }
+        stack.addArrangedSubview(overviewCard)
+    }
+
+    /// 「最大会话 TOP8」卡：按全部请求量最大的会话排（输入含缓存 + 输出）。
+    private func buildRankingCard() {
+        rankingCard.backgroundColor = .secondarySystemGroupedBackground
+        rankingCard.layer.cornerRadius = 14
+        rankingCard.layer.cornerCurve = .continuous
+
+        let title = UILabel()
+        title.text = String(localized: "最大会话 TOP8")
+        title.font = Self.weighted(.preferredFont(forTextStyle: .subheadline), .semibold)
+        title.textColor = .label
+        title.adjustsFontForContentSizeCategory = true
+
+        rankingStack.axis = .vertical
+        rankingStack.spacing = 8
+
+        for subview in [title, rankingStack] {
+            subview.translatesAutoresizingMaskIntoConstraints = false
+            rankingCard.addSubview(subview)
+        }
+        stack.addArrangedSubview(rankingCard)
+    }
+
     private func loadRecords() {
         let url = UsageRecorder.file(in: DataFolder.app.root)
         let session = sessionID
         let loaded = Task.detached {
-            UsageRecorder.readAll(from: url).filter { $0.sessionID == session }
+            UsageRecorder.readAll(from: url)
         }
         Task { [weak self] in
-            let records = await loaded.value.sorted { $0.time < $1.time }
+            let all = await loaded.value
             guard let self else { return }
+            self.allRecords = all
+            let records = all.filter { $0.sessionID == session }.sorted { $0.time < $1.time }
             var totals = Totals()
             var models: [String: (count: Int, prompt: Int, output: Int)] = [:]
             for record in records {
@@ -280,7 +337,92 @@ final class ChatUsageDetailController: UIViewController {
                 ))
             }
         }
+        renderOverview()
+        renderRanking()
         view.setNeedsLayout()
+    }
+
+    /// 「总览」：全部记录的请求次数、输入（含缓存）、输出与最大会话。
+    private func renderOverview() {
+        for row in overviewStack.arrangedSubviews { row.removeFromSuperview() }
+        if allRecords.isEmpty {
+            overviewStack.addArrangedSubview(emptyNote(String(localized: "还没有任何请求记录。")))
+            return
+        }
+        var allPrompt = 0
+        var allOutput = 0
+        var bySession: [String: Int] = [:]
+        for record in allRecords {
+            allPrompt += record.promptTokens
+            allOutput += record.output
+            bySession[record.sessionID, default: 0] += record.promptTokens + record.output
+        }
+        let sessions = Set(allRecords.map(\.sessionID)).count
+        let maxSession = bySession.values.max() ?? 0
+        overviewStack.addArrangedSubview(statRow(title: String(localized: "会话数"), value: String(sessions)))
+        overviewStack.addArrangedSubview(statRow(title: String(localized: "请求次数"), value: String(allRecords.count)))
+        overviewStack.addArrangedSubview(statRow(title: String(localized: "输入（含缓存）"), value: Self.tokenText(allPrompt)))
+        overviewStack.addArrangedSubview(statRow(title: String(localized: "输出"), value: Self.tokenText(allOutput)))
+        overviewStack.addArrangedSubview(statRow(title: String(localized: "最大会话"), value: Self.tokenText(maxSession)))
+    }
+
+    /// 「最大会话 TOP8」：按请求量最大的会话排，行名是会话 id 的前 8 位
+    /// （记录里没有标题可读）。
+    private func renderRanking() {
+        for row in rankingStack.arrangedSubviews { row.removeFromSuperview() }
+        if allRecords.isEmpty {
+            rankingStack.addArrangedSubview(emptyNote(String(localized: "还没有任何请求记录。")))
+            return
+        }
+        var bySession: [String: (count: Int, tokens: Int)] = [:]
+        for record in allRecords {
+            let entry = bySession[record.sessionID, default: (0, 0)]
+            bySession[record.sessionID] = (entry.count + 1, entry.tokens + record.promptTokens + record.output)
+        }
+        let top = bySession
+            .map { (id: $0.key, count: $0.value.count, tokens: $0.value.tokens) }
+            .sorted { $0.tokens > $1.tokens }
+            .prefix(8)
+        for (index, entry) in top.enumerated() {
+            let name = String(entry.id.prefix(8))
+            let row = UIStackView(arrangedSubviews: [
+                UILabel().then {
+                    $0.text = "\(index + 1)"
+                    $0.font = .preferredFont(forTextStyle: .caption1)
+                    $0.textColor = .secondaryLabel
+                    $0.adjustsFontForContentSizeCategory = true
+                    $0.setContentHuggingPriority(.required, for: .horizontal)
+                },
+                UILabel().then {
+                    $0.text = name
+                    $0.font = .preferredFont(forTextStyle: .caption1)
+                    $0.textColor = .label
+                    $0.adjustsFontForContentSizeCategory = true
+                    $0.lineBreakMode = .byTruncatingMiddle
+                },
+                UILabel().then {
+                    $0.text = "\(Self.tokenText(entry.tokens)) · \(entry.count) 次"
+                    $0.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+                    $0.textColor = .secondaryLabel
+                    $0.adjustsFontForContentSizeCategory = false
+                    $0.setContentHuggingPriority(.required, for: .horizontal)
+                },
+            ])
+            row.axis = .horizontal
+            row.spacing = 8
+            row.alignment = .firstBaseline
+            rankingStack.addArrangedSubview(row)
+        }
+    }
+
+    private func emptyNote(_ text: String) -> UILabel {
+        UILabel().then {
+            $0.text = text
+            $0.font = .preferredFont(forTextStyle: .caption1)
+            $0.textColor = .secondaryLabel
+            $0.adjustsFontForContentSizeCategory = true
+            $0.numberOfLines = 0
+        }
     }
 
     private func statRow(title: String, value: String) -> UIView {
