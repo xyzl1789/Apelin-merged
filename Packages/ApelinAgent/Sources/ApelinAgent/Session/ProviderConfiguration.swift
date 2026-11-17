@@ -68,6 +68,7 @@ public enum ProviderConfiguration: Sendable, Hashable, Codable {
         case .deepSeek: .stored(storeID: "deepseek-api-key", model: model)
         case .openCodeGo: .stored(storeID: "opencode-go", model: model)
         case .openCodeZen: .stored(storeID: "opencode", model: model)
+        case .openAICompatibleEndpoint: .openAICompatible(model: model)
 
         }
     }

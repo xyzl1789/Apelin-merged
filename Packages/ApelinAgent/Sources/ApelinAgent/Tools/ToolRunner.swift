@@ -1080,10 +1080,6 @@ actor ToolRunner {
             guard let delivery = AgentMessageDelivery(rawValue: deliveryValue) else {
                 throw ToolArgumentError("delivery 必须是 queue 或 steer")
             }
-            let deliveryValue = arguments.argString("delivery") ?? "queue"
-            guard let delivery = AgentMessageDelivery(rawValue: deliveryValue) else {
-                throw ToolArgumentError("delivery must be queue or steer")
-            }
             return try await json(backend.conversationSend(ConversationSendToolRequest(
                 context: context,
                 sessionID: target,
