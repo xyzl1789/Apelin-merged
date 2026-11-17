@@ -52,8 +52,8 @@ final class ProviderBalanceButton: UIControl {
 
     func set(_ balance: ProviderBalance?) {
         self.balance = balance
-        // 只有当前供应商有自己的余额时才显示；不支持的整个隐藏，与推理
-        // 强度图标同一规则，绝不借别家的数字占位。
+        // 有查到的余额就显示（哪怕不是当前供应商的）；只有全都查不到时
+        // 才隐藏，与第一版行为一致。
         isHidden = balance == nil
         guard let balance else { return }
         backgroundColor = balance.stale
@@ -61,14 +61,16 @@ final class ProviderBalanceButton: UIControl {
             : UIColor.secondarySystemFill
         label.textColor = balance.stale ? .systemOrange : .secondaryLabel
         label.text = Self.amountText(balance)
+        accessibilityLabel = "\(balance.provider.displayName) \(String(localized: "Provider Balances"))"
         accessibilityValue = Self.spoken(balance)
     }
 
-    /// 实际金额，不是百分比：币种跟在数字后，单位过长就只留数字。
+    /// 实际金额，不是百分比：有自己余额的供应商显示自己的，前面带供应商
+    /// 名字；借别家的显示时名字说明来源，点开看全部。
     static func amountText(_ balance: ProviderBalance) -> String {
         let amount = balance.amount
-        guard !balance.currency.isEmpty else { return amount }
-        return amount + balance.currency
+        let unit = balance.currency.isEmpty ? "" : balance.currency
+        return amount + unit
     }
 
     private static func spoken(_ balance: ProviderBalance) -> String {

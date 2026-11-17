@@ -55,10 +55,14 @@ final class ProviderBalanceStore {
     }
 
     /// The figure the composer draws: the selected provider's own balance.
-    /// A provider without a queried balance gets none at all — the button hides
-    /// rather than borrowing another provider's figure.
+    /// The selected provider with no balance of its own still shows the one
+    /// figure that exists — an account the reader signed in to later, such as
+    /// DeepSeek's, is what the pill names, and the tap opens every provider's
+    /// page. Only when nothing reports a balance at all does it hide.
     func current(for provider: AgentProvider?) -> ProviderBalance? {
-        guard let provider else { return nil }
-        return balances.first(where: { $0.provider == provider })
+        if let provider, let own = balances.first(where: { $0.provider == provider }) {
+            return own
+        }
+        return balances.min { $0.updatedAt < $1.updatedAt }
     }
 }
