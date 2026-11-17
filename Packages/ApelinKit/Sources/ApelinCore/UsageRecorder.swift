@@ -63,6 +63,10 @@ public struct UsageRecorder {
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(entry)
             guard let line = String(data: data, encoding: .utf8) else { return }
+            // FileHandle(forWritingTo:) 要求文件已存在：首次写入前先落一个空文件。
+            if !FileManager.default.fileExists(atPath: root.path) {
+                guard FileManager.default.createFile(atPath: root.path, contents: nil) else { return }
+            }
             let handle = try FileHandle(forWritingTo: root)
             defer { try? handle.close() }
             _ = try? handle.seekToEnd()
