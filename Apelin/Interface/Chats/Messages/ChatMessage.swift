@@ -74,6 +74,16 @@ struct ChatMessage: Identifiable, Hashable {
     /// On the running summary, a model request that failed is being made
     /// again (the session's `reconnecting`) and nothing has come of it yet.
     var isReconnecting = false
+    /// An error row's failure, said once with a title and what to do about it.
+    var failure: ChatFailure?
+    /// What a run is doing about a failed request: waiting for a route, or
+    /// making the request again.
+    enum Recovery: Hashable {
+        case waitingForNetwork
+        case reconnecting
+    }
+    var recovery: Recovery?
+
     /// On the turn's latest summary while the run goes, the output tokens
     /// the run has received so far (the session's `received`); nil before
     /// the first count, once the run has ended, and for a session older

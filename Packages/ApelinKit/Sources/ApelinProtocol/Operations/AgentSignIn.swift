@@ -376,4 +376,8 @@ public extension ApelinService {
     func agentCredentialImport() async throws -> AgentCredentialImportResponse {
         try await send(AgentCredentialImportRequest())
     }
+
+    func agentProviderBalances(force: Bool = false) async throws -> AgentProviderBalancesResponse {
+        try await send(AgentProviderBalancesRequest(force: force))
+    }
 }

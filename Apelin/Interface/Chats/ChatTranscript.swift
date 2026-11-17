@@ -761,15 +761,6 @@ struct ChatTranscript {
         return false
     }
 
-    /// Whether a row is one of the summaries the transcript folds a run's
-    /// thoughts, calls and approvals into — running or finished.
-    private static func isSummary(_ role: ChatMessage.Role) -> Bool {
-        if case .thinking = role {
-            return true
-        }
-        return false
-    }
-
     /// While the run writes a reply, the summary above it keeps the run's
     /// count, which settles there — its header still says the run is going;
     /// never a summary above the turn's own message.
