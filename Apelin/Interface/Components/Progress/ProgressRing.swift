@@ -57,14 +57,21 @@ final class ProgressRing: UIView {
         super.layoutSubviews()
         glyph.frame = bounds
         let inset = Self.lineWidth / 2
-        // from twelve o'clock, clockwise
-        let path = UIBezierPath(
-            arcCenter: CGPoint(x: bounds.midX, y: bounds.midY),
-            radius: min(bounds.width, bounds.height) / 2 - inset,
-            startAngle: -.pi / 2,
-            endAngle: .pi * 3 / 2,
-            clockwise: true,
-        ).cgPath
+        let rect = bounds.insetBy(dx: inset, dy: inset)
+        // A square frame reads as the usual ring; a wider one (the balance
+        // pill) stretches into an ellipse around its amount.
+        let path: CGPath
+        if abs(bounds.width - bounds.height) < 0.5 {
+            path = UIBezierPath(
+                arcCenter: CGPoint(x: bounds.midX, y: bounds.midY),
+                radius: min(bounds.width, bounds.height) / 2 - inset,
+                startAngle: -.pi / 2,
+                endAngle: .pi * 3 / 2,
+                clockwise: true,
+            ).cgPath
+        } else {
+            path = UIBezierPath(ovalIn: rect).cgPath
+        }
         for layer in [track, arc] {
             layer.frame = bounds
             layer.path = path
