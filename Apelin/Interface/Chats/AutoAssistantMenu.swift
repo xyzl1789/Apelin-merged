@@ -36,6 +36,7 @@ final class AutoAssistantSheet: UITableViewController {
     private enum Row: Int, CaseIterable {
         case switchOnFailure
         case retryOnTimeout
+        case retryDelay
         case measure
         case autoMeasureInterval
         case measureResults
@@ -87,6 +88,11 @@ final class AutoAssistantSheet: UITableViewController {
         set { MeasurementStore.save(results: newValue) }
     }
 
+    /// 上次测速完成的时间；从没测过就是 nil。结果页在页脚显示它。
+    static var lastMeasuredAt: Date? {
+        MeasurementStore.load().measuredAt
+    }
+
     private static func content(text: String, image: UIImage?) -> UIListContentConfiguration {
         var config = UIListContentConfiguration.cell()
         config.text = text
@@ -123,6 +129,19 @@ final class AutoAssistantSheet: UITableViewController {
             )
             cell.accessoryType = settings.retryOnTimeout ? .checkmark : .none
             cell.selectionStyle = .default
+        case .retryDelay:
+            var config = UIListContentConfiguration.valueCell()
+            config.text = String(localized: "Retry Wait Time")
+            config.textProperties.color = settings.retryOnTimeout ? .label : .secondaryLabel
+            config.secondaryText = AutoAssistantPolicy.RetryDelay(
+                rawValue: settings.retryDelaySeconds,
+            )?.title ?? AutoAssistantPolicy.RetryDelay.twenty.title
+            config.secondaryTextProperties.color = .secondaryLabel
+            config.image = UIImage(systemName: "hourglass")
+            config.imageToTextPadding = 12
+            cell.contentConfiguration = config
+            cell.accessoryType = settings.retryOnTimeout ? .disclosureIndicator : .none
+            cell.selectionStyle = settings.retryOnTimeout ? .default : .none
         case .measure:
             let running = MeasurementRunner.shared.isRunning
             cell.contentConfiguration = Self.content(
@@ -185,6 +204,31 @@ final class AutoAssistantSheet: UITableViewController {
             next.retryOnTimeout.toggle()
             AutoAssistantPolicy.set(next, for: id)
             tableView.reloadData()
+        case .retryDelay:
+            guard settings.retryOnTimeout else { break }
+            let sheet = UIAlertController(
+                title: String(localized: "Retry Wait Time"),
+                message: nil, preferredStyle: .actionSheet,
+            )
+            for delay in AutoAssistantPolicy.RetryDelay.allCases {
+                let current = delay.rawValue == settings.retryDelaySeconds
+                let action = UIAlertAction(
+                    title: current ? "✓ " + delay.title : delay.title, style: .default,
+                ) { _ in
+                    var next = self.settings
+                    next.retryDelaySeconds = delay.rawValue
+                    AutoAssistantPolicy.set(next, for: id)
+                    tableView.reloadData()
+                }
+                sheet.addAction(action)
+            }
+            sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+            sheet.popoverPresentationController?.sourceView = tableView
+            sheet.popoverPresentationController?.sourceRect = CGRect(
+                x: tableView.bounds.midX, y: tableView.bounds.midY, width: 0, height: 0,
+            )
+            sheet.popoverPresentationController?.permittedArrowDirections = []
+            present(sheet, animated: true)
         case .measure:
             MeasurementRunner.shared.start(from: self)
         case .autoMeasureInterval:
@@ -325,6 +369,19 @@ final class MeasurementResultsController: UITableViewController {
         if sections.isEmpty { sections.append(.successful) }
         tableView.reloadData()
     }
+
+    override func tableView(_: UITableView, titleForFooterInSection _: Int) -> String? {
+        // 上次测速完成的时间；从没测过（结果页由后台新测量顶起）就没有。
+        guard let measuredAt = AutoAssistantSheet.lastMeasuredAt else { return nil }
+        return Self.timeFormatter.string(from: measuredAt)
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
     private func results(in section: Int) -> [ModelSpeedPicker.Result] {
         guard sections.indices.contains(section) else { return [] }

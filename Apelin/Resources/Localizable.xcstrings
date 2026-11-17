@@ -139348,6 +139348,40 @@
           }
         }
       }
+    },
+    "Retry After %lld Seconds" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry After %lld Seconds"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 秒后重试"
+          }
+        }
+      }
+    },
+    "Retry Wait Time" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry Wait Time"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试等待时间"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

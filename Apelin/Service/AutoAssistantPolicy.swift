@@ -23,9 +23,23 @@ enum AutoAssistantPolicy {
         var switchOnFailure = false
         /// 超时后等一会儿用同一个模型重试。
         var retryOnTimeout = false
+        /// 超时重试前的等待秒数。只有开了重试才起作用，默认 20 秒。
+        var retryDelaySeconds = AutoAssistantPolicy.RetryDelay.twenty.rawValue
 
         /// Nothing automatic: what a conversation that never turned one on has.
         static let off = Settings()
+    }
+
+    /// 超时重试前等待的档位：10–60 秒。rawValue 就是秒数，存的和读的都是它。
+    enum RetryDelay: Int, Codable, CaseIterable, Sendable {
+        case ten = 10
+        case twenty = 20
+        case thirty = 30
+        case sixty = 60
+
+        var title: String {
+            String(localized: "Retry After \(rawValue) Seconds")
+        }
     }
 
     private static let prefix = "autoAssistant.conversation."

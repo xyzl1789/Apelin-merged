@@ -562,7 +562,8 @@ final class ChatRuntime {
                 }
             }
             if shouldRetry {
-                try? await Task.sleep(for: .seconds(10))
+                let delay = AutoAssistantPolicy.current(for: id).retryDelaySeconds
+                try? await Task.sleep(for: .seconds(delay))
                 guard !Task.isCancelled, self.records[id] != nil else { return }
                 await self.resendFromComposer(ids, in: id, selection: selection)
             }
@@ -1297,8 +1298,21 @@ final class ChatRuntime {
         let reason = failure?.payload?["reason"]?.stringValue.map(ApelinError.Reason.init(rawValue:))
         guard reason != .offline else { return }
         // 只有仍留在 sending 里的草稿才还没被主机收下，才谈得上重发。
+        // 流式输出中途才失败的消息已被主机收下并从 sending 移走，此时的
+        // 恢复对象是本轮最后一条用户消息：切换后把它重新问一遍。
         let drafts = records[id]?.sending ?? []
-        guard !drafts.isEmpty else { return }
+        var midRunDraft: ComposerDraft?
+        if drafts.isEmpty {
+            guard let failureEvent = failure,
+                  let messageID = lastUserMessageID(before: failureEvent, in: id)
+            else { return }
+            guard let text = records[id]?.events
+                .last(where: { ChatTranscript.userMessageID(of: $0) == messageID })?
+                .payload?["text"]?.stringValue,
+                !text.isEmpty
+            else { return }
+            midRunDraft = ComposerDraft(id: messageID, text: text)
+        }
         let draftIDs = Set(drafts.map(\.id))
         // 未知原因（nil）与明确的「模型用不了」都切换；.network 不切。
         let shouldSwitch = canSwitch && (reason.map(Self.switchableReasons.contains) ?? true)
@@ -1319,16 +1333,23 @@ final class ChatRuntime {
                     ComposerModelSelection.choose(next, for: id)
                     ComposerModelSelection.rememberSelection(next)
                     _ = await self.configureModel(id, selection: next)
-                    await self.resend(draftIDs, in: id, selection: next)
+                    if let midRunDraft {
+                        // 消息已被主机收下，不能走 resend；保留原 id 重新
+                        // prompt，主机对同一条消息再答一遍，不会重复入列。
+                        await self.send(midRunDraft, to: id, selection: next)
+                    } else {
+                        await self.resend(draftIDs, in: id, selection: next)
+                    }
                     // 重发成败由下一轮事件与错误驱动：成功就结束，又失败
                     // 会带着更新过的 attempt 计数再进这里，换下一个候选。
                     return
                 }
                 return
             }
-            // 没有可切换的候选，且是超时并开启了重试：等 10 秒再用原模型重发。
+            // 没有可切换的候选，且是超时并开启了重试：等设置的秒数再用原模型重发。
             if shouldRetry {
-                try? await Task.sleep(for: .seconds(10))
+                let delay = AutoAssistantPolicy.current(for: id).retryDelaySeconds
+                try? await Task.sleep(for: .seconds(delay))
                 guard !Task.isCancelled, self.records[id] != nil else { return }
                 await self.resend(draftIDs, in: id, selection: ComposerModelSelection.selection(for: id))
             }
@@ -1343,6 +1364,17 @@ final class ChatRuntime {
             guard !Task.isCancelled, records[id] != nil else { return }
             try? await send(draft, to: id, selection: selection)
         }
+    }
+
+    /// 流式输出中途失败时，本轮最后一条用户消息的 id：自动恢复用它找到
+    /// 要重新问的原文。只在失败事件之前（含同 seq）的 prompt / steer /
+    /// queued 里找，避免把失败之后用户又发的新消息卷进来。
+    private func lastUserMessageID(before failure: TaskEvent, in id: UUID) -> UUID? {
+        guard let events = records[id]?.events else { return nil }
+        return events
+            .filter { $0.seq <= failure.seq }
+            .compactMap(ChatTranscript.userMessageID(of:))
+            .last
     }
 
     // 只从上次测速成功的模型里选，按快到慢；失败模型即使留在结果页

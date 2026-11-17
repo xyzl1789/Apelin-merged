@@ -328,7 +328,8 @@ final class ComposerModelBar: ComposerSectionView {
         let lightning = iconSize * 0.75
         effortButton.iconInset = 0
         effortButton.frame = directionalFrame(CGRect(
-            x: x, y: (bounds.height - lightning) / 2, width: lightning, height: lightning,
+            // 向模型图标靠 2pt：两个思考相关的控件看起来是一组。
+            x: x - 2, y: (bounds.height - lightning) / 2, width: lightning, height: lightning,
         ))
         x += lightning + spacing
 
