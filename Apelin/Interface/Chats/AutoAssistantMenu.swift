@@ -289,7 +289,8 @@ final class MeasurementResultsController: UITableViewController {
     }
 
     private func results(in section: Int) -> [ModelSpeedPicker.Result] {
-        guard let kind = Section(rawValue: sections[section]) else { return [] }
+        guard sections.indices.contains(section) else { return [] }
+        let kind = sections[section]
         return results.filter { kind == .successful ? $0.success : !$0.success }
     }
 
@@ -298,7 +299,8 @@ final class MeasurementResultsController: UITableViewController {
     }
 
     override func tableView(_: UITableView, titleForHeaderInSection section: Int) -> String? {
-        guard let kind = Section(rawValue: sections[section]) else { return nil }
+        guard sections.indices.contains(section) else { return nil }
+        let kind = sections[section]
         return String(localized: kind == .successful ? "Successful Models" : "Failed Models")
     }
 
@@ -311,7 +313,8 @@ final class MeasurementResultsController: UITableViewController {
         let cell = tableView.dequeueReusableCell(withIdentifier: "measurement")
             ?? UITableViewCell(style: .subtitle, reuseIdentifier: "measurement")
         var config = cell.defaultContentConfiguration()
-        guard let kind = Section(rawValue: sections[indexPath.section]) else { return cell }
+        guard sections.indices.contains(indexPath.section) else { return cell }
+        let kind = sections[indexPath.section]
         let rows = results(in: indexPath.section)
         guard indexPath.row < rows.count else {
             config.text = String(localized: "No Model Answered")
@@ -356,7 +359,8 @@ final class MeasurementResultsController: UITableViewController {
 
     override func tableView(_: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard let kind = Section(rawValue: sections[indexPath.section]), kind == .successful else { return }
+        guard sections.indices.contains(indexPath.section),
+              sections[indexPath.section] == .successful else { return }
         let rows = results(in: indexPath.section)
         guard indexPath.row < rows.count else { return }
         let selection = rows[indexPath.row].selection
