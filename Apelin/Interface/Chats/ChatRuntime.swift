@@ -1305,15 +1305,21 @@ final class ChatRuntime {
         let drafts = records[id]?.sending ?? []
         var midRunDraft: ComposerDraft?
         if drafts.isEmpty {
-            guard let failureEvent = failure,
-                  let messageID = lastUserMessageID(before: failureEvent, in: id)
-            else { return }
-            guard let text = records[id]?.events
-                .last(where: { ChatTranscript.userMessageID(of: $0) == messageID })?
-                .payload?["text"]?.stringValue,
-                !text.isEmpty
-            else { return }
-            midRunDraft = ComposerDraft(id: messageID, text: text)
+            // 流式输出中途才失败的消息已被主机收下并从 sending 移走。此时的
+            // 恢复对象是本轮最后一条用户消息：切换后把它重新问一遍。找不回
+            // 原文（事件缺失、已被清理等）时退而求其次，发一句「继续」——
+            // 切换已经生效，什么都不发任务就停在这里了。
+            if let failureEvent = failure,
+               let messageID = lastUserMessageID(before: failureEvent, in: id),
+               let text = records[id]?.events
+                   .last(where: { ChatTranscript.userMessageID(of: $0) == messageID })?
+                   .payload?["text"]?.stringValue,
+               !text.isEmpty
+            {
+                midRunDraft = ComposerDraft(id: messageID, text: text)
+            } else {
+                midRunDraft = ComposerDraft(text: String(localized: "Continue"))
+            }
         }
         let draftIDs = Set(drafts.map(\.id))
         // 未知原因（nil）与明确的「模型用不了」都切换；.network 不切。

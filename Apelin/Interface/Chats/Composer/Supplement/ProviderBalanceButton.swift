@@ -3,7 +3,7 @@ import UIKit
 
 /// 输入框上下文圆环旁的小胶囊：显示当前模型供应商的实际余额（带币种）。
 /// 高度与上下文圆环一致，宽度足以写下金额，纯文字、不画进度、不显示百分比；
-/// 匹配不到当前模型供应商的余额时整个控件隐藏。
+/// 查不到余额时常显一条「没有可显示的余额」占位，而不是整个控件消失。
 final class ProviderBalanceButton: UIControl {
     /// 与上下文圆环同高，保持一行对齐。
     static let height: CGFloat = 24
@@ -32,7 +32,6 @@ final class ProviderBalanceButton: UIControl {
         accessibilityTraits = .button
         accessibilityLabel = String(localized: "Provider Balances")
         accessibilityHint = String(localized: "Opens the provider balances.")
-        isHidden = true
     }
 
     @available(*, unavailable)
@@ -52,8 +51,16 @@ final class ProviderBalanceButton: UIControl {
 
     func set(_ balance: ProviderBalance?) {
         self.balance = balance
-        isHidden = balance == nil
-        guard let balance else { return }
+        // 常显：查不到余额时也留着占位，让读者知道这一栏在、只是没查到，
+        // 而不是整个控件消失让人以为功能坏了。
+        isHidden = false
+        guard let balance else {
+            backgroundColor = .clear
+            label.textColor = .tertiaryLabel
+            label.text = String(localized: "No balance to show")
+            accessibilityValue = String(localized: "No balance to show")
+            return
+        }
         backgroundColor = balance.stale
             ? UIColor.systemOrange.withAlphaComponent(0.14)
             : UIColor.secondarySystemFill

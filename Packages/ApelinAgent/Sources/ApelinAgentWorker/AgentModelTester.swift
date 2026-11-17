@@ -142,8 +142,6 @@ enum AgentModelTester {
             return "该供应商会附加默认系统提示，因此无法进行纯 Hi 测试。"
         case .qoder, .qoderCN:
             return "该供应商会附加必需的助手系统提示，因此无法进行纯 Hi 测试。"
-        case .workBuddy, .workBuddyAI:
-            return "该供应商会附加默认系统提示，因此无法进行纯 Hi 测试。"
         default:
             return nil
         }
