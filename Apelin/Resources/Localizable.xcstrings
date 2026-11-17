@@ -141924,6 +141924,172 @@
           }
         }
       }
+    },
+    "按供应商": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按供应商"
+          }
+        }
+      }
+    },
+    "未知供应商": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知供应商"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

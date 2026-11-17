@@ -54,6 +54,8 @@ final class ChatUsageDetailController: UIViewController {
     private let overviewStack = UIStackView()
     private let rankingCard = UIView()
     private let rankingStack = UIStackView()
+    private let providersCard = UIView()
+    private let providersStack = UIStackView()
     private let modelsCard = UIView()
     private let modelsStack = UIStackView()
 
@@ -90,6 +92,7 @@ final class ChatUsageDetailController: UIViewController {
         buildStatsCard()
         buildOverviewCard()
         buildRankingCard()
+        buildProvidersCard()
 
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -302,6 +305,37 @@ final class ChatUsageDetailController: UIViewController {
         stack.addArrangedSubview(rankingCard)
     }
 
+    /// 「按供应商」卡（TrollAgent 同构）：全部请求按供应商汇总，
+    /// 按请求量排；旧记录没有供应商字段，归到「未知」。
+    private func buildProvidersCard() {
+        providersCard.backgroundColor = .secondarySystemGroupedBackground
+        providersCard.layer.cornerRadius = 14
+        providersCard.layer.cornerCurve = .continuous
+
+        let title = UILabel()
+        title.text = String(localized: "按供应商")
+        title.font = Self.weighted(.preferredFont(forTextStyle: .subheadline), .semibold)
+        title.textColor = .label
+        title.adjustsFontForContentSizeCategory = true
+
+        providersStack.axis = .vertical
+        providersStack.spacing = 8
+
+        for subview in [title, providersStack] {
+            subview.translatesAutoresizingMaskIntoConstraints = false
+            providersCard.addSubview(subview)
+        }
+        title.snp.makeConstraints { make in
+            make.leading.top.trailing.equalToSuperview().inset(16)
+        }
+        providersStack.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.top.equalTo(title.snp.bottom).offset(10)
+            make.bottom.equalToSuperview().inset(14)
+        }
+        stack.addArrangedSubview(providersCard)
+    }
+
     private func loadRecords() {
         let url = UsageRecorder.file(in: DataFolder.app.root)
         let session = sessionID
@@ -414,6 +448,7 @@ final class ChatUsageDetailController: UIViewController {
         }
         renderOverview()
         renderRanking()
+        renderProviders()
         view.setNeedsLayout()
     }
 
@@ -487,6 +522,33 @@ final class ChatUsageDetailController: UIViewController {
             row.spacing = 8
             row.alignment = .firstBaseline
             rankingStack.addArrangedSubview(row)
+        }
+    }
+
+    /// 按供应商汇总：全部记录（含旧记录归「未知」），按请求量排。
+    private func renderProviders() {
+        for row in providersStack.arrangedSubviews { row.removeFromSuperview() }
+        if allRecords.isEmpty {
+            providersStack.addArrangedSubview(emptyNote(String(localized: "还没有任何请求记录。")))
+            return
+        }
+        var byProvider: [String: (count: Int, input: Int, output: Int)] = [:]
+        for record in allRecords {
+            let name = record.provider ?? String(localized: "未知供应商")
+            let entry = byProvider[name, default: (0, 0, 0)]
+            byProvider[name] = (
+                entry.count + 1,
+                entry.input + record.input + record.cacheRead + record.cacheWrite,
+                entry.output + record.output,
+            )
+        }
+        for entry in byProvider
+            .map { (name: $0.key, count: $0.value.count, input: $0.value.input, output: $0.value.output) }
+            .sorted(by: { $0.input + $0.output > $1.input + $1.output }) {
+            providersStack.addArrangedSubview(statRow(
+                title: entry.name,
+                value: "\(Self.tokenText(entry.input + entry.output)) · \(entry.count) 次",
+            ))
         }
     }
 

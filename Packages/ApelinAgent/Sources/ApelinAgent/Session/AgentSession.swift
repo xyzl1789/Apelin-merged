@@ -1516,6 +1516,7 @@ public actor AgentSession {
                     sessionID: configuration.id,
                     project: configuration.project.name.rawValue,
                     model: agent.state.model.id,
+                    provider: agent.state.model.provider,
                     input: usage.input,
                     output: usage.output,
                     cacheRead: usage.cacheRead,
