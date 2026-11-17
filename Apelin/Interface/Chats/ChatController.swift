@@ -28,8 +28,6 @@ final class ChatController: UIViewController {
     /// fork Fork from Here made.
     var onOpenChat: ((ChatSummary) -> Void)?
     private let titleView = ChatTitleView()
-    /// 输入框上方的紧凑上下文占用条（TrollAgent 同款），点击开用量详情。
-    private let contextUsageBar = ContextUsageBarView()
     private var messageList = ListView<ChatMessage>()
     @objc dynamic private var openingQueueEditor = false
     private let composer = ComposerView()
@@ -245,12 +243,6 @@ final class ChatController: UIViewController {
         )
         updateModelSelection()
         view.addSubview(composer)
-        view.addSubview(contextUsageBar)
-        contextUsageBar.snp.makeConstraints { make in
-            make.leading.trailing.equalTo(composer).inset(4)
-            make.bottom.equalTo(composer.snp.top).offset(-6)
-        }
-        contextUsageBar.tapAction = { [weak self] in self?.showUsage() }
         composer.snp.makeConstraints { make in
             if #available(iOS 17.0, *) {
                 // Above a keyboard, the gap the bands keep between
@@ -311,10 +303,7 @@ final class ChatController: UIViewController {
         view.addSubview(latestMessageButton)
         latestMessageButton.snp.makeConstraints { make in
             make.centerX.equalTo(view.safeAreaLayoutGuide)
-            // 占用条可见时让开它，否则停在输入框上方。
-            make.bottom.equalTo(contextUsageBar.isHidden
-                ? composer.snp.top
-                : contextUsageBar.snp.top).offset(-8)
+            make.bottom.equalTo(composer.snp.top).offset(-8)
             make.size.equalTo(44)
         }
 
@@ -797,10 +786,6 @@ final class ChatController: UIViewController {
             // temporary chat has no files of its own to name.
             composer.projectRoot = summary.projectName.flatMap { DataFolder.app.project(named: $0) }
             composer.modelBar.setContextUsage(transcript.contextUsage, compactable: runtime.canCompact(chat.id))
-            contextUsageBar.set(
-                usedTokens: transcript.contextUsage?.tokens ?? 0,
-                windowTokens: transcript.contextUsage?.window ?? 0,
-            )
             // The agent may have changed the run mode itself
             // (`apelin_run_mode`): the log's last word is what the pill shows
             // and what the next prompt goes out with, whether the change came
@@ -1133,11 +1118,8 @@ final class ChatController: UIViewController {
 
     /// The list scrolls clear of the composer, and of the keyboard under it.
     private func updateMessageListInsets() {
-        // 占用条在输入框上方时，列表的滚动指示器不要压在它上面。
-        let barTop = contextUsageBar.isHidden
-            ? composer.frame.minY
-            : contextUsageBar.frame.minY
-        let bottom = max(view.bounds.height - barTop + 8, 0) - view.safeAreaInsets.bottom
+        let covered = max(view.bounds.height - composer.frame.minY + 8, 0)
+        let bottom = max(covered - view.safeAreaInsets.bottom, 0)
         if messageList.contentInset.bottom != bottom + 16 {
             // a reader at the latest message, or following a turn, stays there
             let keepsLatest = followedTurn != nil || distanceFromLatestMessage <= 2

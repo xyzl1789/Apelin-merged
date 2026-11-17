@@ -58359,6 +58359,12 @@
             "state": "translated",
             "value": "尚無用量"
           }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Usage Yet"
+          }
         }
       }
     },
@@ -103333,6 +103339,12 @@
             "state": "translated",
             "value": "此對話尚未發出請求。"
           }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This conversation has not made a request yet."
+          }
         }
       }
     },
@@ -141743,6 +141755,172 @@
           "stringUnit": {
             "state": "translated",
             "value": "还没有任何请求记录。"
+          }
+        }
+      }
+    },
+    "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩"
+          }
+        }
+      }
+    },
+    "用量为模型请求报告的真实计数，非估算值。": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量为模型请求报告的真实计数，非估算值。"
           }
         }
       }

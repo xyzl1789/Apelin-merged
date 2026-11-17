@@ -22,6 +22,7 @@ enum ChatActions {
         completion: @escaping ([UIMenuElement]) -> Void,
     ) {
         let chatActions = [
+            usageAction(for: chat.id, runtime: runtime, from: presenter),
             renameAction(for: chat.id, runtime: runtime, from: presenter),
             compactAction(for: chat.id, runtime: runtime, from: presenter),
         ]
@@ -81,6 +82,31 @@ enum ChatActions {
                 completion(AutoAssistantMenu.actions(for: id, in: presenter))
             }
         }]
+    }
+
+    /// 会话用量详情：本会话的上下文占用与 token 统计（TrollAgent 同构）。
+    /// 没有任何请求时提示，与用量页的空态一致。
+    private static func usageAction(
+        for id: UUID,
+        runtime: ChatRuntime,
+        from presenter: UIViewController,
+    ) -> UIKit.UIAction {
+        UIKit.UIAction(
+            title: String(localized: "会话用量"),
+            image: UIImage(systemName: "chart.bar"),
+        ) { [weak presenter, weak runtime] _ in
+            guard let presenter, let runtime else { return }
+            let usage = runtime.transcript(id).contextUsage
+            let sessionID = runtime.records[id]?.sessionID
+            guard sessionID != nil || usage != nil else {
+                presenter.presentNotice(
+                    title: "No Usage Yet",
+                    message: "This conversation has not made a request yet.",
+                )
+                return
+            }
+            presenter.presentChatUsageDetail(sessionID: sessionID ?? "", usage: usage)
+        }
     }
 
     /// Asked about first, whatever state the conversation is in when it is

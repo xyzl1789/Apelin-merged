@@ -1,4 +1,5 @@
 import ApelinCore
+import SnapKit
 import Then
 import UIKit
 
@@ -13,7 +14,7 @@ final class ChatUsageDetailController: UIViewController {
 
         var color: UIColor {
             switch self {
-            case .normal: .systemGreen
+            case .normal: .systemBlue
             case .elevated: .systemOrange
             case .high: .systemRed
             }
@@ -47,6 +48,8 @@ final class ChatUsageDetailController: UIViewController {
     private let contextNoteLabel = UILabel()
     private let statsCard = UIView()
     private let statsStack = UIStackView()
+    /// 统计口径说明（TrollAgent 同款小字）。
+    private let estimateNote = UILabel()
     private let overviewCard = UIView()
     private let overviewStack = UIStackView()
     private let rankingCard = UIView()
@@ -136,11 +139,37 @@ final class ChatUsageDetailController: UIViewController {
         contextNoteLabel.textColor = .secondaryLabel
         contextNoteLabel.numberOfLines = 0
         contextNoteLabel.adjustsFontForContentSizeCategory = true
-        contextNoteLabel.text = String(localized: "占用为模型最近一次请求报告的上下文用量；达到压缩阈值后对话会自动压缩。")
+        contextNoteLabel.text = String(localized: "压力分级：<60% 正常 · ≥60% 压缩输出 · ≥75% 激进摘要 · ≥90% 自动压缩")
 
         for subview in [contextTitleLabel, contextValueLabel, contextPercentLabel, track, contextNoteLabel] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             contextCard.addSubview(subview)
+        }
+        contextTitleLabel.snp.makeConstraints { make in
+            make.leading.top.trailing.equalToSuperview().inset(16)
+        }
+        contextValueLabel.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.top.equalTo(contextTitleLabel.snp.bottom).offset(10)
+        }
+        contextPercentLabel.snp.makeConstraints { make in
+            make.trailing.equalToSuperview().inset(16)
+            make.centerY.equalTo(contextValueLabel)
+            make.leading.greaterThanOrEqualTo(contextValueLabel.snp.trailing).offset(8)
+        }
+        track.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.top.equalTo(contextValueLabel.snp.bottom).offset(10)
+            make.height.equalTo(8)
+        }
+        fill.snp.makeConstraints { make in
+            make.leading.top.bottom.equalToSuperview()
+            make.width.equalTo(track).multipliedBy(usage?.fraction ?? 0)
+        }
+        contextNoteLabel.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.top.equalTo(track.snp.bottom).offset(8)
+            make.bottom.equalToSuperview().inset(14)
         }
         stack.addArrangedSubview(contextCard)
     }
@@ -159,11 +188,30 @@ final class ChatUsageDetailController: UIViewController {
         statsStack.axis = .vertical
         statsStack.spacing = 10
 
-        for subview in [title, statsStack] {
+        for subview in [title, statsStack, estimateNote] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             statsCard.addSubview(subview)
         }
+        title.snp.makeConstraints { make in
+            make.leading.top.trailing.equalToSuperview().inset(16)
+        }
+        statsStack.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.top.equalTo(title.snp.bottom).offset(10)
+        }
+        estimateNote.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.top.equalTo(statsStack.snp.bottom).offset(8)
+            make.bottom.equalToSuperview().inset(14)
+        }
         stack.addArrangedSubview(statsCard)
+
+        // TrollAgent 同款：标注口径说明，置于统计卡说明位。
+        estimateNote.font = .preferredFont(forTextStyle: .caption2)
+        estimateNote.textColor = .secondaryLabel
+        estimateNote.numberOfLines = 0
+        estimateNote.adjustsFontForContentSizeCategory = true
+        estimateNote.text = String(localized: "用量为模型请求报告的真实计数，非估算值。")
 
         modelsCard.backgroundColor = .secondarySystemGroupedBackground
         modelsCard.layer.cornerRadius = 14
@@ -181,6 +229,14 @@ final class ChatUsageDetailController: UIViewController {
         for subview in [modelsTitle, modelsStack] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             modelsCard.addSubview(subview)
+        }
+        modelsTitle.snp.makeConstraints { make in
+            make.leading.top.trailing.equalToSuperview().inset(16)
+        }
+        modelsStack.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.top.equalTo(modelsTitle.snp.bottom).offset(10)
+            make.bottom.equalToSuperview().inset(14)
         }
         stack.addArrangedSubview(modelsCard)
     }
@@ -205,6 +261,14 @@ final class ChatUsageDetailController: UIViewController {
             subview.translatesAutoresizingMaskIntoConstraints = false
             overviewCard.addSubview(subview)
         }
+        title.snp.makeConstraints { make in
+            make.leading.top.trailing.equalToSuperview().inset(16)
+        }
+        overviewStack.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.top.equalTo(title.snp.bottom).offset(10)
+            make.bottom.equalToSuperview().inset(14)
+        }
         stack.addArrangedSubview(overviewCard)
     }
 
@@ -226,6 +290,14 @@ final class ChatUsageDetailController: UIViewController {
         for subview in [title, rankingStack] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             rankingCard.addSubview(subview)
+        }
+        title.snp.makeConstraints { make in
+            make.leading.top.trailing.equalToSuperview().inset(16)
+        }
+        rankingStack.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.top.equalTo(title.snp.bottom).offset(10)
+            make.bottom.equalToSuperview().inset(14)
         }
         stack.addArrangedSubview(rankingCard)
     }
@@ -267,7 +339,7 @@ final class ChatUsageDetailController: UIViewController {
     private func render() {
         let used = usage?.tokens ?? 0
         let window = usage?.window ?? 0
-        let ratio = (usage?.fraction).map { min(1, max(0, $0)) }
+        let ratio: Double? = usage.map { min(1, max(0, $0.fraction)) }
 
         contextValueLabel.text = ratio == nil && used == 0
             ? String(localized: "还没有用量")
@@ -280,6 +352,9 @@ final class ChatUsageDetailController: UIViewController {
         case let value?: value >= 0.9 ? .high : value >= 0.75 ? .elevated : .normal
         }
         fill.backgroundColor = level.color
+        fill.snp.updateConstraints { make in
+            make.width.equalTo(track).multipliedBy(ratio ?? 0)
+        }
         contextPercentLabel.textColor = ratio == nil ? .secondaryLabel : level.color
         contextValueLabel.accessibilityValue = ratio.map {
             String(localized: "已使用 \(Self.tokenText(used))，窗口 \(Self.tokenText(window))，占 \($0 * 100, format: .number.precision(.fractionLength(0)))%")
@@ -444,12 +519,6 @@ final class ChatUsageDetailController: UIViewController {
         row.axis = .horizontal
         row.spacing = 8
         return row
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        let width = contextCard.bounds.width
-        fill.frame = CGRect(x: 0, y: 0, width: width * ((usage?.fraction).map { min(1, max(0, $0)) } ?? 0), height: 8)
     }
 
     private static func tokenText(_ tokens: Int) -> String {
