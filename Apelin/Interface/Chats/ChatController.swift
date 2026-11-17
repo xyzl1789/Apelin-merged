@@ -1353,11 +1353,15 @@ extension ChatController {
             ?? account.capabilities?[model]?.contextWindow
     }
 
-    /// With no model picked, or one no longer enabled, the first enabled
-    /// model is picked; with none enabled the bar keeps asking. A model
-    /// still enabled takes the catalog's efforts and tiers again. A
-    /// signed-in account whose sign-in did not read this time lists no
-    /// models; its model is kept rather than swapped for another's.
+    /// With no model picked, or one no longer offered, the first offered
+    /// model is picked; with none offered the bar keeps asking. A model the
+    /// catalog still lists takes the catalog's efforts and tiers again. The
+    /// catalogue — not the manual enabled whitelist — is the judge here: the
+    /// auto-switch picks candidates from the measured full catalog, and a
+    /// whitelist-only check would revert the switch the moment the reader
+    /// touched the composer. Explicitly hidden or excluded models still lose
+    /// the seat. A signed-in account whose sign-in did not read this time
+    /// lists no models; its model is kept rather than swapped for another's.
     func ensureModelSelection() {
         selectionCheck?.cancel()
         guard let id = chat?.id else { return }
@@ -1365,11 +1369,12 @@ extension ChatController {
             guard let listed = try? await loadModelAccounts(),
                   !Task.isCancelled, self.chat?.id == id
             else { return }
-            let accounts = EnabledModels.accounts(from: listed.filter { $0.models != nil })
-            if let current = ComposerModelSelection.selection(for: id) {
-                if let account = accounts.first(where: { account in
-                    account.provider == current.provider && (account.models ?? []).contains(current.model)
-                }) {
+            if let current = ComposerModelSelection.selection(for: id),
+               !EnabledModels.hiddenIDs(for: current.provider).contains(current.model),
+               !ModelExclusions.isModelExcluded(current.provider, model: current.model),
+               let account = listed.first(where: { $0.provider == current.provider && $0.signedIn })
+            {
+                if account.models == nil || account.models?.contains(current.model) == true {
                     let refreshed = Self.selection(of: current.model, in: account)
                     if refreshed.supportedEfforts != current.supportedEfforts
                         || refreshed.supportedTiers != current.supportedTiers
@@ -1378,10 +1383,8 @@ extension ChatController {
                     }
                     return
                 }
-                if listed.contains(where: { $0.provider == current.provider && $0.signedIn && $0.models == nil }) {
-                    return
-                }
             }
+            let accounts = EnabledModels.accounts(from: listed.filter { $0.models != nil })
             guard let account = accounts.first, let model = account.models?.first else { return }
             ComposerModelSelection.choose(Self.selection(of: model, in: account), for: id)
         }

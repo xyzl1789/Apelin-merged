@@ -1386,6 +1386,8 @@ final class ChatRuntime {
     // 只从上次测速成功的模型里选，按快到慢；失败模型即使留在结果页
     // 也不会进候选，免得切到一个同样用不了的模型。`skipping` 是本轮
     // 已经试过又失败的键，随新一轮清零——失败记忆只限本轮。
+    // 没有测速结果时（从没测过、结果被清、重启后失效）退到目录里
+    // 登录账号的模型：否则自动切换在这种设备上永远静默失效。
     private func firstAvailableModel(
         around current: ComposerModelSelection?,
         skipping tried: Set<String> = [],
@@ -1397,6 +1399,33 @@ final class ChatRuntime {
             if let current, current.provider == selection.provider, current.model == selection.model { continue }
             guard !tried.contains(Self.candidateKey(selection)) else { continue }
             return selection
+        }
+        return await catalogFallback(around: current, skipping: tried)
+    }
+
+    /// 测速结果缺失时的候选：目录里已登录账号的模型，排除隐藏、排除与
+    /// 当前相同的那个，按账号顺序逐个给。
+    private func catalogFallback(
+        around current: ComposerModelSelection?,
+        skipping tried: Set<String>,
+    ) async -> ComposerModelSelection? {
+        guard let listed = try? await ApelinService.app.agentAccountsWithKnownModels() else { return nil }
+        for account in listed {
+            guard account.signedIn else { continue }
+            for model in account.models ?? [] {
+                guard !EnabledModels.hiddenIDs(for: account.provider).contains(model),
+                      !ModelExclusions.isModelExcluded(account.provider, model: model)
+                else { continue }
+                let selection = ComposerModelSelection(
+                    provider: account.provider,
+                    model: model,
+                    supportedEfforts: account.reasoningEfforts?[model] ?? [],
+                    supportedTiers: account.serviceTiers?[model],
+                )
+                if let current, current.provider == selection.provider, current.model == selection.model { continue }
+                guard !tried.contains(Self.candidateKey(selection)) else { continue }
+                return selection
+            }
         }
         return nil
     }
