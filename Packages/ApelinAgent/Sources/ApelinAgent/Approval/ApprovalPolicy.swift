@@ -357,7 +357,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
     /// say, the card naming the branch and where it goes.
     static func branchDeletionVerdict(_ deletion: InvocationFacts.BranchDeletion?) -> GateVerdict {
         guard let deletion else {
-            return .ask(reason: "无法读取该删除将移除的内容。", detail: .none)
+            return .ask(reason: "What this deletion would remove could not be read.", detail: .none)
         }
         let place = deletion.remote.map { " on \($0)" } ?? ""
         let unmerged = deletion.remote == nil && deletion.force
@@ -571,7 +571,7 @@ public struct ApprovalPolicy: Sendable, Hashable {
 
         case .gitBranchCreate, .gitBranchCheckout, .gitBranchRename, .gitMerge, .gitMergeAbort:
             return .ask(
-                reason: "这会改变项目的分支或合并状态。运行前请审查所指名的操作；每次调用都需要你的批准。",
+                reason: "This changes the project's branches or merge state. Review the named operation before running; each call needs your approval.",
                 detail: .none,
             )
 
@@ -585,17 +585,17 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // the card naming the tag; listing stashes changes nothing.
         case .gitTag:
             guard let tag = facts.tagChange else {
-                return .ask(reason: "这会改变项目的标签。", detail: .none)
+                return .ask(reason: "This changes the project's tags.", detail: .none)
             }
             return tag.deleting
                 ? .ask(reason: "Deletes the tag \(tag.name): nothing in this conversation brings it back.", detail: .none)
                 : .ask(reason: "Makes the \(tag.annotated ? "annotated " : "")tag \(tag.name).", detail: .none)
         case .gitStash:
             guard facts.stashReads != true else { return .allow(.notRequired) }
-            return .ask(reason: "这会改变项目保存的工作（贮藏）。运行前请审查所指名的操作。", detail: .none)
+            return .ask(reason: "This changes the project's saved work (its stash). Review the named operation before running.", detail: .none)
         case .gitRestore, .gitClean:
             guard let paths = facts.discardedPaths else {
-                return .ask(reason: "这会丢弃项目文件。", detail: .none)
+                return .ask(reason: "This discards project files.", detail: .none)
             }
             return Self.discardedPathsVerdict(paths, discarding: facts.tool == .local(.gitRestore))
 

@@ -257,13 +257,8 @@ final class RootInterfaceController: UIViewController {
         chatRuntime.retryUnsaved()
         // A run whose end the app never read — the app was killed in the
         // middle of it, or the host restarted — ends here rather than only
-        // at the next launch. 自动测速在 reconcile 之后启动，读到的会话状态
-        // 才是最新的；有会话开着自动切换且距上次测量够久时后台跑一轮，
-        // 不依赖用户手动点测速按钮。
-        Task { @MainActor in
-            await chatRuntime.reconcileRuns()
-            MeasurementRunner.startAutomaticallyIfDue()
-        }
+        // at the next launch.
+        Task { await chatRuntime.reconcileRuns() }
         StorageWarning.checkFreeSpace(from: self)
     }
 

@@ -387,6 +387,46 @@ public struct AgentModelDefaults: Codable, Sendable, Equatable, Hashable {
     }
 }
 
+/// A provider/model pair used by an auxiliary agent operation.
+public struct AgentModelSelection: Codable, Sendable, Equatable, Hashable {
+    public var provider: AgentProvider
+    public var model: String
+
+    public init(provider: AgentProvider, model: String) {
+        self.provider = provider
+        self.model = model
+    }
+}
+
+/// App-wide model defaults. Missing entries follow the conversation model.
+public struct AgentModelDefaults: Codable, Sendable, Equatable, Hashable {
+    public var promptRewrite: AgentModelSelection?
+    public var compression: AgentModelSelection?
+    public var title: AgentModelSelection?
+    public var vision: AgentModelSelection?
+    public var imageGeneration: AgentModelSelection?
+    /// The model a conversation an agent opens starts with
+    /// (`apelin_conversation_create`). Absent leaves it on the model of the
+    /// conversation that opened it.
+    public var derivedConversation: AgentModelSelection?
+
+    public init(
+        promptRewrite: AgentModelSelection? = nil,
+        compression: AgentModelSelection? = nil,
+        title: AgentModelSelection? = nil,
+        vision: AgentModelSelection? = nil,
+        imageGeneration: AgentModelSelection? = nil,
+        derivedConversation: AgentModelSelection? = nil,
+    ) {
+        self.promptRewrite = promptRewrite
+        self.compression = compression
+        self.title = title
+        self.vision = vision
+        self.imageGeneration = imageGeneration
+        self.derivedConversation = derivedConversation
+    }
+}
+
 public enum AgentReasoningEffort: String, Codable, Sendable, CaseIterable {
     case off, minimal, low, medium, high, xhigh, max
 }

@@ -123,6 +123,64 @@ final class ChannelRepliesTests: XCTestCase {
         let text = ChannelReplies.text(for: approval(needsApp: true), language: "zh-Hans")
         XCTAssertTrue(text.contains("在 Apelin 里确认"))
     }
+
+    /// Every message is acknowledged, in the language the phone speaks, so a
+    /// reply never has to be guessed at.
+    func testEveryMessageIsAcknowledged() {
+        XCTAssertTrue(ChannelReplies.received(language: "zh-Hans").contains("已收到"))
+        XCTAssertTrue(ChannelReplies.received(language: "zh-Hant").contains("已收到"))
+        XCTAssertTrue(ChannelReplies.received(language: "en").contains("working on it"))
+    }
+
+    /// A reply taken as a new message says so and says what still waits: an
+    /// answer the channel did not understand never looks approved, or lost.
+    func testAMessageTakenAsANewTurnSaysWhatStillWaits() {
+        let waiting = ChannelReplies.received(waitingFor: approval(), language: "zh-Hans")
+        XCTAssertTrue(waiting.contains("已收到"))
+        XCTAssertTrue(waiting.contains("同意"))
+        let question = ChannelReplies.received(waitingFor: question(), language: "en")
+        XCTAssertTrue(question.contains("working on it"))
+        XCTAssertTrue(question.contains("number"))
+    }
+
+    /// An ask kept on disk past the end of its run is answered with that,
+    /// not left waiting for a decision nobody takes.
+    func testAnAskWhoseRunIsGoneIsAnsweredThatWay() {
+        XCTAssertTrue(ChannelReplies.noLongerWaiting(language: "zh-Hans").contains("不在等"))
+        XCTAssertTrue(ChannelReplies.noLongerWaiting(language: "en").contains("no longer waiting"))
+    }
+
+    /// A word that only answers an approval, with none waiting, is said back
+    /// rather than queued.
+    func testAnApprovalWordWithNothingWaitingIsRecognised() {
+        XCTAssertTrue(ChannelReplies.isApprovalWord("同意"))
+        XCTAssertTrue(ChannelReplies.isApprovalWord(" approve "))
+        XCTAssertTrue(ChannelReplies.isApprovalWord("Approve!"))
+        XCTAssertTrue(ChannelReplies.isApprovalWord("拒绝"))
+        // Short everyday replies are left to be messages.
+        XCTAssertFalse(ChannelReplies.isApprovalWord("好"))
+        XCTAssertFalse(ChannelReplies.isApprovalWord("ok"))
+        XCTAssertFalse(ChannelReplies.isApprovalWord("我同意这个方案"))
+        XCTAssertFalse(ChannelReplies.isApprovalWord("继续"))
+        XCTAssertTrue(ChannelReplies.nothingWaiting(language: "zh-Hans").contains("没有在等"))
+        XCTAssertTrue(ChannelReplies.nothingWaiting(language: "en").contains("No approval is waiting"))
+    }
+
+    /// The three languages the channel writes, from any tag an app reports.
+    func testTheAppLanguageFoldsToTheThree() {
+        XCTAssertEqual(ChannelReplies.canonical("zh-Hans-CN"), "zh-Hans")
+        XCTAssertEqual(ChannelReplies.canonical("zh-Hant-TW"), "zh-Hant")
+        XCTAssertEqual(ChannelReplies.canonical("zh-TW"), "zh-Hant")
+        XCTAssertEqual(ChannelReplies.canonical("de-DE"), "en")
+        XCTAssertEqual(ChannelReplies.canonical(nil), "en")
+    }
+
+    /// The ask is kept as a file between host runs, so it survives one.
+    func testAnAskSurvivesTheFile() throws {
+        let ask = question()
+        let data = try JSONEncoder().encode(ask)
+        XCTAssertEqual(try JSONDecoder().decode(ChannelAsk.self, from: data), ask)
+    }
 }
 
 private extension ChannelReplies.Reading {

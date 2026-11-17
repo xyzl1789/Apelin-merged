@@ -9,9 +9,6 @@
 # how often it asks, the order the sidebar lists conversations in, which
 # projects the project menu lists at its top, which conversations offer
 # Delete and when it asks first, which replies leave a conversation
-# unread, what a forced push's, a squash's and a question's approval cards
-# show, and how a sign-in page says it is finished from another device,
-# against the harness modules.
 # unread, what a forced push's and a squash's approval cards show, how
 # a sign-in page says it is finished from another device, which typed
 # text the Web capture takes for an address, and which version of a linked
@@ -30,13 +27,16 @@ sources=(
     "$root/Apelin/Interface/Chats/Composer/ComposerDraft.swift"
     "$root/Apelin/Interface/Chats/Composer/ComposerMode.swift"
     "$root/Apelin/Interface/Chats/Messages/ChatMessage.swift"
-    "$root/Apelin/Interface/Chats/Messages/ChatFailure.swift"
     "$root/Apelin/Interface/Chats/Messages/ApprovalCardText.swift"
     "$root/Apelin/Interface/Chats/Messages/ToolCallBanner.swift"
     "$root/Apelin/Interface/Chats/Messages/ToolCallDetail.swift"
     "$root/Apelin/Interface/Chats/Messages/TraceStep.swift"
+    "$root/Apelin/Interface/Chats/Messages/ChatFailure.swift"
+    "$root/Apelin/Interface/Chats/Messages/ChatStreamPacing.swift"
     "$root/Apelin/Interface/Chats/ChatTranscript.swift"
     "$root/Apelin/Interface/Chats/ChatProcessPresentation.swift"
+    "$root/Apelin/Interface/Chats/Composer/WebAddress.swift"
+    "$root/Apelin/Interface/Settings/LinkedPackage.swift"
     "$root/Apelin/Interface/Chats/Messages/ChatHeaderLayout.swift"
     "$root/Apelin/Interface/Chats/Messages/ChatActivityLayout.swift"
     "$root/Apelin/Interface/Chats/Messages/ToolCallSections.swift"
@@ -58,8 +58,6 @@ sources=(
     "$root/Apelin/Interface/Feedback/CompletedBuilds.swift"
     "$root/Apelin/Interface/Feedback/StarPromptState.swift"
     "$root/Apelin/Interface/Settings/Accounts/SignInProgress.swift"
-    "$root/Apelin/Interface/Chats/Composer/WebAddress.swift"
-    "$root/Apelin/Interface/Settings/LinkedPackage.swift"
     "$root/Tests/ChatTranscript/TranscriptFold.swift"
     "$root/Tests/ChatTranscript/ToolCallDetailCheck.swift"
     "$root/Tests/ChatTranscript/TraceStepCheck.swift"
@@ -87,9 +85,9 @@ sources=(
     "$root/Tests/ChatTranscript/SquashCardCheck.swift"
     "$root/Tests/ChatTranscript/QuestionCardCheck.swift"
     "$root/Tests/ChatTranscript/SignInElsewhereCheck.swift"
-    "$root/Tests/ChatTranscript/ModelSwitchFitCheck.swift"
     "$root/Tests/ChatTranscript/WebAddressCheck.swift"
     "$root/Tests/ChatTranscript/LinkedPackageCheck.swift"
+    "$root/Tests/ChatTranscript/ModelSwitchFitCheck.swift"
     "$root/Tests/ChatTranscript/main.swift"
 )
 

@@ -23,7 +23,7 @@ struct TodoTools {
         guard case let .object(object) = arguments,
               case let .array(entries)? = object["items"]
         else {
-            throw ToolArgumentError("items 是完整列表，按顺序给出。")
+            throw ToolArgumentError("items is the whole list, in order.")
         }
         // Only an id the list already holds is kept: one the model invented
         // would make an item nothing can ever mark done.
@@ -33,10 +33,10 @@ struct TodoTools {
         for entry in entries {
             let title = (entry.argString("title") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else {
-                throw ToolArgumentError("每一项都需要标题。")
+                throw ToolArgumentError("Every item needs a title.")
             }
             guard let status = Self.status(entry.argString("status") ?? "") else {
-                throw ToolArgumentError("status 必须是 pending、inProgress、completed 或 blocked。")
+                throw ToolArgumentError("status must be pending, inProgress, completed or blocked.")
             }
             let id = entry.argString("id").flatMap { known.contains($0) ? $0 : nil }
             items.append(TodoRecord(

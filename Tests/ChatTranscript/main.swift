@@ -1212,6 +1212,7 @@ checkModelSwitchFit()
 
 checkChatForkHistory()
 checkConversationSource()
+checkStreamPacing()
 
 try checkSidebarTree()
 checkChatLineage()
@@ -1220,6 +1221,3 @@ checkActivityLayout()
 checkToolCallSections()
 checkUntrackedGroup()
 
-checkWebAddress()
-
-checkLinkedPackage()

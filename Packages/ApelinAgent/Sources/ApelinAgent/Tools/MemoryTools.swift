@@ -103,7 +103,7 @@ struct MemoryTools {
         encoder.outputFormatting = [.sortedKeys]
         let contents = records.flatMap { try? encoder.encode(PromptRecords(records: $0)) }
             .map { String(decoding: $0, as: UTF8.self) }
-            ?? "记忆存储不可用。 Do not invent saved memories."
+            ?? "Memory storage is unavailable. Do not invent saved memories."
         return SystemPromptText.memory(
             maximumRecords: String(MemoryStore.maximumRecords),
             maximumContentBytes: String(MemoryStore.maximumContentBytes),

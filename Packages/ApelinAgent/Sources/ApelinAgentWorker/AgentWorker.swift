@@ -220,13 +220,7 @@ public enum AgentWorker {
                     extraModels: list.extraModels ?? [:],
                     onlyExtraModels: list.onlyExtraModels ?? false,
                 )
-            }
-        case .agentProviderBalances:
-            await WorkerMain.serve(AgentProviderBalancesRequest.self, request) { query in
-                try await accounts.providerBalances(
-                    force: query.force,
-                    home: URL(fileURLWithPath: context.assignment.home, isDirectory: true),
-                )
+
             }
         case .agentSkillList:
             await WorkerMain.serve(AgentSkillListRequest.self, request) { _ in
@@ -236,7 +230,7 @@ public enum AgentWorker {
         case .agentModelTest:
             await WorkerMain.serve(AgentModelTestRequest.self, request) { query in
                 guard let taskID = request.taskID else {
-                    throw ApelinError(.badRequest, "模型测试需要一个任务")
+                    throw ApelinError(.badRequest, "a model test requires a task")
                 }
                 // The probe can take a minute: the handle goes back at once and
                 // each stage is emitted as it starts and ends, then the report

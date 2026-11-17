@@ -23,10 +23,7 @@ final class SettingsViewController: TableController {
         case permissionMode
         /// Settings ▸ Agent ▸ Prompt Injection: the text before every prompt.
         case promptInjection
-        /// Settings ▸ Agent ▸ Auto Assistant: fastest-model test, auto switch, timeout retry and exclusions.
-        case autoAssistant
-        /// Settings ▸ Agent ▸ Usage Stats: token usage per model and recent requests.
-        case usageStats
+
         case memories
         case skills
         case toolchain
@@ -130,7 +127,7 @@ final class SettingsViewController: TableController {
     private func rows(in section: Section) -> [Row] {
         switch section {
         case .chat: [.preferences]
-        case .agent: [.modelProviders, .defaultModels, .permissionMode, .promptInjection, .autoAssistant, .usageStats, .memories, .skills]
+        case .agent: [.modelProviders, .defaultModels, .permissionMode, .promptInjection, .memories, .skills]
         case .environment: [.toolchain, .sdks, .apps, .templates]
         case .git: [.git]
         case .plugins: [.weChat]
@@ -192,10 +189,7 @@ final class SettingsViewController: TableController {
             content.text = String(localized: "Permission Mode")
         case .promptInjection:
             content.text = String(localized: "Prompt Injection")
-        case .autoAssistant:
-            content.text = String(localized: "Auto Assistant")
-        case .usageStats:
-            content.text = String(localized: "用量统计")
+
         case .memories:
             content.text = String(localized: "Memories")
         case .skills:
@@ -209,7 +203,7 @@ final class SettingsViewController: TableController {
         case .templates:
             content.text = String(localized: "Templates")
         case .weChat:
-            content.text = String(localized: "WeChat")
+            content.text = String(localized: "WeChat ClawBot")
         case .git:
             content.text = String(localized: "Git")
         case .version:
@@ -246,8 +240,7 @@ final class SettingsViewController: TableController {
         case .defaultModels: page = DefaultModelsController()
         case .permissionMode: page = PermissionModeController()
         case .promptInjection: page = PromptInjectionController()
-        case .autoAssistant: page = AutoAssistantController()
-        case .usageStats: page = UsageStatsController()
+
         case .memories: page = MemoriesController()
         case .skills: page = SkillsController()
         case .toolchain: page = ToolchainController()
@@ -295,7 +288,7 @@ final class SettingsViewController: TableController {
 /// (owner, 2026-11-08): a sheet that closed on every tap hid both what was
 /// chosen and what was left to choose.
 final class ChatPreferencesController: TableController {
-    private enum Section: Hashable, CaseIterable { case chat }
+    private enum Section: Hashable { case chat }
 
     private enum Row: Hashable {
         case launch
@@ -328,8 +321,7 @@ final class ChatPreferencesController: TableController {
         super.viewDidLoad()
         title = String(localized: "Preferences")
         navigationItem.backButtonDisplayMode = .minimal
-        dataSource.headerTitle = { [weak self] in self?.header(for: $0) }
-        dataSource.footerTitle = { [weak self] in self?.footer(for: $0) }
+
         updateRows()
     }
 
@@ -339,18 +331,16 @@ final class ChatPreferencesController: TableController {
     }
 
     private func updateRows() {
-        dataSource.update([
-            (.chat, [
-                RowContent(row: .launch, detail: Preferences.launch.title),
-                RowContent(
-                    row: .returnKey,
-                    detail: ComposerBehavior.useConfirmationOnSend
-                        ? String(localized: "New Line")
-                        : String(localized: "Send"),
-                ),
-                RowContent(row: .compression, detail: Preferences.percentText(Preferences.compressionThreshold)),
-            ]),
-        ], reconfigure: true)
+        dataSource.update([(.chat, [
+            RowContent(row: .launch, detail: Preferences.launch.title),
+            RowContent(
+                row: .returnKey,
+                detail: ComposerBehavior.useConfirmationOnSend
+                    ? String(localized: "New Line")
+                    : String(localized: "Send"),
+            ),
+            RowContent(row: .compression, detail: Preferences.percentText(Preferences.compressionThreshold)),
+        ])], reconfigure: true)
     }
 
     private func cell(in tableView: UITableView, content value: RowContent) -> UITableViewCell {
@@ -364,24 +354,9 @@ final class ChatPreferencesController: TableController {
         case .compression: content.text = String(localized: "Compression Threshold")
         }
         cell.contentConfiguration = content
-        cell.selectionStyle = .default
-        cell.accessoryView = nil
         cell.accessoryType = .disclosureIndicator
+        cell.selectionStyle = .default
         return cell
-    }
-
-    private func header(for section: Section) -> String? {
-        switch section {
-        case .chat: nil
-        }
-    }
-
-    private func footer(for _: Section) -> String? {
-        nil
-    }
-
-    override func tableView(_: UITableView, shouldHighlightRowAt _: IndexPath) -> Bool {
-        true
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {

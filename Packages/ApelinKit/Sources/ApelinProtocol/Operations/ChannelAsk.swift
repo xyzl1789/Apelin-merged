@@ -9,7 +9,7 @@ import Foundation
 /// far side shows a person, so it is not the app's string catalog: the three
 /// languages the ask is written in are the ones a message can reasonably be
 /// read in, and anything else falls back to English.
-public struct ChannelAsk: Sendable, Equatable {
+public struct ChannelAsk: Sendable, Equatable, Codable {
     public var approvalID: String
     public var sessionID: String
     /// The tool the call names (`shell_run`, `gitPush`), when it named one.
@@ -211,17 +211,65 @@ public enum ChannelReplies {
         Wording(language: language).onlyInApp
     }
 
+    /// What a phone hears once its message arrived, before the turn behind
+    /// it answers. `waitingFor` is the ask the message was *not* read as an
+    /// answer to — still there, and said so, that a reply the channel did
+    /// not understand never looks approved, or lost.
+    public static func received(
+        waitingFor ask: ChannelAsk? = nil,
+        language: String = ChannelReplies.language
+    ) -> String {
+        let words = Wording(language: language)
+        guard let ask else { return words.received }
+        return ask.question == nil ? words.receivedWaitingApproval : words.receivedWaitingQuestion
+    }
+
+    /// A reply to an ask whose run, or whose approval, is no longer there:
+    /// one kept on disk past the end of what it was asked for.
+    public static func noLongerWaiting(language: String = ChannelReplies.language) -> String {
+        Wording(language: language).noLongerWaiting
+    }
+
+    /// What a phone hears when it sends a word that answers an approval
+    /// itself, and none is waiting: said rather than passed on as a message,
+    /// which would queue behind the very run it means to settle.
+    public static func nothingWaiting(language: String = ChannelReplies.language) -> String {
+        Wording(language: language).nothingWaiting
+    }
+
+    /// The words that answer an approval as itself, rather than a reply that
+    /// merely happens to be short ("好", "ok", "yes"), which is left to be a
+    /// message like any other.
+    static let approvalWords: Set<String> = [
+        "同意", "批准", "允許", "允许", "核准", "不同意", "不批准", "拒絕", "拒绝",
+        "approve", "approved", "allow", "accept", "deny", "reject",
+    ]
+
+    /// Whether `text` is nothing but one of `approvalWords`.
+    public static func isApprovalWord(_ text: String) -> Bool {
+        approvalWords.contains(folded(text))
+    }
+
     /// The phone's own language, as the three the asks are written in; the
-    /// app and the host are on the same device, so this is the reader's.
+    /// app and the host are on the same device, so this is the reader's —
+    /// unless the app reported its own (`ChannelConfigureRequest.language`),
+    /// which is the one a reply follows when the two differ.
     public static var language: String {
-        let preferred = Locale.preferredLanguages.first ?? "en"
-        if preferred.hasPrefix("zh-Hant") || preferred.hasPrefix("zh-TW") || preferred.hasPrefix("zh-HK") {
+        canonical(Locale.preferredLanguages.first)
+    }
+
+    /// The one of the three a tag names: `zh-Hant` for a Traditional
+    /// Chinese tag, `zh-Hans` for any other Chinese, English for everything
+    /// else — the app ships thirteen languages, and the channel writes the
+    /// three a phone is most likely to read.
+    public static func canonical(_ tag: String?) -> String {
+        guard let tag, !tag.isEmpty else { return "en" }
+        let lowered = tag.lowercased()
+        if lowered.hasPrefix("zh-hant") || lowered.hasPrefix("zh-tw")
+            || lowered.hasPrefix("zh-hk") || lowered.hasPrefix("zh-mo") {
             return "zh-Hant"
         }
-        if preferred.hasPrefix("zh") {
-            return "zh-Hans"
-        }
-        return "en"
+        return lowered.hasPrefix("zh") ? "zh-Hans" : "en"
     }
 
     private static func cut(_ text: String, at limit: Int) -> String {
@@ -235,6 +283,11 @@ public enum ChannelReplies {
         var approved: String
         var denied: String
         var skipped: String
+        var received: String
+        var receivedWaitingApproval: String
+        var receivedWaitingQuestion: String
+        var noLongerWaiting: String
+        var nothingWaiting: String
         var pickOne: String
         var pickSeveral: String
         var isQuestion = false
@@ -248,6 +301,11 @@ public enum ChannelReplies {
                 approved = "已批准。"
                 denied = "已拒绝。"
                 skipped = "已跳过。"
+                received = "已收到你的消息，Apelin 正在处理中。"
+                receivedWaitingApproval = "已收到你的消息，Apelin 正在处理中。刚才那一步还在等你答复：回「同意」或「拒绝」。"
+                receivedWaitingQuestion = "已收到你的消息，Apelin 正在处理中。刚才那个问题还在等你回答：回序号或直接写你的答案。"
+                noLongerWaiting = "这一步已经不在等答复了：它可能已经在 Apelin 里处理，或这一轮已经结束。"
+                nothingWaiting = "现在没有在等答复的审批，这句没有转给 Apelin。要接着说，直接写你要做什么。"
                 pickOne = "回复序号，或直接写你的答案。"
                 pickSeveral = "回复序号（可多选，用逗号分开），或直接写你的答案。"
                 isQuestion = true
@@ -258,6 +316,11 @@ public enum ChannelReplies {
                 approved = "已核准。"
                 denied = "已拒絕。"
                 skipped = "已略過。"
+                received = "已收到你的訊息，Apelin 正在處理中。"
+                receivedWaitingApproval = "已收到你的訊息，Apelin 正在處理中。剛才那一步還等你答覆：回「同意」或「拒絕」。"
+                receivedWaitingQuestion = "已收到你的訊息，Apelin 正在處理中。剛才那個問題還等你回答：回序號或直接寫你的答案。"
+                noLongerWaiting = "這一步已經不在等答覆了：它可能已經在 Apelin 裡處理，或這一輪已經結束。"
+                nothingWaiting = "現在沒有在等答覆的審批，這句沒有轉給 Apelin。要接著說，直接寫你要做什麼。"
                 pickOne = "回覆序號，或直接寫你的答案。"
                 pickSeveral = "回覆序號（可多選，用逗號分開），或直接寫你的答案。"
                 isQuestion = true
@@ -268,6 +331,11 @@ public enum ChannelReplies {
                 approved = "Approved."
                 denied = "Denied."
                 skipped = "Skipped."
+                received = "Got your message — Apelin is working on it."
+                receivedWaitingApproval = "Got your message — Apelin is working on it. The step is still waiting: reply approve to allow it, or deny to refuse it."
+                receivedWaitingQuestion = "Got your message — Apelin is working on it. The question is still waiting: reply with a number, or write your own answer."
+                noLongerWaiting = "That step is no longer waiting for an answer — it may have been settled in Apelin, or the run has ended."
+                nothingWaiting = "No approval is waiting for an answer right now, so this was not passed on. To carry on, just say what you want."
                 pickOne = "Reply with a number, or write your own answer."
                 pickSeveral = "Reply with numbers (comma-separated for several), or write your own answer."
                 isQuestion = true

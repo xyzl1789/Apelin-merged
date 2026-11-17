@@ -340,10 +340,7 @@ public extension ApelinService {
         onlyExtraModels: Bool? = nil,
     ) async throws -> AgentAccountListResponse {
         try await send(AgentAccountListRequest(extraModels: extraModels, onlyExtraModels: onlyExtraModels))
-    }
 
-    func agentProviderBalances(force: Bool = false) async throws -> AgentProviderBalancesResponse {
-        try await send(AgentProviderBalancesRequest(force: force))
     }
 
     func agentAPIConfiguration(provider: AgentProvider) async throws -> AgentAPIConfigurationResponse {

@@ -29,7 +29,20 @@ enum AgentHandler: DomainHandler {
         case .agentSteer:
             return await forward(request, AgentSteerRequest.self, host: host) { $0.sessionID }
         case .agentAbort:
-            return await abort(request, host: host)
+            let reply = await forward(request, AgentAbortRequest.self, host: host) { $0.sessionID }
+            // No worker serves it: the run ended with the process that had it,
+            // and the task it was recorded under is the only thing still
+            // saying otherwise. The reply says so, so the row stops.
+            if case let .failure(error) = reply.0.result, error.code == .notFound,
+               let abort = try? request.decode(AgentAbortRequest.self)
+            {
+                await endDetachedSession(abort.sessionID, host: host)
+            }
+            // The shell_run calls the stopped run was waiting on stop with it.
+            if case .success = reply.0.result, let abort = try? request.decode(AgentAbortRequest.self) {
+                AgentRunCode.stop(session: abort.sessionID)
+            }
+            return reply
         case .agentCompact:
             return await forward(request, AgentCompactRequest.self, host: host) { $0.sessionID }
         // The composer's row picked another model: the session applies it
@@ -96,8 +109,7 @@ enum AgentHandler: DomainHandler {
         case .agentRunCode:
             return await runCode(request, host: host)
         // The credential worker's operations are the app's alone (CallerPolicy).
-        case .agentCredentialImport, .agentAccountList, .agentProviderBalances, .agentSkillList,
-             .agentRewritePrompt,
+        case .agentCredentialImport, .agentAccountList, .agentSkillList, .agentRewritePrompt,
              .agentAPIConfiguration, .agentModelList, .agentSignOut:
             return await host.forward(request, to: .agent, instance: credentialInstance)
         // The probe runs for up to a minute: a task, so the page shows each

@@ -928,6 +928,22 @@ public actor AgentSession {
                 throw ApelinError(.conflict, "消息已变化或运行已结束，引导未能生效。")
             }
         }
+
+        if let backend = NativeImageGeneration.backend(for: provider, model: model) {
+            let auth = try await authResolver?(model, nil)
+            let image = try await NativeImageGeneration.generate(
+                backend: backend,
+                model: model,
+                auth: auth,
+                prompt: prompt,
+            )
+            return AgentGenerateImageResponse(image: image)
+        }
+        return try await generateLegacySVG(
+            prompt: prompt,
+            model: model,
+            authResolver: authResolver,
+        )
     }
 
     var canMutateHistory: Bool {

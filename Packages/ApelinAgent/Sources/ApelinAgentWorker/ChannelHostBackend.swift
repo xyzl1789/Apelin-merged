@@ -286,7 +286,7 @@ public struct ChannelHostBackend: AgentHostBackend {
     public func createProject(_ request: ProjectCreateToolRequest) async throws -> ProjectCreateToolResponse {
         let format = try request.outputFormat.map { raw -> ProjectOutputFormat in
             guard let format = ProjectOutputFormat(rawValue: raw) else {
-                throw ApelinError(.badRequest, "未知 output_format \(raw)；请用 deb 或 ipa")
+                throw ApelinError(.badRequest, "unknown output_format \(raw); use deb or ipa")
             }
             return format
         }

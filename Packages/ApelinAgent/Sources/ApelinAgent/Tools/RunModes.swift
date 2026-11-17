@@ -26,7 +26,7 @@ enum RunModes {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         guard let raw else {
-            throw ToolArgumentError("mode 必须是 plan 或 build")
+            throw ToolArgumentError("mode is plan or build")
         }
         if raw == AgentRunMode.auto.rawValue {
             throw ToolArgumentError(
@@ -34,7 +34,7 @@ enum RunModes {
             )
         }
         guard let mode = AgentRunMode(rawValue: raw), AgentRunModeRules.requestable.contains(mode) else {
-            throw ToolArgumentError("mode 必须是 plan 或 build")
+            throw ToolArgumentError("mode is plan or build")
         }
         guard let reason = UserQuestions.plain(arguments.argString("why")) else {
             throw ToolArgumentError(
@@ -67,7 +67,7 @@ enum RunModes {
             you finish it.
             """
         case .auto:
-            "该对话现在处于自动模式。"
+            "This conversation is automatic now."
         }
     }
 
@@ -89,7 +89,7 @@ extension ToolRunner {
     ) async throws -> AgentToolResult {
         let asked = try RunModes.request(arguments)
         guard let record else {
-            throw ToolDeniedError(message: "运行模式切换不可用。")
+            throw ToolDeniedError(message: "Run mode changes are unavailable.")
         }
         if asked.mode == .plan {
             setRunMode(.plan)

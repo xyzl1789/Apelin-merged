@@ -31,10 +31,6 @@ final class ComposerModelBar: ComposerSectionView {
     /// how much. The ring is the only control here whose state is a figure.
     let usageButton = ContextUsageButton()
 
-    /// Actual balance beside the context ring: a small capsule with the
-    /// amount, no progress and no percentage. Shown only when a supported
-    /// account matching the current model reports a figure.
-    let balanceButton = ProviderBalanceButton()
 
     /// Attachments: the plus that opens the camera, photos, files and the web,
     /// and closes them again.
@@ -55,8 +51,7 @@ final class ComposerModelBar: ComposerSectionView {
     var onModelTapped: (() -> Void)?
     /// The ring was tapped: open the context panel, or fold it again.
     var onContextTapped: (() -> Void)?
-    /// The balance ring was tapped: open the page of every provider's balance.
-    var onBalanceTapped: (() -> Void)?
+
     var onAddTapped: (() -> Void)?
     var onSendTapped: (() -> Void)?
     var onStopTapped: (() -> Void)?
@@ -72,7 +67,7 @@ final class ComposerModelBar: ComposerSectionView {
     override func initializeViews() {
         super.initializeViews()
 
-        for control in [modePill, modelButton, effortButton, tierButton, usageButton, balanceButton, addButton, sendButton] {
+        for control in [modePill, modelButton, effortButton, tierButton, usageButton, addButton, sendButton] {
             addSubview(control)
         }
 
@@ -84,7 +79,7 @@ final class ComposerModelBar: ComposerSectionView {
             self?.setNeedsLayout()
         }
         usageButton.tapAction = { [weak self] in self?.onContextTapped?() }
-        balanceButton.tapAction = { [weak self] in self?.onBalanceTapped?() }
+
         modelButton.tapAction = { [weak self] in self?.onModelTapped?() }
         addButton.tapAction = { [weak self] in self?.onAddTapped?() }
         sendButton.tapAction = { [weak self] in self?.tapSend() }
@@ -199,15 +194,6 @@ final class ComposerModelBar: ComposerSectionView {
         }
     }
 
-    /// The provider balance shown beside the context ring. A nil answer hides
-    /// the button: the selected provider publishes no balance.
-    func setBalance(_ balance: ProviderBalance?) {
-        guard balanceButton.balance != balance else { return }
-        updateControls { [self] in
-            balanceButton.set(balance)
-            heightPublisher.send(isUserInteractionEnabled ? preferredHeight : 0)
-        }
-    }
 
     /// The panel under the row is open: the ring says so, and says a tap folds
     /// it again.
@@ -328,8 +314,7 @@ final class ComposerModelBar: ComposerSectionView {
         let lightning = iconSize * 0.75
         effortButton.iconInset = 0
         effortButton.frame = directionalFrame(CGRect(
-            // 向模型图标靠 2pt：两个思考相关的控件看起来是一组。
-            x: x - 2, y: (bounds.height - lightning) / 2, width: lightning, height: lightning,
+            x: x, y: (bounds.height - lightning) / 2, width: lightning, height: lightning,
         ))
         x += lightning + spacing
 
@@ -340,6 +325,7 @@ final class ComposerModelBar: ComposerSectionView {
                 x: x, y: mid, width: iconSize, height: iconSize,
             ))
             x += iconSize + spacing
+
         }
 
         let ringSize = ContextUsageButton.size
@@ -349,16 +335,5 @@ final class ComposerModelBar: ComposerSectionView {
             width: ringSize,
             height: ringSize,
         ))
-        x += ringSize + spacing
-        if !balanceButton.isHidden {
-            let balanceWidth = ProviderBalanceButton.width
-            let balanceHeight = ProviderBalanceButton.height
-            balanceButton.frame = directionalFrame(CGRect(
-                x: x,
-                y: (bounds.height - balanceHeight) / 2,
-                width: balanceWidth,
-                height: balanceHeight,
-            ))
-        }
     }
 }

@@ -132,17 +132,31 @@ public struct ChannelConfigureRequest: OperationRequest {
     public var enabled: Bool?
     public var projectName: String?
     public var approvalMode: ApprovalMode?
+    /// The models the app offers, by provider id (`AgentProvider.rawValue`):
+    /// what Settings ▸ Models has enabled, read by `/model` so a phone is
+    /// offered those and nothing the reader never added. Nil leaves what the
+    /// channel was last told.
+    public var enabledModels: [String: [String]]?
+    /// The language the app's own interface is in, as a tag (`zh-Hans`,
+    /// `zh-Hant`, `en`, …): what every reply the channel writes follows, so
+    /// a WeChat answer reads the way the app does rather than the way the
+    /// daemon's own locale happens to. Nil leaves what it was last told.
+    public var language: String?
     public var clearsProject: Bool?
 
     public init(
         enabled: Bool? = nil,
         projectName: String? = nil,
         approvalMode: ApprovalMode? = nil,
+        enabledModels: [String: [String]]? = nil,
+        language: String? = nil,
         clearsProject: Bool? = nil
     ) {
         self.enabled = enabled
         self.projectName = projectName
         self.approvalMode = approvalMode
+        self.enabledModels = enabledModels
+        self.language = language
         self.clearsProject = clearsProject
     }
 }
@@ -175,12 +189,16 @@ public extension ApelinService {
         enabled: Bool? = nil,
         projectName: String? = nil,
         approvalMode: ApprovalMode? = nil,
+        enabledModels: [String: [String]]? = nil,
+        language: String? = nil,
         clearsProject: Bool? = nil
     ) async throws -> ChannelState {
         try await send(ChannelConfigureRequest(
             enabled: enabled,
             projectName: projectName,
             approvalMode: approvalMode,
+            enabledModels: enabledModels,
+            language: language,
             clearsProject: clearsProject
         ))
     }
