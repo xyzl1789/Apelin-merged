@@ -55,7 +55,7 @@ final class ComposerModelBar: ComposerSectionView {
     var onModelTapped: (() -> Void)?
     /// The ring was tapped: open the context panel, or fold it again.
     var onContextTapped: (() -> Void)?
-    /// The balance pill was tapped: open the page of every provider's balance.
+    /// The balance ring was tapped: open the page of every provider's balance.
     var onBalanceTapped: (() -> Void)?
 
     var onAddTapped: (() -> Void)?
@@ -209,7 +209,7 @@ final class ComposerModelBar: ComposerSectionView {
     }
 
     /// The provider balance shown beside the context ring. A nil answer means
-    /// no supported account, so the pill stays out of the layout entirely.
+    /// no supported account, so the ring stays out of the layout entirely.
     func setBalance(_ balance: ProviderBalance?) {
         guard balanceButton.balance != balance else { return }
         updateControls { [self] in
@@ -354,14 +354,14 @@ final class ComposerModelBar: ComposerSectionView {
         ))
         x += ringSize + spacing
 
-        // The balance pill sits after the ring; hidden, it takes no room and
-        // the row reads as it did without it.
+        // The balance ring sits after the context ring; hidden, it takes no
+        // room and the row reads as it did without it.
         if !balanceButton.isHidden {
             balanceButton.frame = directionalFrame(CGRect(
                 x: x,
-                y: (bounds.height - ProviderBalanceButton.height) / 2,
-                width: ProviderBalanceButton.width,
-                height: ProviderBalanceButton.height,
+                y: (bounds.height - ProviderBalanceButton.size) / 2,
+                width: ProviderBalanceButton.size,
+                height: ProviderBalanceButton.size,
             ))
         }
     }

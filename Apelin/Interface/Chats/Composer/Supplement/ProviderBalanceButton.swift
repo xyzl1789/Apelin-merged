@@ -1,15 +1,15 @@
 import ApelinProtocol
 import UIKit
 
-/// 输入框上下文圆环旁的小胶囊：显示当前模型供应商的实际余额（带币种）。
-/// 高度与上下文圆环一致，宽度足以写下金额，纯文字、不画进度、不显示百分比；
-/// 只有选中的供应商能报出余额时才显示，与推理强度图标的显隐规则一致。
+/// 输入框上下文圆环旁的同款圆环：中心显示实际余额（带币种/单位），
+/// 弧长按「剩余/额度」百分比绘制。确定无法查询的连接根本不会把数据
+/// 交给它，也就连占位都不显示；本来支持但本次失败时保留圆环并显示
+/// 上次缓存或「--」。
 final class ProviderBalanceButton: UIControl {
-    /// 与上下文圆环同高，保持一行对齐。
-    static let height: CGFloat = 24
-    /// 比圆环宽，容纳金额文字。
-    static let width: CGFloat = 60
+    /// 与上下文圆环同尺寸，保持一行对齐。
+    static let size: CGFloat = 24
 
+    private let ring = ProgressRing()
     private let label = UILabel()
     private(set) var balance: ProviderBalance?
     var tapAction: () -> Void = {}
@@ -18,10 +18,12 @@ final class ProviderBalanceButton: UIControl {
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
 
-        label.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
+        ring.isUserInteractionEnabled = false
+        addSubview(ring)
+        label.font = .monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
         label.textAlignment = .center
         label.adjustsFontSizeToFitWidth = true
-        label.minimumScaleFactor = 0.6
+        label.minimumScaleFactor = 0.5
         label.isUserInteractionEnabled = false
         addSubview(label)
 
@@ -41,36 +43,34 @@ final class ProviderBalanceButton: UIControl {
     }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: Self.width, height: Self.height)
+        CGSize(width: Self.size, height: Self.size)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        layer.cornerRadius = bounds.height / 2
-        label.frame = bounds.insetBy(dx: 4, dy: 1)
+        ring.frame = bounds
+        label.frame = bounds.insetBy(dx: 1, dy: 1)
     }
 
     func set(_ balance: ProviderBalance?) {
+        let hadFigure = self.balance != nil
         self.balance = balance
         // 有查到的余额就显示（哪怕不是当前供应商的）；只有全都查不到时
         // 才隐藏，与第一版行为一致。
         isHidden = balance == nil
         guard let balance else { return }
-        backgroundColor = balance.stale
-            ? UIColor.systemOrange.withAlphaComponent(0.14)
-            : UIColor.secondarySystemFill
-        label.textColor = balance.stale ? .systemOrange : .secondaryLabel
+        tintColor = balance.stale ? .systemOrange : .secondaryLabel
+        label.textColor = tintColor
         label.text = Self.amountText(balance)
-        accessibilityLabel = "\(balance.provider.displayName) \(String(localized: "Provider Balances"))"
         accessibilityValue = Self.spoken(balance)
+        ring.set(.progress(balance.fraction ?? 1), animated: hadFigure)
     }
 
-    /// 实际金额，不是百分比：有自己余额的供应商显示自己的，前面带供应商
-    /// 名字；借别家的显示时名字说明来源，点开看全部。
+    /// 实际金额，不是百分比：币种跟在数字后，单位过长就只留数字。
     static func amountText(_ balance: ProviderBalance) -> String {
         let amount = balance.amount
-        let unit = balance.currency.isEmpty ? "" : balance.currency
-        return amount + unit
+        guard !balance.currency.isEmpty else { return amount }
+        return amount + balance.currency
     }
 
     private static func spoken(_ balance: ProviderBalance) -> String {
