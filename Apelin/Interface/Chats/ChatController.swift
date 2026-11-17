@@ -466,6 +466,39 @@ final class ChatController: UIViewController {
         }
         sayUnsent()
         refreshBalances()
+        startBalanceTimer()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        stopBalanceTimer()
+    }
+
+    /// 支持查余额的供应商停留在当前对话时，按自动间隔轮询一次；离开页面
+    /// 即停。间隔由 ProviderBalanceStore 的 autoInterval 决定。
+    private var balanceTimer: Timer?
+
+    private func startBalanceTimer() {
+        stopBalanceTimer()
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.viewIfLoaded?.window != nil else { return }
+                // 只有当前选中的供应商报过余额，才值得为它轮询。
+                let selection = self.chat.flatMap { ComposerModelSelection.selection(for: $0.id) }
+                guard let provider = selection?.provider,
+                      ProviderBalanceStore.shared.current(for: provider) != nil,
+                      ProviderBalanceStore.shared.stale()
+                else { return }
+                self.refreshBalances()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .default)
+        balanceTimer = timer
+    }
+
+    private func stopBalanceTimer() {
+        balanceTimer?.invalidate()
+        balanceTimer = nil
     }
 
     override func viewWillLayoutSubviews() {
@@ -1006,6 +1039,21 @@ final class ChatController: UIViewController {
         composer.modelBar.setEfforts(selection?.supportedEfforts ?? [], selected: selection?.effort)
         composer.modelBar.setTiers(selection?.supportedTiers ?? [], selected: selection?.tier)
         updateBalanceRing()
+        // 选中的供应商支持查余额、而距上次查询已超过自动间隔时，立刻查一次：
+        // 切到 DeepSeek 这类能报余额的服务商时，数字应当是刚刚读的。
+        if let provider = selection?.provider,
+           ProviderBalanceStore.shared.current(for: provider) != nil || balancesMaySupport(provider),
+           ProviderBalanceStore.shared.stale()
+        {
+            refreshBalances()
+        }
+    }
+
+    /// Whether any balance line ever named this provider. A provider the
+    /// worker has never reported cannot be told apart from one whose account
+    /// is simply signed out, so the probe only saves requests, never gates.
+    private func balancesMaySupport(_ provider: AgentProvider) -> Bool {
+        !ProviderBalanceStore.shared.balances.isEmpty
     }
 
     /// The provider's balance, read through the credential worker. A failed

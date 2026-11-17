@@ -132,19 +132,12 @@ enum AgentModelTester {
         report.record(text: text, thinking: thinking, event: event)
     }
 
-    /// Fixed SDK transports which add required/default instructions even for
-    /// nil systemPrompt. Refuse before resolving credentials or sending Hi.
+    /// Fixed SDK transports add their own required/default instructions even
+    /// for nil systemPrompt, so a probe is never a literally pure Hi for them.
+    /// That only makes the measured time slightly longer, not unusable: every
+    /// signed-in provider is measured, none is refused up front.
     static func unsupportedPureHiProvider(_ provider: AgentProvider) -> String? {
-        switch provider {
-        case .anthropicOAuth:
-            return "该供应商会附加必需的 Claude Code 身份提示，因此无法进行纯 Hi 测试。"
-        case .cursor:
-            return "该供应商会附加默认系统提示，因此无法进行纯 Hi 测试。"
-        case .qoder, .qoderCN:
-            return "该供应商会附加必需的助手系统提示，因此无法进行纯 Hi 测试。"
-        default:
-            return nil
-        }
+        nil
     }
 
     /// No raw error body, URL, header, provider message or token crosses IPC.

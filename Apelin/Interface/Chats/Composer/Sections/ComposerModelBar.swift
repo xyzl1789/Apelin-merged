@@ -199,8 +199,8 @@ final class ComposerModelBar: ComposerSectionView {
         }
     }
 
-    /// The provider balance shown beside the context ring. A nil answer means
-    /// no figure was read; the button stays and shows a placeholder.
+    /// The provider balance shown beside the context ring. A nil answer hides
+    /// the button: the selected provider publishes no balance.
     func setBalance(_ balance: ProviderBalance?) {
         guard balanceButton.balance != balance else { return }
         updateControls { [self] in
