@@ -1442,20 +1442,18 @@ extension ChatController: ComposerCommandContext {
 
     func showUsage() {
         guard let chat else { return }
-        guard let usage = runtime.transcript(chat.id).contextUsage else {
+        let usage = runtime.transcript(chat.id).contextUsage
+        let sessionID = runtime.records[chat.id]?.sessionID
+        guard sessionID != nil || usage != nil else {
             presentNotice(
                 title: "No Usage Yet",
                 message: "This conversation has not made a request yet.",
             )
             return
         }
-        let percent = usage.percentText
-        // The figure is a value the catalogue cannot hold, so it goes in as one
-        // already-formed sentence.
-        presentNotice(
-            title: "Context Usage",
-            message: "\(usage.tokens.formatted()) of \(usage.window.formatted()) tokens used (\(percent)).",
-        )
+        // The session id names the用量记录；还没有会话 id（未发出过请求）时
+        // 详情页按空记录展示，上下文卡仍给得出占用。
+        presentChatUsageDetail(sessionID: sessionID ?? "", usage: usage)
     }
 
     func send(prompt: String) {
