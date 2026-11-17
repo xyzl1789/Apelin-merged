@@ -270,7 +270,7 @@ enum ProviderBalanceService {
         let code = (error as? URLError)?.code
         switch code {
         case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotFindHost, .cannotConnectToHost,
-             .dnsServiceFailed, .dataNotAllowed:
+             .dataNotAllowed:
             return .offline
         default:
             return .unexpected
@@ -280,7 +280,7 @@ enum ProviderBalanceService {
     // MARK: - 数值与缓存
 
     /// JSON 数字先按原始文本读回，避免 Double 丢精度；金额最多 38 位。
-    private static func decimal(_ value: JSONValue?) -> Decimal? {
+    private static func decimal(_ value: ApelinCore.JSONValue?) -> Decimal? {
         guard let value else { return nil }
         let text: String?
         switch value {
@@ -310,12 +310,12 @@ enum ProviderBalanceService {
         return trimmed.count <= maximumUnitLength ? trimmed : ""
     }
 
-    private static func json(_ data: Data) -> JSONValue? {
+    private static func json(_ data: Data) -> ApelinCore.JSONValue? {
         // JSONValue 把数字读成 Double；金额先给裸数字加引号，保留原始十进制
         // 文本，再由 Decimal 解析。字符串、对象和数组都原样不动。
         guard let text = String(data: data, encoding: .utf8) else { return nil }
         let quoted = Self.quoteNumbers(in: text)
-        return try? JSONCoding.decoder().decode(JSONValue.self, from: Data(quoted.utf8))
+        return try? JSONCoding.decoder().decode(ApelinCore.JSONValue.self, from: Data(quoted.utf8))
     }
 
     /// 给对象值位置的裸数字加引号。只处理 -?digits(.digits)?([eE][+-]?digits)?，
