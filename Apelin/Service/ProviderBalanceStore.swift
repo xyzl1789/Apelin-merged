@@ -1,5 +1,6 @@
 import ApelinProtocol
 import Foundation
+import os.log
 
 extension Notification.Name {
     static let providerBalancesChanged = Notification.Name("wiki.qaq.apelin.providerBalancesChanged")
@@ -41,8 +42,13 @@ final class ProviderBalanceStore {
         let previous = balances
         let task = Task<[ProviderBalance], Never> {
             do {
-                return try await ApelinService.app.agentProviderBalances(force: force).balances
+                let response = try await ApelinService.app.agentProviderBalances(force: force).balances
+                Logger(subsystem: "wiki.qaq.apelin", category: "Balance")
+                    .info("余额刷新成功：\(response.count, privacy: .public) 条 \(force ? "强制" : "自动", privacy: .public)")
+                return response
             } catch {
+                Logger(subsystem: "wiki.qaq.apelin", category: "Balance")
+                    .error("余额刷新失败：\(String(describing: error), privacy: .public)")
                 return previous
             }
         }
@@ -50,6 +56,8 @@ final class ProviderBalanceStore {
         let next = await task.value
         inFlight = nil
         balances = next
+        Logger(subsystem: "wiki.qaq.apelin", category: "Balance")
+            .info("余额存储更新：共 \(next.count, privacy: .public) 条，\(next.map { "\($0.provider.rawValue)=\($0.amount)\($0.currency)" }.joined(separator: ", "), privacy: .public)")
         NotificationCenter.default.post(name: .providerBalancesChanged, object: nil)
         return next
     }
@@ -63,6 +71,9 @@ final class ProviderBalanceStore {
         if let provider, let own = balances.first(where: { $0.provider == provider }) {
             return own
         }
-        return balances.min { $0.updatedAt < $1.updatedAt }
+        let fallback = balances.min { $0.updatedAt < $1.updatedAt }
+        Logger(subsystem: "wiki.qaq.apelin", category: "Balance")
+            .debug("胶囊取值：provider=\(provider?.rawValue ?? "nil", privacy: .public)，取到 \(fallback.map { "\($0.amount)\($0.currency)" } ?? "无", privacy: .public)")
+        return fallback
     }
 }

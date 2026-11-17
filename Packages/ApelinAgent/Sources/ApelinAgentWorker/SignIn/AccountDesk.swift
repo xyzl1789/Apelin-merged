@@ -243,6 +243,8 @@ public actor AccountDesk {
             guard let saved = try await store.credentials(for: id) else { continue }
             accounts.append((id, saved))
         }
+        os.Logger(subsystem: "wiki.qaq.apelin", category: "Balance")
+            .info("worker 收到余额查询：force=\(force, privacy: .public)，凭据 \(accounts.map(\.0).joined(separator: ","), privacy: .public)")
         let task = Task<AgentProviderBalancesResponse, Error> {
             try await ProviderBalanceService.lookup(
                 force: force,
