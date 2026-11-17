@@ -31,9 +31,9 @@ final class ComposerModelBar: ComposerSectionView {
     /// how much. The ring is the only control here whose state is a figure.
     let usageButton = ContextUsageButton()
 
-    /// Actual balance beside it: the ring draws the share of a limit where the
-    /// provider names one, and the figure inside is the amount, never a
-    /// percentage. Hidden until a supported account reports a figure.
+    /// Actual balance beside the context ring: a small capsule with the
+    /// amount, no progress and no percentage. Shown only when a supported
+    /// account matching the current model reports a figure.
     let balanceButton = ProviderBalanceButton()
 
     /// Attachments: the plus that opens the camera, photos, files and the web,
@@ -349,12 +349,15 @@ final class ComposerModelBar: ComposerSectionView {
             height: ringSize,
         ))
         x += ringSize + spacing
-        let balanceSize = ProviderBalanceButton.size
-        balanceButton.frame = directionalFrame(CGRect(
-            x: x,
-            y: (bounds.height - balanceSize) / 2,
-            width: balanceSize,
-            height: balanceSize,
-        ))
+        if !balanceButton.isHidden {
+            let balanceWidth = ProviderBalanceButton.width
+            let balanceHeight = ProviderBalanceButton.height
+            balanceButton.frame = directionalFrame(CGRect(
+                x: x,
+                y: (bounds.height - balanceHeight) / 2,
+                width: balanceWidth,
+                height: balanceHeight,
+            ))
+        }
     }
 }

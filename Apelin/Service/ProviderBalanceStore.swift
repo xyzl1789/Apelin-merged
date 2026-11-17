@@ -39,13 +39,11 @@ final class ProviderBalanceStore {
         return next
     }
 
-    /// The figure the composer draws: the selected provider's own balance,
-    /// else the first one. Empty means no supported account, so no ring.
+    /// The figure the composer draws: the selected provider's own balance.
+    /// A provider without a queried balance gets none at all — the button hides
+    /// rather than borrowing another provider's figure.
     func current(for provider: AgentProvider?) -> ProviderBalance? {
-        guard !balances.isEmpty else { return nil }
-        if let provider, let own = balances.first(where: { $0.provider == provider }) {
-            return own
-        }
-        return balances.first
+        guard let provider else { return nil }
+        return balances.first(where: { $0.provider == provider })
     }
 }

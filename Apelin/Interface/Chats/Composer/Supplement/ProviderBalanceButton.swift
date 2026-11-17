@@ -1,14 +1,15 @@
 import ApelinProtocol
 import UIKit
 
-/// 输入框上下文圆环旁的同款圆环：中心显示实际余额（带币种/单位），
-/// 弧长按「剩余/额度」百分比绘制。确定无法查询的连接根本不会把数据
-/// 交给它，也就连占位都不显示；本来支持但本次失败时保留圆环并显示
-/// 上次缓存或「--」。
+/// 输入框上下文圆环旁的小胶囊：显示当前模型供应商的实际余额（带币种）。
+/// 高度与上下文圆环一致，宽度足以写下金额，纯文字、不画进度、不显示百分比；
+/// 匹配不到当前模型供应商的余额时整个控件隐藏。
 final class ProviderBalanceButton: UIControl {
-    static let size: CGFloat = 24
+    /// 与上下文圆环同高，保持一行对齐。
+    static let height: CGFloat = 24
+    /// 比圆环宽，容纳金额文字。
+    static let width: CGFloat = 60
 
-    private let ring = ProgressRing()
     private let label = UILabel()
     private(set) var balance: ProviderBalance?
     var tapAction: () -> Void = {}
@@ -17,12 +18,10 @@ final class ProviderBalanceButton: UIControl {
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
 
-        ring.isUserInteractionEnabled = false
-        addSubview(ring)
-        label.font = .monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
+        label.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
         label.textAlignment = .center
         label.adjustsFontSizeToFitWidth = true
-        label.minimumScaleFactor = 0.5
+        label.minimumScaleFactor = 0.6
         label.isUserInteractionEnabled = false
         addSubview(label)
 
@@ -42,25 +41,25 @@ final class ProviderBalanceButton: UIControl {
     }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: Self.size, height: Self.size)
+        CGSize(width: Self.width, height: Self.height)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        ring.frame = bounds
-        label.frame = bounds.insetBy(dx: 1, dy: 1)
+        layer.cornerRadius = bounds.height / 2
+        label.frame = bounds.insetBy(dx: 4, dy: 1)
     }
 
     func set(_ balance: ProviderBalance?) {
-        let hadFigure = self.balance != nil
         self.balance = balance
         isHidden = balance == nil
         guard let balance else { return }
-        tintColor = balance.stale ? .systemOrange : .secondaryLabel
-        label.textColor = tintColor
+        backgroundColor = balance.stale
+            ? UIColor.systemOrange.withAlphaComponent(0.14)
+            : UIColor.secondarySystemFill
+        label.textColor = balance.stale ? .systemOrange : .secondaryLabel
         label.text = Self.amountText(balance)
         accessibilityValue = Self.spoken(balance)
-        ring.set(.progress(balance.fraction ?? 1), animated: hadFigure)
     }
 
     /// 实际金额，不是百分比：币种跟在数字后，单位过长就只留数字。
