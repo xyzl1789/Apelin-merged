@@ -122,9 +122,12 @@ enum ProviderBalanceService {
 
     /// 兼容模式手填的 baseURL 优先；没有则用该服务商表单的默认值。
     private static func baseURL(provider: AgentProvider, credentials: OAuthCredentials) -> (host: String, scheme: String, root: URL)? {
-        let configured: String? = if case let .string(value)? = credentials.extras[AgentSignInField.baseURL.rawValue] {
+        let configured: String? = if case let .string(value)? = credentials.extras[AgentSignInField.baseURL.rawValue],
+            !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             value
         } else {
+            // 留空的可选字段存的是空字符串，与「没填」同义：回退默认值。
             nil
         }
         let fallback = provider.keyFields.first { $0.field == .baseURL }?.defaultValue
