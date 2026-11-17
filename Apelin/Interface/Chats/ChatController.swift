@@ -185,6 +185,7 @@ final class ChatController: UIViewController {
         }
         composer.modelBar.onEffortTapped = { [weak self] in self?.presentEffortSheet() }
         composer.modelBar.onTierTapped = { [weak self] in self?.presentTierSheet() }
+        composer.modelBar.onBalanceTapped = { [weak self] in self?.presentBalanceSheet() }
         composer.onModeChanged = { [weak self] mode in
             // The store is what the next prompt reads, and it is this
             // conversation's own entry, never the app's: the pill has already
@@ -219,6 +220,12 @@ final class ChatController: UIViewController {
             self,
             selector: #selector(enabledModelsChanged),
             name: .enabledModelsChanged,
+            object: nil,
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(balanceChanged),
+            name: .providerBalancesChanged,
             object: nil,
         )
         NotificationCenter.default.addObserver(
@@ -458,6 +465,7 @@ final class ChatController: UIViewController {
             composer.beginEditing()
         }
         sayUnsent()
+        refreshBalances()
     }
 
     override func viewWillLayoutSubviews() {
@@ -997,6 +1005,35 @@ final class ChatController: UIViewController {
         composer.modelBar.setModel(selection?.provider, model: selection?.model)
         composer.modelBar.setEfforts(selection?.supportedEfforts ?? [], selected: selection?.effort)
         composer.modelBar.setTiers(selection?.supportedTiers ?? [], selected: selection?.tier)
+        updateBalanceRing()
+    }
+
+    /// The provider's balance, read through the credential worker. A failed
+    /// lookup keeps the last figure; a provider with no balance adapter names
+    /// no figure at all, and then the ring is hidden.
+    private func refreshBalances() {
+        Task { [weak self] in
+            _ = await ProviderBalanceStore.shared.refresh()
+            self?.updateBalanceRing()
+        }
+    }
+
+    @objc private func balanceChanged() {
+        updateBalanceRing()
+    }
+
+    private func updateBalanceRing() {
+        let selection = chat.flatMap { ComposerModelSelection.selection(for: $0.id) }
+        composer.modelBar.setBalance(ProviderBalanceStore.shared.current(for: selection?.provider))
+    }
+
+    /// The balance ring's page: all providers' figures and a manual refresh.
+    private func presentBalanceSheet() {
+        guard presentedViewController == nil else { return }
+        let page = ProviderBalancesController()
+        let navigation = SheetNavigationController(rootViewController: page)
+        navigation.modalPresentationStyle = .pageSheet
+        present(navigation, animated: true)
     }
 
     /// A model disabled in Settings stops being the one the next message uses.

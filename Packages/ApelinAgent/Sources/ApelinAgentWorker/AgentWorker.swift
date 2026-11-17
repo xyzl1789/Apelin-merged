@@ -221,6 +221,13 @@ public enum AgentWorker {
                     onlyExtraModels: list.onlyExtraModels ?? false,
                 )
             }
+        case .agentProviderBalances:
+            await WorkerMain.serve(AgentProviderBalancesRequest.self, request) { query in
+                try await accounts.providerBalances(
+                    force: query.force,
+                    home: URL(fileURLWithPath: context.assignment.home, isDirectory: true),
+                )
+            }
         case .agentSkillList:
             await WorkerMain.serve(AgentSkillListRequest.self, request) { _ in
                 let home = URL(fileURLWithPath: context.assignment.home, isDirectory: true)

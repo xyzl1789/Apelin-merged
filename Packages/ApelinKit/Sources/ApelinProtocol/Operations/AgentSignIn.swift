@@ -65,6 +65,65 @@ public enum AgentSignInField: String, Codable, Sendable, CaseIterable {
     case callbackURL
 }
 
+/// A read-only balance lookup for every signed-in provider account whose
+/// endpoint publishes one. The reply never carries a credential, a URL with a
+/// query, or the server's own text: the app draws a figure, not a response.
+/// `force` skips the worker's short cache; an automatic refresh does not.
+public struct AgentProviderBalancesRequest: OperationRequest {
+    public typealias Response = AgentProviderBalancesResponse
+    public static let operation = AppOperation.agentProviderBalances
+    public var force: Bool
+    public init(force: Bool = false) {
+        self.force = force
+    }
+}
+
+/// One provider account's balance line, safe to show and to cache.
+public struct ProviderBalance: Codable, Sendable, Equatable {
+    /// The account's store id, never its key.
+    public var accountID: String
+    /// The provider's own name for the account, already local to the app.
+    public var provider: AgentProvider
+    /// What the page calls it: the endpoint's host, never a key.
+    public var label: String
+    /// The amount as the provider spelled it, decimal text at most 38 digits.
+    public var amount: String
+    /// A short currency or unit mark, at most 32 characters.
+    public var currency: String
+    /// How full the ring draws: remaining / granted, 0 ... 1, or nil for a
+    /// figure with no ceiling to draw against.
+    public var fraction: Double?
+    /// When the figure was read, or last read successfully.
+    public var updatedAt: Date
+    /// The last lookup failed: the amount is the cached one, not a fresh read.
+    public var stale: Bool
+    /// A short, redacted reason for the failure, never the server's text.
+    public var problem: String?
+
+    public init(accountID: String, provider: AgentProvider, label: String,
+                amount: String, currency: String, fraction: Double?,
+                updatedAt: Date, stale: Bool, problem: String?) {
+        self.accountID = accountID
+        self.provider = provider
+        self.label = label
+        self.amount = amount
+        self.currency = currency
+        self.fraction = fraction
+        self.updatedAt = updatedAt
+        self.stale = stale
+        self.problem = problem
+    }
+}
+
+/// Only accounts whose endpoints have a balance adapter are named here. An
+/// empty list means "nothing to draw", never "every balance is zero".
+public struct AgentProviderBalancesResponse: Codable, Sendable, Equatable {
+    public var balances: [ProviderBalance]
+    public init(balances: [ProviderBalance] = []) {
+        self.balances = balances
+    }
+}
+
 /// One provider as the sign-in screen lists it. Never a secret: no token,
 /// no key, not even part of one.
 public struct AgentAccount: Codable, Sendable, Equatable {
@@ -281,6 +340,10 @@ public extension ApelinService {
         onlyExtraModels: Bool? = nil,
     ) async throws -> AgentAccountListResponse {
         try await send(AgentAccountListRequest(extraModels: extraModels, onlyExtraModels: onlyExtraModels))
+    }
+
+    func agentProviderBalances(force: Bool = false) async throws -> AgentProviderBalancesResponse {
+        try await send(AgentProviderBalancesRequest(force: force))
     }
 
     func agentAPIConfiguration(provider: AgentProvider) async throws -> AgentAPIConfigurationResponse {

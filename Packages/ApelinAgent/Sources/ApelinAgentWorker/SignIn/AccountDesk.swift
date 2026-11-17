@@ -46,6 +46,9 @@ public actor AccountDesk {
     private let verifyKey: @Sendable (AgentProvider, OAuthCredentials, String?) async throws -> Void
     private var keyVerification: (run: SignInRun, task: Task<Void, Error>)?
     private var running: SignInRun?
+    /// One balance lookup at a time: a second caller joins the request the
+    /// first one started, rather than asking every provider twice.
+    private var balanceInFlight: Task<AgentProviderBalancesResponse, Error>?
 
     public init(
         store: any CredentialSource,
@@ -227,6 +230,32 @@ public actor AccountDesk {
             }
         }
         return AgentAPIConfigurationResponse(values: values)
+    }
+
+    /// Every signed-in account whose endpoint publishes a balance, read once
+    /// and cached in the data folder. Only short, redacted facts cross back to
+    /// the app: the amount as decimal text, a unit and a failure class. A
+    /// provider with no balance adapter is absent, never a zero.
+    public func providerBalances(force: Bool, home: URL) async throws -> AgentProviderBalancesResponse {
+        if let running = balanceInFlight {
+            return try await running.value
+        }
+        // 先把密钥读进 actor 内的数组：查询服务只拿到值，不捕获 actor 状态。
+        var accounts: [(String, OAuthCredentials)] = []
+        for id in await store.providerIds() {
+            guard let saved = try await store.credentials(for: id) else { continue }
+            accounts.append((id, saved))
+        }
+        let task = Task<AgentProviderBalancesResponse, Error> {
+            try await ProviderBalanceService.lookup(
+                force: force,
+                accounts: accounts,
+                dataRoot: ApelinDataRoot(home: home).url,
+            )
+        }
+        balanceInFlight = task
+        defer { balanceInFlight = nil }
+        return try await task.value
     }
 
     public func signOut(_ provider: AgentProvider) async throws {

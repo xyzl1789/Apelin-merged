@@ -96,7 +96,8 @@ enum AgentHandler: DomainHandler {
         case .agentRunCode:
             return await runCode(request, host: host)
         // The credential worker's operations are the app's alone (CallerPolicy).
-        case .agentCredentialImport, .agentAccountList, .agentSkillList, .agentRewritePrompt,
+        case .agentCredentialImport, .agentAccountList, .agentProviderBalances, .agentSkillList,
+             .agentRewritePrompt,
              .agentAPIConfiguration, .agentModelList, .agentSignOut:
             return await host.forward(request, to: .agent, instance: credentialInstance)
         // The probe runs for up to a minute: a task, so the page shows each

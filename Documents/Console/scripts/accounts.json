@@ -2,6 +2,7 @@
   "name": "accounts: needs the network; lists every provider kwwk signs in to, in kwwk's order, starts a GitHub Copilot sign-in and reads its device code, checks a device flow takes no typed values and cancels it; starts OpenRouter's browser sign-in, reads its page, refuses an address with no code and cancels it; starts Antigravity's Google sign-in, reads its page, refuses an address with no code and cancels it; does the same for Trae CN's sign-in and Raccoon's, each on a loopback port of its own; starts Cursor's polled sign-in, reads its page, refuses a pasted address and cancels it; refuses a method OpenRouter does not offer; starts OpenRouter's key form, reads its fields and cancels it; then starts an Anthropic API-key sign-in, checks it asks for its fields and refuses an empty key, and cancels that too. Signs nothing in or out",
   "steps": [
     {"op": "hello"},
+    {"op": "agentProviderBalances", "label": "balances", "allowError": true},
     {"op": "agentAccountList", "label": "before"},
     {"op": "agentModelList", "label": "model-list", "allowError": true, "request": {"provider": "githubCopilot"}},
     {"op": "agentModelActivate", "label": "empty-models", "allowError": true, "follow": false, "request": {"provider": "githubCopilot", "models": []}},

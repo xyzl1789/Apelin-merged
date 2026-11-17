@@ -80,6 +80,8 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
     case agentRunCode
     case agentCredentialImport
     case agentAccountList
+    /// Read-only balance lookups for the provider accounts that publish one.
+    case agentProviderBalances
     case agentSkillList
     /// Rewrites a composer draft: one turn of the chosen model, with no
     /// session and no tools, asked to improve the text and answer with it.
@@ -193,6 +195,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .confirmLoaded, .confirmLoadedAttach, .captureScreen, .readUITree, .uiAction: .diagnostics
         case .agentOpen, .agentPrompt, .agentGenerateImage, .agentSteer, .agentAbort, .agentCompact, .agentConfigure, .agentQueue, .agentApprove, .agentAttach, .agentList,
              .agentClose, .agentRunCode, .agentCredentialImport, .agentAccountList, .agentSkillList,
+             .agentProviderBalances,
              .agentRewritePrompt, .agentModelTest,
              .agentAPIConfiguration, .agentModelList,
              .agentModelActivate, .agentSignIn, .agentSignInRespond, .agentSignInCancel, .agentSignOut,
@@ -280,6 +283,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .agentRunCode: AgentRunCodeRequest.self
         case .agentCredentialImport: AgentCredentialImportRequest.self
         case .agentAccountList: AgentAccountListRequest.self
+        case .agentProviderBalances: AgentProviderBalancesRequest.self
         case .agentSkillList: AgentSkillListRequest.self
         case .agentRewritePrompt: AgentRewritePromptRequest.self
         case .agentModelTest: AgentModelTestRequest.self

@@ -171,6 +171,8 @@ final class ServiceTableTests: XCTestCase {
             return Row(reply: AgentAccountListResponse(accounts: [
                 AgentAccount(provider: .githubCopilot, method: .deviceCode, signedIn: true),
             ])) { _ = try await $0.agentAccountList() }
+        case .agentProviderBalances:
+            return Row(reply: AgentProviderBalancesResponse()) { _ = try await $0.agentProviderBalances(force: true) }
         case .agentSkillList:
             return Row(reply: AgentSkillListResponse(skills: [
                 AgentSkill(name: "example", description: "An example.", source: .builtIn, body: "Do it."),
