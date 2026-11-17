@@ -37,6 +37,7 @@ final class AutoAssistantSheet: UITableViewController {
         case switchOnFailure
         case retryOnTimeout
         case measure
+        case autoMeasureInterval
         case measureResults
         case excludedProviders
         case excludedModels
@@ -58,6 +59,14 @@ final class AutoAssistantSheet: UITableViewController {
         super.viewDidLoad()
         title = String(localized: "Auto Assistant")
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(done))
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(scheduleChanged),
+            name: .measurementScheduleChanged, object: nil,
+        )
+        tableView.reloadData()
+    }
+
+    @objc private func scheduleChanged() {
         tableView.reloadData()
     }
 
@@ -130,6 +139,17 @@ final class AutoAssistantSheet: UITableViewController {
             )
             cell.accessoryType = has ? .disclosureIndicator : .none
             cell.selectionStyle = has ? .default : .none
+        case .autoMeasureInterval:
+            var config = UIListContentConfiguration.valueCell()
+            config.text = String(localized: "Auto Measure Interval")
+            config.textProperties.color = .label
+            config.secondaryText = MeasurementSchedule.interval.title
+            config.secondaryTextProperties.color = .secondaryLabel
+            config.image = UIImage(systemName: "timer")
+            config.imageToTextPadding = 12
+            cell.contentConfiguration = config
+            cell.accessoryType = .disclosureIndicator
+            cell.selectionStyle = .default
         case .excludedProviders:
             cell.contentConfiguration = Self.content(
                 text: String(localized: "Excluded Providers"),
@@ -167,6 +187,8 @@ final class AutoAssistantSheet: UITableViewController {
             tableView.reloadData()
         case .measure:
             MeasurementRunner.shared.start(from: self)
+        case .autoMeasureInterval:
+            presentMeasurementIntervalPicker(sourceView: tableView)
         case .measureResults:
             navigationController?.pushViewController(
                 MeasurementResultsController(style: .insetGrouped), animated: true,
@@ -200,6 +222,20 @@ final class MeasurementRunner {
     static let changed = Notification.Name("autoAssistant.measurementChanged")
 
     func start(from presenter: UIViewController?) {
+        start(from: presenter, silently: false)
+    }
+
+    /// 回到前台时按间隔自动触发：只在该跑、且没有别的会话或用户正在跑时启动。
+    /// 不弹「全部失败」这类提示——自动测速失败是常态，静默留盘即可。
+    static func startAutomaticallyIfDue() {
+        guard !shared.isRunning,
+              MeasurementSchedule.interval != .off,
+              AutoAssistantPolicy.anySwitchEnabled(),
+              MeasurementSchedule.isDue() else { return }
+        shared.start(from: nil, silently: true)
+    }
+
+    private func start(from presenter: UIViewController?, silently: Bool) {
         guard !isRunning else { return }
         isRunning = true
         post()
@@ -212,14 +248,16 @@ final class MeasurementRunner {
                 let measured = try await ModelSpeedPicker.measureAll()
                 AutoAssistantSheet.lastResults = measured.results
                 let successful = measured.results.filter(\.success).count
-                if successful == 0 {
+                if successful == 0 && !silently {
                     presenter?.presentNotice(
                         title: "No Model Available",
                         message: "None of the signed-in models answered, or all were excluded.",
                     )
                 }
             } catch {
-                presenter?.presentNotice(title: "Unable to Measure Models", message: error.readableMessage)
+                if !silently {
+                    presenter?.presentNotice(title: "Unable to Measure Models", message: error.readableMessage)
+                }
             }
         }
     }

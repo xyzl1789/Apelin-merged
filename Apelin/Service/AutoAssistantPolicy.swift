@@ -72,6 +72,15 @@ enum AutoAssistantPolicy {
         NotificationCenter.default.post(name: .autoAssistantPolicyChanged, object: id)
     }
 
+    /// 是否有任意会话开启了自动切换。自动测速只在有人需要它时才跑。
+    /// 与 `current(for:)` 一样是非隔离入口，读主角的运行时要先切到主角。
+    nonisolated static func anySwitchEnabled() -> Bool {
+        MainActor.assumeIsolated {
+            guard let runtime = ChatRuntime.active else { return false }
+            return runtime.records.keys.contains { current(for: $0).switchOnFailure }
+        }
+    }
+
     // MARK: - The chain a conversation inherits along
 
     /// Which conversation opened which, for the ones the app holds. Reads each

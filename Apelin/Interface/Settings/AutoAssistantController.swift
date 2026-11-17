@@ -20,6 +20,7 @@ final class AutoAssistantController: TableController {
     private enum Row: Hashable {
         case whereItIs
         case pickFastest
+        case autoMeasureInterval
         case lastMeasurement
         case excludeProviders
         case excludeModels
@@ -64,6 +65,12 @@ final class AutoAssistantController: TableController {
             name: MeasurementRunner.changed,
             object: nil,
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(updateRows),
+            name: .measurementScheduleChanged,
+            object: nil,
+        )
     }
 
     @objc private dynamic func updateRows() {
@@ -71,6 +78,7 @@ final class AutoAssistantController: TableController {
             (.where_, [RowContent(row: .whereItIs)]),
             (.models, [
                 RowContent(row: .pickFastest),
+                RowContent(row: .autoMeasureInterval),
                 RowContent(row: .lastMeasurement),
             ]),
             (.exclusions, [
@@ -102,6 +110,7 @@ final class AutoAssistantController: TableController {
         case .pickFastest:
             String(localized: MeasurementRunner.shared.isRunning
                 ? "Measuring Models in Background" : "Measure Models in Background")
+        case .autoMeasureInterval: String(localized: "Auto Measure Interval")
         case .lastMeasurement: String(localized: "Last Measurement")
         case .excludeProviders: String(localized: "Excluded Providers")
         case .excludeModels: String(localized: "Excluded Models")
@@ -116,6 +125,12 @@ final class AutoAssistantController: TableController {
         cell.contentConfiguration = content
         cell.accessoryType = .none
         cell.selectionStyle = .default
+        if value.row == .autoMeasureInterval {
+            var valued = content
+            valued.secondaryText = MeasurementSchedule.interval.title
+            valued.secondaryTextProperties.color = .secondaryLabel
+            cell.contentConfiguration = valued
+        }
         if value.row == .whereItIs {
             // Nothing to open: the instruction is the whole row.
             cell.selectionStyle = .none
@@ -151,6 +166,8 @@ final class AutoAssistantController: TableController {
             break
         case .pickFastest:
             MeasurementRunner.shared.start(from: self)
+        case .autoMeasureInterval:
+            presentMeasurementIntervalPicker(sourceView: tableView)
         case .lastMeasurement:
             push(MeasurementResultsController(style: .insetGrouped))
         case .excludeProviders:
