@@ -196,7 +196,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .agentOpen, .agentPrompt, .agentGenerateImage, .agentSteer, .agentAbort, .agentCompact, .agentConfigure, .agentQueue, .agentApprove, .agentAttach, .agentList,
              .agentClose, .agentRunCode, .agentCredentialImport, .agentAccountList, .agentSkillList,
 
-             .agentRewritePrompt, .agentModelTest,
+             .agentRewritePrompt, .agentModelTest, .agentProviderBalances,
              .agentAPIConfiguration, .agentModelList,
              .agentModelActivate, .agentSignIn, .agentSignInRespond, .agentSignInCancel, .agentSignOut,
              .agentRewind, .agentEditMessage, .agentDeleteReply, .agentFork:

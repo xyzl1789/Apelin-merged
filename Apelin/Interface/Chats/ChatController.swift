@@ -185,6 +185,7 @@ final class ChatController: UIViewController {
         }
         composer.modelBar.onEffortTapped = { [weak self] in self?.presentEffortSheet() }
         composer.modelBar.onTierTapped = { [weak self] in self?.presentTierSheet() }
+        composer.modelBar.onBalanceTapped = { [weak self] in self?.presentBalanceSheet() }
 
         composer.onModeChanged = { [weak self] mode in
             // The store is what the next prompt reads, and it is this
