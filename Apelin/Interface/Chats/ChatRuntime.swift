@@ -1293,10 +1293,12 @@ final class ChatRuntime {
         guard canSwitch || canRetry else { return }
         // 分类不出的失败（reason 为 nil）也触发切换：提供商的话术常常
         // 落不进任何一类，余额不足正是最常见的。离线仍不触发：换模型没用。
-        // 网络抖动（.network）不切——换模型没用，由重试兜底。
+        // 网络抖动（.network）不切——换模型没用，由重试兜底。请求本身
+        // 被拒（.invalidRequest，如模型名写错、参数不合法）也不切：换个
+        // 模型大概率照样被拒，白白消耗一轮切换额度。
         let failure = realtime.last(where: { $0.kind == "error" })
         let reason = failure?.payload?["reason"]?.stringValue.map(ApelinError.Reason.init(rawValue:))
-        guard reason != .offline else { return }
+        guard reason != .offline, reason != .invalidRequest else { return }
         // 只有仍留在 sending 里的草稿才还没被主机收下，才谈得上重发。
         // 流式输出中途才失败的消息已被主机收下并从 sending 移走，此时的
         // 恢复对象是本轮最后一条用户消息：切换后把它重新问一遍。
@@ -1336,7 +1338,7 @@ final class ChatRuntime {
                     if let midRunDraft {
                         // 消息已被主机收下，不能走 resend；保留原 id 重新
                         // prompt，主机对同一条消息再答一遍，不会重复入列。
-                        await self.send(midRunDraft, to: id, selection: next)
+                        try? await self.send(midRunDraft, to: id, selection: next)
                     } else {
                         await self.resend(draftIDs, in: id, selection: next)
                     }

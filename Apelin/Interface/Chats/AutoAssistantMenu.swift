@@ -217,7 +217,7 @@ final class AutoAssistantSheet: UITableViewController {
                 ) { _ in
                     var next = self.settings
                     next.retryDelaySeconds = delay.rawValue
-                    AutoAssistantPolicy.set(next, for: id)
+                    AutoAssistantPolicy.set(next, for: self.id)
                     tableView.reloadData()
                 }
                 sheet.addAction(action)
