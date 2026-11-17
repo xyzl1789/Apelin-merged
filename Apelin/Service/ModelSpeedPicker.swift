@@ -29,21 +29,34 @@ enum ModelSpeedPicker {
         try await measureAll(progress: progress).fastest
     }
 
+    /// 所有已登录、未被排除的账号及其可用模型。测速和自动切换共用这份
+    /// 候选：不再跟「手动启用」列表取交集——那会让从没手动启用过的人只剩
+    /// 零星几个模型可测、可切。范围只由排除的服务商与排除的模型决定。
+    static func availableAccounts() async throws -> [AgentAccount] {
+        let listed = try await ApelinService.app.agentAccountsWithKnownModels()
+        guard !Task.isCancelled else { throw CancellationError() }
+        return listed.compactMap { account in
+            guard account.signedIn else { return nil }
+            let usable = (account.models ?? []).filter {
+                !ModelExclusions.isModelExcluded(account.provider, model: $0)
+            }
+            guard !usable.isEmpty else { return nil }
+            var available = account
+            available.models = usable
+            return available
+        }
+    }
+
     /// 每个候选模型各测一次，返回完整排名（快到慢，失败的除外）与最快者。
     /// 排名留在原地供「测量结果」页读取；`Result` 的 Selection 也照旧带出。
     static func measureAll(
         progress: @MainActor (_ measured: Int, _ total: Int) -> Void = { _, _ in },
     ) async throws -> (results: [Result], fastest: ComposerModelSelection?) {
-        let selected = EnabledModels.selectedModelIDs()
-        let listed = try await ApelinService.app
-            .agentAccountList(extraModels: selected, onlyExtraModels: true).accounts
-        guard !Task.isCancelled else { throw CancellationError() }
-        let accounts = EnabledModels.accounts(from: listed)
+        let accounts = try await availableAccounts()
 
         var candidates: [(account: AgentAccount, model: String)] = []
         for account in accounts {
             for model in account.models ?? [] {
-                guard !ModelExclusions.isModelExcluded(account.provider, model: model) else { continue }
                 candidates.append((account, model))
             }
         }

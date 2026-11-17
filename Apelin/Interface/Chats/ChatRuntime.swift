@@ -503,8 +503,10 @@ final class ChatRuntime {
         // 新的一轮消息：允许这个会话再次自动恢复。
         autoRecovered.remove(id)
         autoSwitchAttempts[id] = nil
-        autoSwitchTried[id] = nil
         let selection = ComposerModelSelection.selection(for: id)
+        // 本轮初始模型已随这条消息发出，算「已试过」：它若失败要切走，
+        // 就不能在下次选择时被当成新候选切回来（A→B→A 来回切）。
+        autoSwitchTried[id] = selection.map { [Self.candidateKey($0)] } ?? []
         records[id]?.submit(draft)
         changed(id)
         return Task {
@@ -1343,36 +1345,21 @@ final class ChatRuntime {
         }
     }
 
-    /// 选一个与 `current` 不同、其账号已登录、模型已启用、且未被排除的
-    /// 模型。`skipping` 里是同一轮已经试过又失败的（provider/model 键）：
-    /// 没有余额的候选不该再领到重发。
+    /// 从上次测速的成功结果里挑一个可用的模型，按快到慢。只从测速成功过的
+    /// 模型里选（用户的选择）：没测过、或测速时失败的模型不进候选，免得切到
+    /// 一个同样用不了的模型。`skipping` 是本轮已经试过又失败的键，随新一轮
+    /// 清零——失败记忆只限本轮。
     private func firstAvailableModel(
         around current: ComposerModelSelection?,
         skipping tried: Set<String> = [],
     ) async -> ComposerModelSelection? {
-        let models = EnabledModels.selectedModelIDs()
-        let accounts: [AgentAccount]
-        do {
-            accounts = try await ApelinService.app
-                .agentAccountList(extraModels: models, onlyExtraModels: true).accounts
-        } catch {
-            return nil
-        }
         guard !Task.isCancelled else { return nil }
-        for account in EnabledModels.accounts(from: accounts) {
-            for model in account.models ?? [] {
-                guard !ModelExclusions.isModelExcluded(account.provider, model: model) else { continue }
-                if let current, current.provider == account.provider, current.model == model { continue }
-                let selection = ComposerModelSelection(
-                    provider: account.provider,
-                    model: model,
-                    supportedEfforts: (account.reasoningEfforts?[model] ?? [])
-                        .filter { [.low, .high, .max].contains($0) },
-                    supportedTiers: account.serviceTiers?[model] ?? [],
-                )
-                guard !tried.contains(Self.candidateKey(selection)) else { continue }
-                return selection
-            }
+        for result in MeasurementStore.load().results {
+            let selection = result.selection
+            guard !ModelExclusions.isModelExcluded(selection.provider, model: selection.model) else { continue }
+            if let current, current.provider == selection.provider, current.model == selection.model { continue }
+            guard !tried.contains(Self.candidateKey(selection)) else { continue }
+            return selection
         }
         return nil
     }
