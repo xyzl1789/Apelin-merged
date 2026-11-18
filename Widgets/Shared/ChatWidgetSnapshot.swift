@@ -32,6 +32,9 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         /// The tool the newest waiting approval is for (`apelin_package_install`,
         /// `git_push`, …), for the status line to name.
         var approvalTool: String?
+        /// 本回合（当前正在跑的任务）开始时刻：实时活动上的进行时长计时器
+        /// 从它起走；不在回合中为 nil。
+        var startedAt: Date?
 
         var isInProgress: Bool {
             status == .working || status == .waiting

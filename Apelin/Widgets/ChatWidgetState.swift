@@ -18,6 +18,7 @@ extension ChatRecord {
     func widgetChat(projectName: String?) -> ChatWidgetSnapshot.Chat {
         var waiting: [(id: String, tool: String)] = []
         var turnOpen = false
+        var turnStart: Date?
         var failed = false
         for event in events {
             let payload = event.payload
@@ -25,6 +26,7 @@ extension ChatRecord {
             case "prompt", "steer", "messageStarted":
                 turnOpen = true
                 failed = false
+                turnStart = event.time
             case "approvalRequested":
                 if let id = payload?["approvalID"]?.stringValue {
                     // By today's name: the widget names only those.
@@ -61,6 +63,7 @@ extension ChatRecord {
             project: projectName,
             status: status,
             approvalTool: status == .waiting ? waiting.last?.tool : nil,
+            startedAt: turnOpen ? turnStart : nil,
         )
     }
 }

@@ -170,6 +170,14 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 6)
+                if let start = chat.startedAt {
+                    // 照 minis：当前任务的进行时长，系统自走计时，不需要每秒推快照。
+                    Text(timerInterval: start ... Date().addingTimeInterval(86_400), countsDown: false)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize()
+                }
                 Text(verbatim: chat.projectName)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
