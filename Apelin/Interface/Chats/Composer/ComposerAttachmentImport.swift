@@ -48,7 +48,7 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
     }
 
     @objc dynamic func files() {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.data, .image, .text, .pdf, .audio])
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item])
         picker.allowsMultipleSelection = true
         picker.delegate = self
         presenter?.present(picker, animated: true)
@@ -134,7 +134,7 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
         }
     }
 
-    /// `url` as an attachment named `name`: a regular file of at most 32 MB,
+    /// `url` as an attachment named `name`: a regular file of at most 50 MB,
     /// read by its canonical path, an image or else text (a PDF's own).
     nonisolated static func readAttachment(at url: URL, name: String) throws -> ComposerAttachment {
         guard let path = CanonicalPath.resolve(url.path) else {
@@ -142,15 +142,15 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
         }
         let source = URL(fileURLWithPath: path)
         let values = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-        guard values.isRegularFile == true, let size = values.fileSize, size <= 32 * 1024 * 1024 else {
+        guard values.isRegularFile == true, let size = values.fileSize, size <= 50 * 1024 * 1024 else {
             throw ApelinError(
                 .badRequest,
-                String(localized: "Choose a regular file smaller than 32 MB."),
+                String(localized: "Choose a regular file smaller than 50 MB."),
             )
         }
         let data = try Data(contentsOf: source)
-        guard data.count <= 32 * 1024 * 1024 else {
-            throw ApelinError(.badRequest, String(localized: "Choose a file smaller than 32 MB."))
+        guard data.count <= 50 * 1024 * 1024 else {
+            throw ApelinError(.badRequest, String(localized: "Choose a file smaller than 50 MB."))
         }
         let image = UIImage(data: data) != nil
         let text = source.pathExtension.lowercased() == "pdf"
@@ -165,10 +165,10 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
     }
 
     @objc dynamic func importImage(_ image: UIImage) {
-        guard let data = image.jpegData(compressionQuality: 0.85), data.count <= 32 * 1024 * 1024 else {
+        guard let data = image.jpegData(compressionQuality: 0.85), data.count <= 50 * 1024 * 1024 else {
             presenter?.presentNotice(
                 title: "Unable to Import Image",
-                message: String(localized: "Choose an image smaller than 32 MB."),
+                message: String(localized: "Choose an image smaller than 50 MB."),
             )
             return
         }
