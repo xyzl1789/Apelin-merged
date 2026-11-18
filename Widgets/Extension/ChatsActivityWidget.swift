@@ -239,7 +239,9 @@ private struct ChatLockScreenView: View {
         }
         .foregroundStyle(theme.ink)
         .padding()
+        .activityBackgroundTint(ChatWidgetAppearance.backgroundTint(for: colorScheme))
         .animation(.easeInOut(duration: 0.35), value: state)
+        .activitySystemActionForegroundColor(theme.green)
         .widgetURL(state.mostUrgent?.link)
     }
 }
