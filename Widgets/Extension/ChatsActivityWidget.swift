@@ -49,9 +49,9 @@ struct ChatsActivityWidget: Widget {
                 // 有会话等审批亮警告，有失败亮叉，全在跑亮进度圆环；
                 // 多于一个会话时图标旁带计数。
                 HStack(spacing: 4) {
-                    Image(systemName: statusSymbol)
+                    Image(systemName: state.statusSymbol)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(statusColor)
+                        .foregroundStyle(state.statusColor)
                     if state.totalCount > 1 {
                         Text(verbatim: "\(state.totalCount)")
                             .font(.rounded(.title3, .bold))
