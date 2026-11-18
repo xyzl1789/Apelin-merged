@@ -42,6 +42,15 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // when the channel's page opens. The host may still be starting,
         // hence the retries.
         Task { await ChannelLanguage.pushIfChanged(retries: 5) }
+        // 深浅色切换时重推一次当前活动：实时活动的 backgroundTint 只在
+        // 内容更新时被系统重画，不重推就一直是旧外观的颜色。
+        NotificationCenter.default.addObserver(
+            forName: UITraitCollection.changeConfirmationNotification,
+            object: nil,
+            queue: .main,
+        ) { _ in
+            MainActor.assumeIsolated { ChatWidgetPublisher.shared.appearanceChanged() }
+        }
         return true
     }
 

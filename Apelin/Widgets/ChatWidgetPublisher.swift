@@ -56,10 +56,12 @@ final class ChatWidgetPublisher {
     }
 
     /// 背景或卡片样式变了：快照本身不变，`chatsChanged` 的比较不会推送，
-    /// 这里把当前活动原样重推一次，让扩展按新设置重新渲染。
+    /// 这里把当前活动原样重推一次，让扩展按新设置重新渲染。深浅色切换
+    /// 也走这里——tint 只在内容更新时才被系统重画。
     func appearanceChanged() {
-        guard let shownActivity, !Self.isClosedForQuit else { return }
-        showActivity(shownActivity)
+        guard shownActivity != nil, !Self.isClosedForQuit else { return }
+        if shownActivity!.chats.isEmpty, shownActivity!.totalCount == 0 { return }
+        showActivity(shownActivity!)
     }
 
     /// Something in the runtime changed: looks again within a second.
