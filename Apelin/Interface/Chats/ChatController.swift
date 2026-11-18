@@ -836,8 +836,8 @@ final class ChatController: UIViewController {
             checkingOwner = nil
             guard confirmed else {
                 SPIndicator.present(
-                    title: String(localized: "Not Approved"),
-                    message: String(localized: "The request is still waiting."),
+                    title: String(localized: "未通过验证"),
+                    message: String(localized: "该请求仍在等待。"),
                     preset: .error,
                     haptic: .error,
                 )
