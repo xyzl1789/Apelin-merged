@@ -350,7 +350,18 @@ final class ProviderLoginController: UIViewController {
             guard let self else { return }
             defer { submitting = false; updatePrimary() }
             do {
-                let accounts = try await ApelinService.app.agentAccountList().accounts
+                var accounts = try await ApelinService.app.agentAccountList().accounts
+                // A custom endpoint's own roster: fetched here so the page
+                // opens with the models the node serves, not only the
+                // bundled catalog and the default model. A node that does
+                // not answer (no /v1/models, throttled, offline) keeps the
+                // account's own list; the page fetches again on appearing.
+                if let index = accounts.firstIndex(where: { $0.provider == self.provider && $0.signedIn }),
+                   accounts[index].usesAPIKey == true || accounts[index].method == .apiKey {
+                    if let live = try? await ApelinService.app.agentModelList(provider: self.provider).models, !live.isEmpty {
+                        accounts[index].models = Array(Set((accounts[index].models ?? [])).union(live)).sorted()
+                    }
+                }
                 guard let account = accounts.first(where: { $0.provider == self.provider && $0.signedIn }),
                       let navigation = navigationController, navigation.presentingViewController != nil
                 else { return }
