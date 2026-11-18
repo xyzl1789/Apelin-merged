@@ -122,7 +122,7 @@ extension ModelCatalogIndex.Entry {
     func mergingModalities(bundled: ModelCatalogIndex.Table, snapshot: ModelCatalogIndex.Table, candidates: [String]) -> ModelCatalogIndex.Entry {
         var merged = self
         var modalities = Set(inputModalities.map { $0.lowercased() })
-        func absorb(_ rows: [String: [Entry]]) {
+        func absorb(_ rows: [String: [ModelCatalogIndex.Entry]]) {
             for candidate in candidates {
                 for stretch in ModelIdentity.stretches(candidate) {
                     guard let entries = rows[stretch] else { continue }
