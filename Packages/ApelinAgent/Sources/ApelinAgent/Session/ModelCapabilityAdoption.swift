@@ -88,13 +88,13 @@ public enum ModelResolver {
         if parameters?.followsCatalog ?? true,
            let entry = index.entry(for: model.id, catalogKey: catalogKey) {
             resolved = entry.adopting(into: model)
-            // An endpoint the catalogs do not key, serving a model under the
-            // catalog's own exact name, keeps what it says about images: a
-            // stranger serving `deepseek-flash` is not DeepSeek, and an entry
-            // found only by that name does not make it one. A name the endpoint
-            // composed itself (`cn:deepseek-v4.1-flash`) does denote the model
-            // it names, and takes the entry's images with the rest.
-            if catalogKey == nil, entry.id.lowercased() == model.id.lowercased() {
+            // An entry found only by the model's exact id still describes the
+            // same model — an id is the strongest evidence there is, not the
+            // weakest, so its images come with the rest. What does not adopt
+            // is a weaker match: a name-only hit (`cn:deepseek-v4.1-flash` →
+            // `deepseek-flash`) under a keyed provider, where the endpoint is
+            // the provider itself and may file its own spelling differently.
+            if catalogKey != nil, entry.id.lowercased() == model.id.lowercased(), entry.fromSnapshot {
                 resolved.input = model.input
             }
         }

@@ -41,32 +41,29 @@ struct ChatsActivityWidget: Widget {
                 }
             } compactLeading: {
                 // 内容必须压到系统最小胶囊宽度以内，否则胶囊被撑宽，
-                // 挤掉状态栏右侧的信号图标（minis 即是如此）。标记取小。
-                MarkView(size: 16, braces: .white)
+                // 挤掉状态栏右侧的信号图标。标记取小。
+                MarkView(size: 18, braces: .white)
             } compactTrailing: {
-                // 右侧多样化显示：不同状态换不同的 SF Symbol 图标——
-                // 有会话等审批亮警告，有失败亮叉，全在跑亮进度圆环，
-                // 多会话时把计数用小字叠进圆环中空处，不占额外宽度。
-                // 圆环有中空，数字能放进去；实心图标（⚠️、❌、✓）无
-                // 中空，计数改放旁边。
-                ZStack {
+                // 照 minis：图标与计数并排（HStack），数字显示在图标右侧，
+                // 不叠进圆环——小岛时两位数在环里放不下。只要有进行中的
+                // 会话就显示数字（minis 连 1 都显示），等宽数字让宽度不抖。
+                HStack(spacing: 3) {
                     Image(systemName: state.statusSymbol)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(state.statusColor)
-                    if state.inProgressCount > 1, state.statusSymbol == "arrow.triangle.2.circlepath" {
+                    if state.inProgressCount > 0, state.statusSymbol == "arrow.triangle.2.circlepath" {
                         Text(verbatim: "\(state.inProgressCount)")
-                            .font(.system(size: 7, weight: .black))
-                            .minimumScaleFactor(0.6)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .monospacedDigit()
                             .foregroundStyle(.white)
                             .contentTransition(.numericText())
                             .accessibilityHidden(true)
                     }
                 }
-                .frame(minWidth: 17, alignment: .center)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(state.summaryLine ?? ""))
             } minimal: {
-                MarkView(size: 24, braces: .white)
+                MarkView(size: 26, braces: .white)
             }
             .widgetURL(state.mostUrgent?.link)
         }

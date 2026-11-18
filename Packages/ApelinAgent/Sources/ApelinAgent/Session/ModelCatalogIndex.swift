@@ -49,6 +49,14 @@ public struct ModelCatalogIndex: Sendable {
 
     public init() {}
 
+    /// A lookup over tables handed in, so tests read the same rules without a
+    /// device's files behind them.
+    private let testTables: (bundled: Table, snapshot: () -> Table)?
+
+    public init(bundled: Table, snapshot: @autoclosure @escaping () -> Table) {
+        self.testTables = (bundled, snapshot)
+    }
+
     /// The entry for a model, or nil when no catalog knows it.
     ///
     /// `catalogKey` is the provider key to ask first — kwwk's own
@@ -60,7 +68,10 @@ public struct ModelCatalogIndex: Sendable {
     /// model it names "DeepSeek V4.1 Flash", so a relay serving
     /// `cn:deepseek-v4.1-flash` finds it through that name and no other way.
     public func entry(for id: String, catalogKey: String? = nil) -> Entry? {
-        Self.entry(
+        if let tables = testTables {
+            return Self.entry(for: id, catalogKey: catalogKey, bundled: tables.bundled, snapshot: tables.snapshot())
+        }
+        return Self.entry(
             for: id,
             catalogKey: catalogKey,
             bundled: Self.shared.bundled,

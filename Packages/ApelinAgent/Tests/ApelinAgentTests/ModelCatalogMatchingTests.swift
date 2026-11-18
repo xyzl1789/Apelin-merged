@@ -179,4 +179,23 @@ struct ModelCatalogMatchingTests {
         #expect(found["deepseek-v4.1-flash"]?.id == "ds-41f")
         #expect(found["deepseek-v4.1-flash"]?.provider == "deepseek")
     }
+
+    @Test func `an exact id hit under a keyed provider still adopts the catalog's images`() {
+        // The relay serving `nvidia/nemotron-3.5-super-vl:free` is filed by
+        // models.dev under that exact id with images; the OpenAI-compatible
+        // login writes [.text] over it. The exact hit must not undo it.
+        let snapshot = ModelCatalogIndex.table([
+            (
+                provider: "kilo",
+                models: [(id: "nvidia/nemotron-3.5-super-vl:free", entry: entry("nvidia/nemotron-3.5-super-vl:free", "kilo", "NVIDIA: Nemotron 3.5 Super VL (free)", window: 1_000_000, tokens: 64_000))],
+            ),
+        ])
+        var model = Model(id: "nvidia/nemotron-3.5-super-vl:free", api: "openai-completions", provider: "test")
+        model.input = [.text]
+        model.contextWindow = 131_072
+        model.maxTokens = 32_000
+        let resolved = ModelResolver.resolving(model, catalogKey: nil, index: ModelCatalogIndex(bundled: bundled, snapshot: snapshot))
+        #expect(resolved.input.contains(.image))
+        #expect(resolved.contextWindow == 1_000_000)
+    }
 }
