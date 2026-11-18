@@ -72,7 +72,7 @@ enum ChatInlineFiles {
         for range in ranges.sorted(by: { $0.location > $1.location }) {
             guard range.location != NSNotFound, NSMaxRange(range) <= ns.length else { continue }
             var deletion = range
-            if NSMaxRange(range) < ns.length, ns.character(at: NSMaxRange(range)) == 0x0A {
+            if NSMaxRange(range) < ns.length, (ns.string as NSString).character(at: NSMaxRange(range)) == 0x0A {
                 deletion.length += 1
             }
             ns.deleteCharacters(in: deletion)
