@@ -43,13 +43,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // hence the retries.
         Task { await ChannelLanguage.pushIfChanged(retries: 5) }
         // 深浅色切换时重推一次当前活动：实时活动的 backgroundTint 只在
-        // 内容更新时被系统重画，不重推就一直是旧外观的颜色。
-        NotificationCenter.default.addObserver(
-            forName: UITraitCollection.changeConfirmationNotification,
-            object: nil,
-            queue: .main,
-        ) { _ in
-            MainActor.assumeIsolated { ChatWidgetPublisher.shared.appearanceChanged() }
+        // 内容更新时被系统重画，不重推就一直是旧外观的颜色。iOS 16 没有全局的外观变化通知，借一个不进层级的视图的
+        // traitCollectionDidChange 来听。
+        AppearanceProbeView.install {
+            ChatWidgetPublisher.shared.appearanceChanged()
         }
         return true
     }

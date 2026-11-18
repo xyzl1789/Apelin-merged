@@ -200,3 +200,29 @@ final class ChatWidgetPublisher {
         _ = done.wait(timeout: .now() + timeout)
     }
 }
+
+/// iOS 16 没有全局的深浅色变化通知：一个不加入任何可见层的小视图，
+/// 隐藏着加进 key window，系统外观切换时它的 `traitCollectionDidChange`
+/// 会被调用，转成回调交给发布器。
+final class AppearanceProbeView: UIView {
+    private static var onAppearanceChange: (() -> Void)?
+
+    static func install(onChange: @escaping () -> Void) {
+        onAppearanceChange = onChange
+        DispatchQueue.main.async {
+            guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let window = scene.keyWindow ?? scene.windows.first else { return }
+            let probe = AppearanceProbeView(frame: .zero)
+            probe.isHidden = true
+            probe.isUserInteractionEnabled = false
+            window.addSubview(probe)
+        }
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if traitCollection.userInterfaceStyle != previousTraitCollection?.userInterfaceStyle {
+            Self.onAppearanceChange?()
+        }
+    }
+}
