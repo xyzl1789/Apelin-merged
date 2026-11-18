@@ -61,23 +61,22 @@ struct ChatsActivityWidget: Widget {
                 // 内容压到系统最小胶囊宽度以内；标记保留 Apelin 品牌。
                 MarkView(size: 18, braces: .white)
             } compactTrailing: {
-                // 照 minis：图标与计数并排，数字在图标右侧；连 1 也显示，
-                // 等宽数字让宽度不抖。
-                HStack(spacing: 3) {
-                    Image(systemName: state.statusSymbol)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(state.statusColor)
-                    if state.inProgressCount > 0, state.statusSymbol == "arrow.triangle.2.circlepath" {
-                        Text(verbatim: "\(state.inProgressCount)")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(.white)
-                            .contentTransition(.numericText())
-                            .accessibilityHidden(true)
+                // 照 minis：数字是很小的徽标，叠在图标右上角，不是排在旁边；
+                // 连 1 也显示，等宽数字让宽度不抖。
+                MarkView(size: 18, braces: .white)
+                    .overlay(alignment: .topTrailing) {
+                        if state.inProgressCount > 0, state.statusSymbol == "arrow.triangle.2.circlepath" {
+                            Text(verbatim: "\(state.inProgressCount)")
+                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(.white)
+                                .contentTransition(.numericText())
+                                .offset(x: 4, y: -3)
+                                .accessibilityHidden(true)
+                        }
                     }
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text(state.summaryLine ?? ""))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text(state.summaryLine ?? ""))
             } minimal: {
                 // 多个实时活动折叠成一点时，标记旁挂进行中计数（照 minis 的徽标）。
                 ZStack {
