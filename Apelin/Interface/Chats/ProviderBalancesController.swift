@@ -23,7 +23,7 @@ final class ProviderBalancesController: UITableViewController {
     }()
 
     /// 「x 分钟前」式的相对时间：一分钟内说「刚刚」。
-    private static func relativeTime(_ date: Date) -> String {
+    static func relativeTime(_ date: Date) -> String {
         let interval = Date().timeIntervalSince(date)
         if interval < 60 { return String(localized: "just now") }
         if interval < 3600 {
@@ -267,7 +267,7 @@ final class ProviderBalanceSummaryCard: UIView {
         providerLabel.text = balance.provider.displayName
         amountLabel.text = "\(balance.amount) \(balance.currency)"
         amountLabel.textColor = balance.stale ? .systemOrange : .label
-        timeLabel.text = String(localized: "Updated \(ProviderBalancesController.relativeTimeStatic(balance.updatedAt))")
+        timeLabel.text = String(localized: "Updated \(ProviderBalancesController.relativeTime(balance.updatedAt))")
         accessibilityLabel = String(localized: "Provider Balances")
         accessibilityValue = "\(balance.provider.displayName)，\(balance.amount) \(balance.currency)"
     }
