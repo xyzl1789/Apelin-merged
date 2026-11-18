@@ -29,6 +29,10 @@ public struct ModelCatalogIndex: Sendable {
         public var maxTokens: Int
         /// Whether it takes images.
         public var acceptsImages: Bool
+        /// Input modalities in models.dev's own words (`text`, `image`,
+        /// `pdf`, `audio`, `video`), where the catalog named them. Empty for
+        /// the ones that only said `acceptsImages`.
+        public var inputModalities: [String]
         /// Whether it thinks before it answers.
         public var reasoning: Bool
         /// The levels it takes, in the catalog's own words (`low`, `high`).
@@ -282,6 +286,7 @@ public struct ModelCatalogIndex: Sendable {
             contextWindow: model.contextWindow,
             maxTokens: model.maxTokens,
             acceptsImages: model.input.contains(.image),
+            inputModalities: model.input.contains(.image) ? ["text", "image"] : ["text"],
             reasoning: model.reasoning,
             efforts: supportedThinkingLevels(model).map(\.rawValue),
             thinkingLevelMap: model.thinkingLevelMap,
@@ -301,6 +306,7 @@ public struct ModelCatalogIndex: Sendable {
                     contextWindow: model.context ?? 0,
                     maxTokens: model.output ?? 0,
                     acceptsImages: (model.input ?? []).contains { $0.lowercased() == "image" },
+                    inputModalities: (model.input ?? []).map { $0.lowercased() },
                     reasoning: model.reasoning ?? false,
                     efforts: model.efforts ?? [],
                     thinkingLevelMap: nil,

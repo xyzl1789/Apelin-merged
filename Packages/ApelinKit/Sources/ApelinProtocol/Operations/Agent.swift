@@ -453,6 +453,10 @@ public struct AgentModelCapabilities: Codable, Sendable, Equatable, Hashable {
     public var acceptsImages: Bool?
     /// Whether it thinks before it answers.
     public var reasoning: Bool?
+    /// Input modalities the catalog names, in models.dev's own words:
+    /// `text`, `image`, `pdf`, `audio`, `video`. Absent when the catalog did
+    /// not say; `acceptsImages` stays for callers that only need that one bit.
+    public var inputModalities: [String]?
     /// The entry's own name, as the catalog spells it: `deepseek-v4.1-flash`.
     public var catalogName: String?
     /// What the catalog calls the model in words, where that is not the id
@@ -470,6 +474,7 @@ public struct AgentModelCapabilities: Codable, Sendable, Equatable, Hashable {
         maxTokens: Int? = nil,
         acceptsImages: Bool? = nil,
         reasoning: Bool? = nil,
+        inputModalities: [String]? = nil,
         catalogName: String? = nil,
         catalogTitle: String? = nil,
         catalogProvider: String? = nil,
@@ -479,6 +484,7 @@ public struct AgentModelCapabilities: Codable, Sendable, Equatable, Hashable {
         self.maxTokens = maxTokens
         self.acceptsImages = acceptsImages
         self.reasoning = reasoning
+        self.inputModalities = inputModalities
         self.catalogName = catalogName
         self.catalogTitle = catalogTitle
         self.catalogProvider = catalogProvider

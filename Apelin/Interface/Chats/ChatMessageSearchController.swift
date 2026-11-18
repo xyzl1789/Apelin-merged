@@ -1,3 +1,4 @@
+import ApelinCore
 import UIKit
 
 /// One conversation's messages, narrowed by the words the reader types.
@@ -50,9 +51,11 @@ final class ChatMessageSearchController: TableController, UISearchResultsUpdatin
     @objc dynamic func updateSearchResults(for searchController: UISearchController) {
         let query = (searchController.searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { hits = []; tableView.reloadData(); return }
-        hits = messages.compactMap { message in
-            guard message.text.localizedStandardContains(query) else { return nil }
-            return Hit(id: message.id, role: message.role, text: message.text)
+        // Best first: a message that starts with the words, or names one word
+        // exactly, rises above a long reply that merely mentions it. Ties keep
+        // the transcript's own order.
+        hits = SearchScorer.ranked(messages, query: query, text: { $0.text }).map { message, _ in
+            Hit(id: message.id, role: message.role, text: message.text)
         }
         tableView.reloadData()
     }

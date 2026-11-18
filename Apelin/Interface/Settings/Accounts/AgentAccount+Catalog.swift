@@ -31,22 +31,56 @@ extension AgentAccount {
     /// The abilities a catalog knows, in the order a row shows them. Only
     /// affirmative ones: a missing `false` is a catalog that did not say, and
     /// a badge claiming a model cannot see would be a worse lie than none.
+    /// The input modalities models.dev lists drive the badges; a catalog that
+    /// only said `acceptsImages` gets the two basic ones.
     func abilityBadges(for model: String) -> [AbilityBadge] {
         guard let ability = capabilities?[model] else { return [] }
         var badges: [AbilityBadge] = []
-        if ability.acceptsImages == true { badges.append(.vision) }
+        let modalities = Set((ability.inputModalities ?? []).map { $0.lowercased() })
+        if !modalities.isEmpty {
+            for badge in AbilityBadge.modalityOrder where modalities.contains(badge.modality ?? "") {
+                badges.append(badge)
+            }
+        } else if ability.acceptsImages == true {
+            badges = [.text, .vision]
+        }
         if ability.reasoning == true { badges.append(.reasoning) }
         return badges
     }
 
     enum AbilityBadge: Sendable {
+        case text
         case vision
+        case video
+        case document
+        case audio
         case reasoning
+
+        /// The modality a badge answers to; reasoning is a property, not an
+        /// input type, so it has none and is added on its own.
+        var modality: String? {
+            switch self {
+            case .text: "text"
+            case .vision: "image"
+            case .video: "video"
+            case .document: "pdf"
+            case .audio: "audio"
+            case .reasoning: nil
+            }
+        }
+
+        /// The order the badges appear in, whatever order the catalog listed
+        /// the modalities, so a row does not reshuffle between refreshes.
+        static let modalityOrder: [AbilityBadge] = [.text, .vision, .video, .document, .audio]
 
         /// The symbol drawn beside the model's name.
         var symbolName: String {
             switch self {
+            case .text: "text.bubble"
             case .vision: "eye"
+            case .video: "video"
+            case .document: "doc.text"
+            case .audio: "mic.fill"
             case .reasoning: "brain"
             }
         }
@@ -54,7 +88,11 @@ extension AgentAccount {
         /// The spoken name, so an icon-only mark never goes unnamed.
         var label: String {
             switch self {
+            case .text: String(localized: "Text")
             case .vision: String(localized: "Vision")
+            case .video: String(localized: "Video")
+            case .document: String(localized: "Document")
+            case .audio: String(localized: "Audio")
             case .reasoning: String(localized: "Reasoning")
             }
         }

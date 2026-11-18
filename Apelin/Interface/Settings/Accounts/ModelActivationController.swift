@@ -1,4 +1,5 @@
 import AlertController
+import ApelinCore
 import ApelinProtocol
 import UIKit
 
@@ -111,7 +112,18 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
 
     @objc dynamic func updateSearchResults(for searchController: UISearchController) {
         let query = (searchController.searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        shown = models.filter { query.isEmpty || $0.localizedStandardContains(query) }
+        guard !query.isEmpty else { shown = models; updateRows(); return }
+        // Ranked, not just filtered: an exact name or a word that starts with
+        // the query comes before a model whose id happens to contain it. The
+        // catalog's name and the wire id are both searched, and the cell shows
+        // whichever answered.
+        shown = SearchScorer.sorted(models, query: query) { [weak self] model in
+            guard let self else { return model }
+            if let title = self.account.catalogTitle(for: model) {
+                return "\(title) \(model)"
+            }
+            return model
+        }
         updateRows()
     }
 

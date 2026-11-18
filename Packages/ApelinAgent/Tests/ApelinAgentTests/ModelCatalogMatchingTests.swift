@@ -18,6 +18,7 @@ struct ModelCatalogMatchingTests {
             contextWindow: window,
             maxTokens: tokens,
             acceptsImages: true,
+            inputModalities: ["text", "image"],
             reasoning: true,
             efforts: ["high"],
             thinkingLevelMap: nil,

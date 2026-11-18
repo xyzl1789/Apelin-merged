@@ -42,6 +42,7 @@ extension ModelCatalogIndex.Entry {
             maxTokens: maxTokens > 0 ? maxTokens : nil,
             acceptsImages: acceptsImages,
             reasoning: reasoning,
+            inputModalities: inputModalities.isEmpty ? nil : inputModalities,
             catalogName: id,
             catalogTitle: name,
             catalogProvider: provider,

@@ -1,3 +1,4 @@
+import ApelinCore
 import ApelinProtocol
 import Then
 import UIKit
@@ -147,10 +148,8 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
         } else {
             let shown = query.isEmpty
                 ? accounts
-                : accounts.filter {
-                    $0.provider.displayName.localizedStandardContains(query)
-                        // an endpoint is found by the host it was signed in to as well
-                        || ($0.account ?? "").localizedStandardContains(query)
+                : SearchScorer.sorted(accounts, query: query) {
+                    "\($0.provider.displayName) \($0.account ?? "")"
                 }
             let groups: [(Group, [AgentAccount])] = [
                 (.signedIn, shown.filter(\.signedIn)),
