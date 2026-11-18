@@ -83,14 +83,16 @@ private extension ChatWidgetSnapshot {
         if waitingCount > 0 { return "exclamationmark.triangle.fill" }
         if chats.contains(where: { $0.status == .failed }) { return "xmark.circle.fill" }
         if workingCount > 0 { return "arrow.triangle.2.circlepath" }
-        return "checkmark.circle.fill"
+        // 全部完成：照 minis，纯绿色裸对勾，不带圈。
+        return "checkmark"
     }
 
     var statusColor: Color {
         if waitingCount > 0 { return WidgetTheme.island.amber }
         if chats.contains(where: { $0.status == .failed }) { return WidgetTheme.island.red }
         if workingCount > 0 { return WidgetTheme.island.green }
-        return WidgetTheme.island.idle
+        // 完成态：绿色，同 minis。
+        return WidgetTheme.island.green
     }
 }
 
