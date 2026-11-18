@@ -1297,6 +1297,14 @@ final class ChatController: UIViewController {
         }
         let page = ChatMessageSearchController(messages: entries) { [weak self] id in
             guard let self, chat != nil, messages.contains(where: { $0.id == id }) else { return }
+            // 照 Minis 的搜索跳转：进入阅读态，断开「跟随最新输出」——
+            // followedTurn、holdsLatestMessage 都收掉，流式输出不再把列表
+            // 拽回底部把刚跳到的位置吃掉。用户拖到底部附近才重新跟随。
+            followedTurn = nil
+            holdsLatestMessage = false
+            readingPlace = nil
+            needsInitialScroll = false
+            messageList.cancelCurrentScrolling()
             messageList.scrollToRow(with: id, at: .top, animated: !UIAccessibility.isReduceMotionEnabled)
             updateLatestMessageButton()
         }

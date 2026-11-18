@@ -58,22 +58,21 @@ struct ChatsActivityWidget: Widget {
                     }
                 }
             } compactLeading: {
-                // 照 minis：左侧是图标，进行中计数是很小的徽标，叠在图标右上角；
-                // 连 1 也显示，等宽数字让宽度不抖。
-                MarkView(size: 18, braces: .white)
-                    .overlay(alignment: .topTrailing) {
-                        if state.inProgressCount > 0, state.statusSymbol == "arrow.triangle.2.circlepath" {
-                            Text(verbatim: "\(state.inProgressCount)")
-                                .font(.system(size: 8, weight: .heavy, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(.white)
-                                .contentTransition(.numericText())
-                                .offset(x: 4, y: -3)
-                                .accessibilityHidden(true)
-                        }
+                // 照 Minis 的 compactLeading：图标与数字并排（HStack，间距 3），
+                // 不再用叠加徽标——叠在 18pt 图标右上角的 8pt 数字会被灵动岛
+                // 收起态的圆角和边界裁掉，只剩一个小点。并排的数字完整可见。
+                HStack(spacing: 3) {
+                    MarkView(size: 16, braces: .white)
+                    if state.inProgressCount > 0, state.statusSymbol == "arrow.triangle.2.circlepath" {
+                        Text(verbatim: "\(state.inProgressCount)")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                            .contentTransition(.numericText())
                     }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(Text(state.summaryLine ?? ""))
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(state.summaryLine ?? ""))
             } compactTrailing: {
                 // 照 minis 的 CompactTrailingView：右侧显示工作状态符号，
                 // 颜色随状态（等待琥珀、失败红、进行中绿），切换时淡入淡出。
@@ -83,7 +82,9 @@ struct ChatsActivityWidget: Widget {
                     .id(state.statusSymbol)
                     .transition(.opacity.animation(.easeInOut(duration: 0.35)))
             } minimal: {
-                // 多个实时活动折叠成一点时，标记旁挂进行中计数（照 minis 的徽标）。
+                // 多个实时活动折叠成一点时，照 Minis 的 MinimalIconView：
+                // 标记本体挂计数小字（9pt，offset 8,-8），计数为 0 时只有
+                // 标记本身。
                 ZStack {
                     MarkView(size: 26, braces: .white)
                     if state.inProgressCount > 0 {

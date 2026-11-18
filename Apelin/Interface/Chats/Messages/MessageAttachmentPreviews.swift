@@ -79,6 +79,10 @@ final class MessageAttachmentPreviews {
         guard image(for: attachment) == nil,
               cache.object(forKey: attachment.id as NSUUID) == nil,
               attachment.text == nil,
+              // SVG 在 UTType 谱系里 conforms(to: .text)（XML→text），
+              // 却是可渲染的图片：图片扩展名不走纯文本守卫，否则 SVG
+              // 的缩略图永远出不来，只能落成文档卡片。
+              !(attachment.isImage || ChatInlineFiles.isImagePath(attachment.name)),
               UTType(filenameExtension: (attachment.name as NSString).pathExtension)?.conforms(to: .text) != true
         else { return }
         if pending[attachment.id] != nil {
