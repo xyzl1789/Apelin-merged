@@ -108,7 +108,9 @@ private extension ChatWidgetSnapshot {
         if waitingCount > 0 { return "exclamationmark.triangle.fill" }
         if chats.contains(where: { $0.status == .failed }) { return "xmark.circle.fill" }
         if workingCount > 0 { return "arrow.triangle.2.circlepath" }
-        return "checkmark"
+        // 全部完成：照 Minis 的绿色圆底对勾（caption 圈勾），收起态不再
+        // 用 body 字号的裸对勾——那个明显偏大。
+        return "checkmark.circle.fill"
     }
 
     var statusColor: Color {
