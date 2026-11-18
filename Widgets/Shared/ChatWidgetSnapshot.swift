@@ -80,11 +80,13 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
 
     init() {}
 
-    /// What the Live Activity shows: only the conversations in progress.
+    /// What the Live Activity shows: the conversations in progress first,
+    /// with finished ones kept so the island wears ✅ or ❌ until the user
+    /// closes the activity by hand (or the app quits).
     var inProgress: ChatWidgetSnapshot {
         var activity = self
-        activity.chats = Array(chats.filter(\.isInProgress).prefix(Self.activityLimit))
-        activity.totalCount = workingCount + waitingCount
+        activity.chats = Array(chats.prefix(Self.activityLimit))
+        activity.totalCount = chats.count
         return activity
     }
 

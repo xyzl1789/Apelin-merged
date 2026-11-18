@@ -138,14 +138,17 @@ final class ChatWidgetPublisher {
         }
     }
 
-    /// One activity while anything is in progress, ended the moment nothing
-    /// is. An activity the last run left is updated, or ended, by the first
-    /// look after launch.
+    /// One activity while anything is in progress, kept showing its final
+    /// state (✅ / ❌) after everything has finished until the user closes
+    /// it by hand. An activity the last run left is updated, or ended, by
+    /// the first look after launch.
     @available(iOS 16.2, *)
     private static func apply(_ state: ChatWidgetSnapshot, rebuild: Bool = false) async {
         guard !isClosedForQuit else { return }
         let existing = Activity<ChatActivityAttributes>.activities
-        guard state.totalCount > 0 else {
+        // Nothing is listed at all: the conversations were cleared or the
+        // app was reset, so the activity has nothing to wear — end it.
+        guard !state.chats.isEmpty || state.totalCount > 0 else {
             for activity in existing {
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
