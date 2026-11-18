@@ -48,11 +48,33 @@ final class ChatMarkdownView: MarkdownStreamView {
         // streamed into them is revealed the same way.
         animator = LTXFadeInAnimator(configuration: Self.reveal)
         contextViewFadeDuration = Self.revealDuration
+        streamLabel.lineRenderer = searchRenderer
     }
 
     @available(*, unavailable)
     required init?(coder _: NSCoder) {
         fatalError("Use init(viewProvider:)")
+    }
+
+    /// 聊天内搜索的命中高亮：绘制器挂在正文标签上，状态或文档变化
+    /// 时在渲染后文本上重新定位 query。代码块与表格里的文本暂不高亮。
+    private let searchRenderer = ChatSearchHighlightRenderer()
+    private var searchState: ChatSearchHighlightCenter.State?
+
+    /// 搜索状态变化（或行被重配、文档被重建）后刷新高亮。
+    func setSearchHighlight(_ state: ChatSearchHighlightCenter.State?) {
+        searchState = state
+        refreshSearchHighlight()
+        // 文本没变时 Litext 不会因赋值重绘，显式要求一次重绘。
+        if window != nil {
+            textLabelView.setNeedsTextDisplay()
+        }
+    }
+
+    /// 在当前渲染后的文档文本上重新定位 query。流式重建后字符数会变，
+    /// 区间必须跟着文档走。
+    private func refreshSearchHighlight() {
+        searchRenderer.update(state: searchState, text: textLabelView.attributedText.string)
     }
 
     override func textLabelView(
@@ -121,6 +143,10 @@ final class ChatMarkdownView: MarkdownStreamView {
             }
         }
         super.applyDocument(text, newContextViews: newContextViews, animated: animated)
+        // 文档重建后字符串变了，在新的渲染后文本上重新定位高亮。
+        if searchState != nil {
+            refreshSearchHighlight()
+        }
         spokenTextIsCurrent = false
         updateSpokenText()
     }

@@ -414,6 +414,8 @@ final class ChatController: UIViewController {
                     let chatID = self?.chat?.id
                     row.attachmentHeightLimit = self?.attachmentHeightLimit ?? 0
                     row.displayScale = self?.displayScale ?? 0
+                    // 先给状态再 show，show 一次性按新状态定位与重绘。
+                    row.searchHighlightState = self?.searchHighlightCenter.state(for: message.id)
                     row.show(message, isStreaming: self?.chat?.isWorking == true)
                     row.onAttachmentLayoutChanged = { [weak self] in
                         guard let self, chat?.id == chatID else { return }
@@ -1323,6 +1325,9 @@ final class ChatController: UIViewController {
             if let notice = search.notice {
                 inlineSearchBar.showNotice(notice.text)
             }
+            // 命中高亮照 Minis：查询变化与移动当前命中都推给渲染侧，
+            // 只重配状态确实变了的行，不改行高。
+            applySearchHighlights()
         }
         // 跳转语义照 Minis：进入阅读态，断开「跟随最新输出」——
         // followedTurn、holdsLatestMessage 都收掉，流式输出不再把列表
@@ -1344,6 +1349,43 @@ final class ChatController: UIViewController {
         }
         return search
     }()
+
+    /// 搜索命中的渲染中心与上一次每条消息的高亮状态，用来只重配
+    /// 状态变化了的行（黄↔橙、有↔无），滚动与行高都不受影响。
+    private let searchHighlightCenter = ChatSearchHighlightCenter()
+    private var lastSearchHighlightStates: [UUID: ChatSearchHighlightCenter.State] = [:]
+
+    /// 把搜索侧的当前状态推给渲染中心，并重配状态变化了的行。
+    private func applySearchHighlights() {
+        let query = inlineSearch.isActive ? inlineSearch.query : ""
+        var next: [UUID: ChatSearchHighlightCenter.State] = [:]
+        if !query.isEmpty {
+            let currentID = inlineSearch.currentIndex.flatMap {
+                inlineSearch.matches.indices.contains($0) ? inlineSearch.matches[$0].messageID : nil
+            }
+            for match in inlineSearch.matches {
+                next[match.messageID] = ChatSearchHighlightCenter.State(
+                    query: query,
+                    isCurrent: match.messageID == currentID,
+                )
+            }
+        }
+        searchHighlightCenter.apply(
+            query: query,
+            highlightedIDs: Set(next.keys),
+            current: next.first(where: { $0.value.isCurrent })?.key,
+        )
+        // 状态没变的行不碰：State 是 Equatable，黄与橙、有与无都可比。
+        let changed = next.filter { lastSearchHighlightStates[$0.key] != $0.value }.keys
+        let cleared = lastSearchHighlightStates.keys.filter { next[$0] == nil }
+        for id in changed {
+            messageList.reconfigureRow(with: id)
+        }
+        for id in cleared {
+            messageList.reconfigureRow(with: id)
+        }
+        lastSearchHighlightStates = next
+    }
 
     private lazy var inlineSearchBar: ChatInlineSearchBar = {
         let bar = ChatInlineSearchBar()

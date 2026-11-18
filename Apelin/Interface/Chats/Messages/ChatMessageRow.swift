@@ -47,6 +47,17 @@ final class ChatMessageRow: ListRowView {
     private var markdownText: String?
     /// The reply has finished, but its last text is still fading in.
     private var finishesStreamWhenStill = false
+    /// 聊天内搜索的命中高亮：绘制器挂在 label 上，状态进来就重绘。
+    private let searchRenderer = ChatSearchHighlightRenderer()
+    /// 由 ChatController 在配置行时写入：本行消息该不该画命中、本行
+    /// 是不是当前聚焦的那条。show() 里读它分发给两个绘制器。
+    var searchHighlightState: ChatSearchHighlightCenter.State? {
+        didSet {
+            guard searchHighlightState != oldValue else { return }
+            searchRenderer.update(state: searchHighlightState, text: label.attributedText.string)
+            markdownView.setSearchHighlight(searchHighlightState)
+        }
+    }
     private var revealObservation: NSKeyValueObservation?
     private let attachmentsView = MessageAttachmentsView()
     /// The line under the message (`MessageFooterView`).
@@ -119,6 +130,7 @@ final class ChatMessageRow: ListRowView {
         label.isSelectable = true
         label.delegate = self
         label.isAccessibilityElement = true
+        label.lineRenderer = searchRenderer
         addSubview(label)
         addSubview(markdownView)
         markdownView.linkHandler = { [weak self] link, _, _ in
@@ -169,6 +181,7 @@ final class ChatMessageRow: ListRowView {
         markdownView.reset()
         markdownView.isStreaming = false
         markdownView.streamIdentity = nil
+        markdownView.setSearchHighlight(nil)
         markdownText = nil
         attachments = []
         attachmentsView.show([], trailing: false, animated: false)
@@ -201,6 +214,9 @@ final class ChatMessageRow: ListRowView {
             }
         }
         shownID = message.id
+        // 搜索高亮：label 的文本刚换，用新文本重新定位并要求重绘。
+        searchRenderer.update(state: searchHighlightState, text: message.text)
+        label.setNeedsTextDisplay()
         label.accessibilityValue = waiting ? String(localized: "Waiting to Send") : nil
         bubble.isHidden = !isUser || message.text.isEmpty
         bubble.showsConversationBorder = isUser && message.sender != nil
@@ -237,6 +253,8 @@ final class ChatMessageRow: ListRowView {
                 finishStream()
             }
         }
+        // 搜索高亮：回复行在渲染后的文档文本上定位 query 后交给绘制器。
+        markdownView.setSearchHighlight(searchHighlightState)
         attachments = message.attachments
         attachmentsView.show(attachments, trailing: isUser, animated: isSameMessage)
         showsFooter = MessageFooterView.shows(message)
