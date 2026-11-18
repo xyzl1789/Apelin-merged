@@ -353,7 +353,7 @@ final class UsageStatsController: UIViewController {
             make.leading.equalTo(inputBar.snp.trailing)
             make.top.bottom.trailing.equalToSuperview()
         }
-        track.isAccessibilityHidden = true
+        track.accessibilityElementsHidden = true
 
         let inputLabel = UILabel().then {
             $0.text = String(localized: "输入 \(Self.tokenText(entry.input))")
