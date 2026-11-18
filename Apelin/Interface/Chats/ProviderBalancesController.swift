@@ -194,7 +194,7 @@ final class ProviderBalancesController: UITableViewController {
 
     /// 当前聊天页选中的服务商；从模型选择里读，与徽章同一来源。
     private func currentSelectionProvider() -> AgentProvider? {
-        ComposerModelSelection.selection(for: ChatStore.shared.activeChatID ?? UUID())?.provider
+        ComposerModelSelection.current?.provider
     }
 
     private func makeFooter() -> UIView {
