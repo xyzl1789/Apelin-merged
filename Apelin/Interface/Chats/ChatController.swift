@@ -848,7 +848,7 @@ final class ChatController: UIViewController {
         do {
             try await runtime.approve(request.id, in: chatID, decision: decision, ownerVerified: ownerVerified)
         } catch {
-            presentNotice(title: "Unable to Send Decision", message: error.readableMessage)
+            presentNotice(title: "无法提交决定", message: error.readableMessage)
         }
     }
 
@@ -868,7 +868,7 @@ final class ChatController: UIViewController {
                 answer: answer,
             )
         } catch {
-            presentNotice(title: "Unable to Send Decision", message: error.readableMessage)
+            presentNotice(title: "无法提交决定", message: error.readableMessage)
         }
     }
 

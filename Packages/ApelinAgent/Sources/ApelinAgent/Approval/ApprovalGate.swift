@@ -10,8 +10,8 @@ public enum ApprovalError: Error, Equatable, LocalizedError {
     case answerDoesNotFit
     public var errorDescription: String? {
         switch self {
-        case .unknownRequest: "This approval request is no longer waiting for a decision."
-        case .answerDoesNotFit: "This answer does not fit the question."
+        case .unknownRequest: "这一审批请求已不在等待决定：它可能已被自动处理，或所在会话已重启。"
+        case .answerDoesNotFit: "这个回答不符合问题的要求。"
         }
     }
 }
