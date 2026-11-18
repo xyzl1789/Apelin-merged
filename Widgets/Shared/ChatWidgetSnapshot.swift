@@ -1,4 +1,6 @@
 import Foundation
+import SwiftUI
+import UIKit
 
 /// What the widgets show of the conversations, written by the app and read
 /// by the widget extension; the Live Activity's payload is the same shape,
