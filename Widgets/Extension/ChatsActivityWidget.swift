@@ -176,14 +176,23 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 6)
-                // 照 Minis 的 RunClock：`Text(_, style: .timer)` 自走计时；
-                // 之前自创的 `Text(timerInterval:)` 带着到明天为止的区间，
-                // 在锁屏卡片渲染里可能整块画不出来（实时活动变空白的
-                // 嫌疑之一），系统 .timer 没有 `fixedSize`，也不会撑爆行。
+                // 照 Minis 的 RunClock：`Text(_, style: .timer)` 自走计时，
+                // 外面套隐藏占位 + 半透明胶囊底；之前自创的
+                // `Text(timerInterval:)` 带着到明天为止的区间，在锁屏卡片
+                // 渲染里可能整块画不出来（实时活动变空白的嫌疑之一）。
                 if let start = chat.startedAt, chat.status == .working || chat.status == .waiting {
-                    Text(start, style: .timer)
+                    Text("00:00")
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .hidden()
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .overlay {
+                            Text(start, style: .timer)
+                                .font(.caption.monospacedDigit())
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(.secondary)
+                        }
+                        .background(.white.opacity(0.12), in: Capsule())
                 }
                 Text(verbatim: chat.projectName)
                     .font(.caption2)
