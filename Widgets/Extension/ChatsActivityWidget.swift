@@ -53,8 +53,8 @@ struct ChatsActivityWidget: Widget {
                     Image(systemName: state.statusSymbol)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(state.statusColor)
-                    if state.totalCount > 1, state.statusSymbol == "arrow.triangle.2.circlepath" {
-                        Text(verbatim: "\(state.totalCount)")
+                    if state.inProgressCount > 1, state.statusSymbol == "arrow.triangle.2.circlepath" {
+                        Text(verbatim: "\(state.inProgressCount)")
                             .font(.system(size: 7, weight: .black))
                             .minimumScaleFactor(0.6)
                             .foregroundStyle(.white)

@@ -46,6 +46,9 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     var chats: [Chat] = []
     /// Every conversation, listed or not.
     var totalCount = 0
+    /// 正在进行的会话数（等待审批 + 工作中）：灵动岛与实时活动卡片上的
+    /// 计数用它，已完成（✅/❌）的终态会话不算在内。
+    var inProgressCount = 0
     var workingCount = 0
     var waitingCount = 0
 
@@ -76,6 +79,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         totalCount = chats.count
         workingCount = chats.count { $0.chat.status == .working }
         waitingCount = chats.count { $0.chat.status == .waiting }
+        inProgressCount = workingCount + waitingCount
     }
 
     init() {}
@@ -87,6 +91,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         var activity = self
         activity.chats = Array(chats.prefix(Self.activityLimit))
         activity.totalCount = chats.count
+        activity.inProgressCount = inProgressCount
         return activity
     }
 
