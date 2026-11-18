@@ -75,8 +75,13 @@ struct ChatsActivityWidget: Widget {
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(Text(state.summaryLine ?? ""))
             } compactTrailing: {
-                // 照 minis：右侧什么也不放。
-                EmptyView()
+                // 照 minis 的 CompactTrailingView：右侧显示工作状态符号，
+                // 颜色随状态（等待琥珀、失败红、进行中绿），切换时淡入淡出。
+                Image(systemName: state.statusSymbol)
+                    .font(.body)
+                    .foregroundStyle(state.statusColor)
+                    .id(state.statusSymbol)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.35)))
             } minimal: {
                 // 多个实时活动折叠成一点时，标记旁挂进行中计数（照 minis 的徽标）。
                 ZStack {
