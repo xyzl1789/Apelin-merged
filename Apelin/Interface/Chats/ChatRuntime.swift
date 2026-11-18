@@ -43,6 +43,8 @@ final class ChatRuntime {
     /// error，都不会把它变成循环（用集合是为了只关心“本轮是否恢复过”）。
     private var autoRecovered: Set<UUID> = []
     private var attachmentCache: [String: ComposerAttachment] = [:]
+    /// 正文引用转出的附件，键是会话与路径；文件被改写后下次重开才更新。
+    private var inlineCache: [String: ComposerAttachment] = [:]
     private var transcripts = ChatTranscriptCache()
     /// Conversations whose latest state is in memory only.
     @objc dynamic private var unsaved: Set<UUID> = []
@@ -376,6 +378,34 @@ final class ChatRuntime {
             isFollowed: { readers[$0] != nil },
             conversationTitle: { title(ofSession: $0) },
         ) { [self] item in attachment(item, in: id) }
+        .withInlineFileAttachments { [self] path in
+            inlineAttachment(path: path, in: id)
+        }
+    }
+
+    /// The message's inline file attachments, read from the reply's own text:
+    /// `![alt](picture.png)` becomes the album's image, `[note](report.md)`
+    /// a document card, both previewable like any other attachment. One whose
+    /// file is not there yet (the reply streams before it writes the file)
+    /// is left for the next build, as Minis does.
+    private func inlineAttachment(path: String, in id: UUID) -> ComposerAttachment? {
+        let name = (path as NSString).lastPathComponent
+        let ext = (name as NSString).pathExtension
+        let key = "inline:\(id.uuidString):\(path)"
+        if let cached = inlineCache[key] { return cached }
+        guard let resolved = attachmentPath(AgentAttachment(path: path, name: name, mimeType: ""), in: id) else { return nil }
+        guard let size = try? URL(fileURLWithPath: resolved).resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              size <= 32 * 1024 * 1024, let data = try? Data(contentsOf: URL(fileURLWithPath: resolved))
+        else { return nil }
+        let isImage = ChatInlineFiles.isImagePath(path)
+        let file = ComposerAttachment(
+            name: name,
+            data: data,
+            text: ext.isEmpty || isImage ? nil : String(decoding: data.prefix(8192), as: UTF8.self),
+            isImage: isImage,
+        )
+        inlineCache[key] = file
+        return file
     }
 
     /// How many turns of each conversation are folded when it is opened:

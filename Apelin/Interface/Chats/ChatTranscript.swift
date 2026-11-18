@@ -99,6 +99,34 @@ struct ChatTranscript {
     /// What ends `reconnecting`: the request answered, or the run moved on.
     private static let endsReconnecting = endsAttempt.union(["messageStarted", "thinking", "toolCallPreparing", "text"])
 
+    /// 把助手消息正文里的 `![alt](文件)` 图片引用转成消息附件：`resolve`
+    /// 读不到的（文件还没写出）保留原文，下次重建再试；读到的整条引用
+    /// 从正文移除，图片进相册。只改显示的行，不动记录的事件。
+    func withInlineFileAttachments(_ resolve: (String) -> ComposerAttachment?) -> ChatTranscript {
+        var transcript = self
+        for index in transcript.rows.indices where transcript.rows[index].role == .assistant {
+            let text = transcript.rows[index].text
+            guard !text.isEmpty else { continue }
+            let references = ChatInlineFiles.imageReferences(in: text)
+            guard !references.isEmpty else { continue }
+            var attachments: [ComposerAttachment] = []
+            var taken: [NSRange] = []
+            for (range, path) in references where ChatInlineFiles.isImagePath(path) {
+                guard let file = resolve(path) else { continue }
+                attachments.append(file)
+                taken.append(range)
+            }
+            guard !attachments.isEmpty else { continue }
+            transcript.rows[index].text = ChatInlineFiles.removingImageReferences(text, ranges: taken)
+            if transcript.rows[index].attachments.isEmpty {
+                transcript.rows[index].attachments = attachments
+            } else {
+                transcript.rows[index].attachments += attachments
+            }
+        }
+        return transcript
+    }
+
     /// `conversationTitle` names another conversation of the project by its
     /// session ID, for a message its agent sent. `sending` are messages sent
     /// and not echoed yet: each shows last, under its draft's id, until the
