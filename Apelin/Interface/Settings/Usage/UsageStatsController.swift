@@ -332,28 +332,51 @@ final class UsageStatsController: UIViewController {
             value: Self.tokenText(entry.input + entry.output),
         )
         let total = max(entry.input + entry.output, 1)
-        let inputFraction = CGFloat(entry.input) / CGFloat(total)
 
-        let track = UIView().then {
-            $0.backgroundColor = .tertiarySystemFill
-            $0.layer.cornerRadius = 3
-            $0.clipsToBounds = true
+        // 两条独立的比例条（照 TrollAgent 的样式）：上面橙色是输入、
+        // 下面绿色是输出，各自按本家该向 token 在全表同向最大值里的
+        // 占比截长，长度只在同行之间比较。
+        func bar(fraction: CGFloat, color: UIColor) -> UIView {
+            let fill = UIView().then { $0.backgroundColor = color }
+            let track = UIView().then {
+                $0.backgroundColor = .tertiarySystemFill
+                $0.layer.cornerRadius = 3
+                $0.clipsToBounds = true
+            }
+            track.addSubview(fill)
+            fill.snp.makeConstraints { make in
+                make.leading.top.bottom.equalToSuperview()
+            }
+            fill.snp.makeConstraints { make in
+                make.width.equalTo(track.snp.width).multipliedBy(min(max(fraction, 0), 1))
+            }
+            return track
         }
-        let inputBar = UIView().then { $0.backgroundColor = .systemOrange }
-        let outputBar = UIView().then { $0.backgroundColor = .systemGreen }
-        for bar in [inputBar, outputBar] {
-            bar.translatesAutoresizingMaskIntoConstraints = false
-            track.addSubview(bar)
+
+        let inputHolder = UIView()
+        let inputTrack = bar(fraction: CGFloat(entry.input) / CGFloat(max(maxTokens, 1)), color: .systemOrange)
+        inputHolder.addSubview(inputTrack)
+        inputTrack.snp.makeConstraints {
+            $0.leading.top.bottom.equalToSuperview()
+            $0.height.equalTo(6)
+            $0.width.lessThanOrEqualTo(inputHolder.snp.width)
         }
-        inputBar.snp.makeConstraints { make in
-            make.leading.top.bottom.equalToSuperview()
-            make.width.equalToSuperview().multipliedBy(inputFraction)
+
+        let outputHolder = UIView()
+        let outputTrack = bar(fraction: CGFloat(entry.output) / CGFloat(max(maxTokens, 1)), color: .systemGreen)
+        outputHolder.addSubview(outputTrack)
+        outputTrack.snp.makeConstraints {
+            $0.leading.top.bottom.equalToSuperview()
+            $0.height.equalTo(6)
+            $0.width.lessThanOrEqualTo(outputHolder.snp.width)
         }
-        outputBar.snp.makeConstraints { make in
-            make.leading.equalTo(inputBar.snp.trailing)
-            make.top.bottom.trailing.equalToSuperview()
+        let bars = UIStackView(arrangedSubviews: [inputHolder, outputHolder]).then {
+            $0.axis = .vertical
+            $0.spacing = 4
         }
-        track.accessibilityElementsHidden = true
+        for holder in [inputHolder, outputHolder] {
+            holder.accessibilityElementsHidden = true
+        }
 
         let inputLabel = UILabel().then {
             $0.text = String(localized: "输入 \(Self.tokenText(entry.input))")
@@ -373,21 +396,7 @@ final class UsageStatsController: UIViewController {
             $0.alignment = .firstBaseline
         }
 
-        // 比例条：长度按本家总量在全表最大值里的占比，外层撑满、条按比例缩短。
-        let holder = UIView()
-        holder.addSubview(track)
-        track.snp.makeConstraints { make in
-            make.leading.top.bottom.equalToSuperview()
-            make.height.equalTo(6)
-        }
-        if maxTokens > 0 {
-            track.snp.makeConstraints { make in
-                make.width.equalTo(holder.snp.width)
-                    .multipliedBy(CGFloat(entry.input + entry.output) / CGFloat(maxTokens))
-            }
-        }
-
-        let column = UIStackView(arrangedSubviews: [top, holder, legend]).then {
+        let column = UIStackView(arrangedSubviews: [top, bars, legend]).then {
             $0.axis = .vertical
             $0.spacing = 6
             $0.isAccessibilityElement = true
