@@ -22,6 +22,10 @@ final class ChatWidgetPublisher {
     @objc private dynamic var lastLook = Date.distantPast
     private var written: ChatWidgetSnapshot?
     private var shownActivity: ChatWidgetSnapshot?
+    /// 本次启动是否已把遗留活动重建过：升级装新版后，已存在的实时活动
+    /// 一直沿用旧扩展的画面（系统不因 App 更新重绘），所以启动后第一次
+    /// 发布时先结束再重建一次，让新版的紧凑区、背景等立即可见。
+    private var hasRebuiltLegacyActivity = false
     /// Activity requests and updates, one after another, so two quick
     /// changes never request two activities.
     private var activityWork: Task<Void, Never>?
@@ -99,7 +103,13 @@ final class ChatWidgetPublisher {
         let activity = snapshot.inProgress
         if activity != shownActivity {
             shownActivity = activity
-            showActivity(activity)
+            showActivity(activity, rebuild: !hasRebuiltLegacyActivity)
+            hasRebuiltLegacyActivity = true
+        } else if !hasRebuiltLegacyActivity, activity.totalCount > 0 {
+            // 快照没变也要重建一次：装新版后遗留活动的画面还是旧扩展的。
+            shownActivity = activity
+            hasRebuiltLegacyActivity = true
+            showActivity(activity, rebuild: true)
         }
     }
 
@@ -119,12 +129,12 @@ final class ChatWidgetPublisher {
         }
     }
 
-    private func showActivity(_ state: ChatWidgetSnapshot) {
+    private func showActivity(_ state: ChatWidgetSnapshot, rebuild: Bool = false) {
         guard #available(iOS 16.2, *), !Self.isClosedForQuit else { return }
         let previous = activityWork
         activityWork = Task {
             await previous?.value
-            await Self.apply(state)
+            await Self.apply(state, rebuild: rebuild)
         }
     }
 
@@ -132,7 +142,7 @@ final class ChatWidgetPublisher {
     /// is. An activity the last run left is updated, or ended, by the first
     /// look after launch.
     @available(iOS 16.2, *)
-    private static func apply(_ state: ChatWidgetSnapshot) async {
+    private static func apply(_ state: ChatWidgetSnapshot, rebuild: Bool = false) async {
         guard !isClosedForQuit else { return }
         let existing = Activity<ChatActivityAttributes>.activities
         guard state.totalCount > 0 else {
@@ -142,6 +152,16 @@ final class ChatWidgetPublisher {
             return
         }
         let content = ActivityContent(state: state, staleDate: nil)
+        // rebuild：结束全部再重新请求，系统才会用新扩展的画面重绘——
+        // 只 update 时已存在活动可能一直沿用装新版前的渲染。
+        if rebuild {
+            for activity in existing {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+            guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+            _ = try? Activity.request(attributes: ChatActivityAttributes(), content: content)
+            return
+        }
         if let activity = existing.first {
             await activity.update(content)
             for extra in existing.dropFirst() {
