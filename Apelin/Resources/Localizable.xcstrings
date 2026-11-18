@@ -1,7 +1,7 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "%dh ago": {
+    "%lldh ago": {
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -18,7 +18,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%dh ago"
+            "value": "%lldh ago"
           }
         },
         "es": {
@@ -83,7 +83,7 @@
         }
       }
     },
-    "%dm ago": {
+    "%lldm ago": {
       "localizations": {
         "ar": {
           "stringUnit": {
@@ -100,7 +100,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%dm ago"
+            "value": "%lldm ago"
           }
         },
         "es": {
