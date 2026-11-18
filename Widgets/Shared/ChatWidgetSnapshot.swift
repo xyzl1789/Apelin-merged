@@ -142,18 +142,17 @@ enum ChatWidgetStore {
 
 /// 实时活动卡片的背景：给 `activityBackgroundTint` 一层跟随系统深浅色的
 /// 半透明颜色——深色模式半透明黑、浅色模式半透明白——系统把它揉进自带
-/// 的毛玻璃材质里，壁纸隐约透出，深浅色自动切换。
+/// 的毛玻璃材质里，壁纸隐约透出。动态 UIColor 在实时活动的渲染里不随
+/// 外观重新求值，所以按视图的 colorScheme 直接选色。
 enum ChatWidgetAppearance {
     /// 半透明层的透明度。
     static let defaultOpacity: Double = 0.45
 
     /// 当前深浅色对应的半透明 tint 颜色。暗色黑、亮色白。
-    static var backgroundTint: Color {
-        Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark
-                ? UIColor(white: 0, alpha: ChatWidgetAppearance.defaultOpacity)
-                : UIColor(white: 1, alpha: ChatWidgetAppearance.defaultOpacity)
-        })
+    static func backgroundTint(for scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 0, green: 0, blue: 0, opacity: defaultOpacity)
+            : Color(red: 1, green: 1, blue: 1, opacity: defaultOpacity)
     }
 }
 

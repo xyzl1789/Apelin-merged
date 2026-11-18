@@ -161,6 +161,7 @@ final class UsageStatsController: UIViewController {
         var bySessionTokens: [String: Int] = [:]
         var allInput = 0
         var allOutput = 0
+        var allCacheRead = 0
         for record in records {
             let provider = record.provider ?? String(localized: "未知供应商")
             let p = providers[provider, default: (0, 0, 0)]
@@ -174,18 +175,22 @@ final class UsageStatsController: UIViewController {
                 m.cacheWrite + record.cacheWrite,
             )
             bySessionTokens[record.sessionID, default: 0] += record.promptTokens + record.output
-            allInput += record.promptTokens
+            allInput += record.input
             allOutput += record.output
+            allCacheRead += record.cacheRead
         }
         sessionCount = bySessionTokens.count
         maxSession = bySessionTokens.values.max() ?? 0
+        let allPrompt = allInput + allCacheRead
+        let hitRate = allPrompt > 0 ? Double(allCacheRead) / Double(allPrompt) : 0
 
         tiles = [
             Tile(caption: String(localized: "会话数"), color: .systemBlue, value: String(sessionCount)),
             Tile(caption: String(localized: "请求次数"), color: .systemPurple, value: String(records.count)),
             Tile(caption: String(localized: "最大会话"), color: .systemOrange, value: Self.tokenText(maxSession)),
-            Tile(caption: String(localized: "输入（含缓存）"), color: .systemRed, value: Self.tokenText(allInput)),
+            Tile(caption: String(localized: "输入（含缓存）"), color: .systemRed, value: Self.tokenText(allInput + allCacheRead)),
             Tile(caption: String(localized: "输出"), color: .systemGreen, value: Self.tokenText(allOutput)),
+            Tile(caption: String(localized: "缓存命中率"), color: .systemTeal, value: String(format: "%.1f%%", hitRate * 100)),
         ]
         byProvider = providers
             .map { (name: $0.key, count: $0.value.count, input: $0.value.input, output: $0.value.output) }
@@ -217,12 +222,9 @@ final class UsageStatsController: UIViewController {
         if byProvider.isEmpty {
             providersStack.addArrangedSubview(emptyNote(String(localized: "还没有任何请求记录。")))
         } else {
+            let maxTokens = byProvider.map { $0.input + $0.output }.max() ?? 0
             for entry in byProvider {
-                providersStack.addArrangedSubview(statRow(
-                    title: entry.name,
-                    subtitle: String(localized: "\(entry.count) 次请求"),
-                    value: Self.tokenText(entry.input + entry.output),
-                ))
+                providersStack.addArrangedSubview(providerRow(entry: entry, maxTokens: maxTokens))
             }
         }
 
@@ -318,6 +320,83 @@ final class UsageStatsController: UIViewController {
         row.accessibilityLabel = title
         row.accessibilityValue = value.isEmpty ? subtitle : "\(subtitle)，\(value)"
         return row
+    }
+
+    /// 按供应商行：行名 + 次数，右侧总量，下面一条「输入/输出」双段比例
+    /// 条——橙色段是输入（含缓存）、绿色段是输出，长度按各家总量在全表
+    /// 最大值里的占比，两端各标一笔数字。
+    private func providerRow(entry: (name: String, count: Int, input: Int, output: Int), maxTokens: Int) -> UIView {
+        let top = statRow(
+            title: entry.name,
+            subtitle: String(localized: "\(entry.count) 次请求"),
+            value: Self.tokenText(entry.input + entry.output),
+        )
+        let total = max(entry.input + entry.output, 1)
+        let inputFraction = CGFloat(entry.input) / CGFloat(total)
+
+        let track = UIView().then {
+            $0.backgroundColor = .tertiarySystemFill
+            $0.layer.cornerRadius = 3
+            $0.clipsToBounds = true
+        }
+        let inputBar = UIView().then { $0.backgroundColor = .systemOrange }
+        let outputBar = UIView().then { $0.backgroundColor = .systemGreen }
+        for bar in [inputBar, outputBar] {
+            bar.translatesAutoresizingMaskIntoConstraints = false
+            track.addSubview(bar)
+        }
+        inputBar.snp.makeConstraints { make in
+            make.leading.top.bottom.equalToSuperview()
+            make.width.equalToSuperview().multipliedBy(inputFraction)
+        }
+        outputBar.snp.makeConstraints { make in
+            make.leading.equalTo(inputBar.snp.trailing)
+            make.top.bottom.trailing.equalToSuperview()
+        }
+        track.isAccessibilityHidden = true
+
+        let inputLabel = UILabel().then {
+            $0.text = String(localized: "输入 \(Self.tokenText(entry.input))")
+            $0.font = .preferredFont(forTextStyle: .caption2)
+            $0.textColor = .systemOrange
+            $0.adjustsFontForContentSizeCategory = true
+        }
+        let outputLabel = UILabel().then {
+            $0.text = String(localized: "输出 \(Self.tokenText(entry.output))")
+            $0.font = .preferredFont(forTextStyle: .caption2)
+            $0.textColor = .systemGreen
+            $0.adjustsFontForContentSizeCategory = true
+        }
+        let legend = UIStackView(arrangedSubviews: [inputLabel, outputLabel]).then {
+            $0.axis = .horizontal
+            $0.spacing = 8
+            $0.alignment = .firstBaseline
+        }
+
+        // 比例条：长度按本家总量在全表最大值里的占比，外层撑满、条按比例缩短。
+        let holder = UIView()
+        holder.addSubview(track)
+        track.snp.makeConstraints { make in
+            make.leading.top.bottom.equalToSuperview()
+            make.height.equalTo(6)
+        }
+        if maxTokens > 0 {
+            track.snp.makeConstraints { make in
+                make.width.equalTo(holder.snp.width)
+                    .multipliedBy(CGFloat(entry.input + entry.output) / CGFloat(maxTokens))
+            }
+        }
+
+        let column = UIStackView(arrangedSubviews: [top, holder, legend]).then {
+            $0.axis = .vertical
+            $0.spacing = 6
+            $0.isAccessibilityElement = true
+            $0.accessibilityLabel = entry.name
+            $0.accessibilityValue = String(
+                localized: "\(entry.count) 次请求，输入 \(Self.tokenText(entry.input))，输出 \(Self.tokenText(entry.output))"
+            )
+        }
+        return column
     }
 
     private func emptyNote(_ text: String) -> UILabel {

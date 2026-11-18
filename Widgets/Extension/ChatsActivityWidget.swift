@@ -111,7 +111,7 @@ private struct ChatsLockScreenView: View {
         }
         .foregroundStyle(theme.ink)
         .padding(WidgetSpacing.card)
-        .activityBackgroundTint(ChatWidgetAppearance.backgroundTint)
+        .activityBackgroundTint(ChatWidgetAppearance.backgroundTint(for: colorScheme))
         .animation(.easeInOut(duration: 0.35), value: state)
         .activitySystemActionForegroundColor(theme.green)
         .widgetURL(state.mostUrgent?.link)
