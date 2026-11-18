@@ -40,15 +40,27 @@ struct ChatsActivityWidget: Widget {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } compactLeading: {
+                // 锚点里的标记不必撑满 26pt，右侧留白让出给数字，紧凑区
+                // 整体看起来更宽。
                 MarkView(size: 22, braces: .white)
-                    .frame(width: 26, alignment: .leading)
+                    .frame(width: 30, alignment: .leading)
             } compactTrailing: {
-                Text(verbatim: "\(state.totalCount)")
-                    .font(.rounded(.title3, .bold))
-                    .foregroundStyle(state.waitingCount > 0 ? WidgetTheme.island.amber : .white)
-                    .contentTransition(.numericText())
-                    .frame(width: 26, alignment: .trailing)
-                    .accessibilityLabel(Text(state.summaryLine ?? ""))
+                HStack(spacing: 3) {
+                    // 有会话在等审批时亮一枚琥珀点，数字仍是会话总数。
+                    if state.waitingCount > 0 {
+                        Circle()
+                            .fill(WidgetTheme.island.amber)
+                            .frame(width: 7, height: 7)
+                            .accessibilityLabel(Text(verbatim: "●"))
+                    }
+                    Text(verbatim: "\(state.totalCount)")
+                        .font(.rounded(.title3, .bold))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                }
+                .frame(width: 34, alignment: .trailing)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(state.summaryLine ?? ""))
             } minimal: {
                 MarkView(size: 24, braces: .white)
             }
