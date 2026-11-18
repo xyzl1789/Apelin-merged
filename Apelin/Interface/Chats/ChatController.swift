@@ -1267,6 +1267,7 @@ final class ChatController: UIViewController {
                         subtitle: account.catalogTitle(for: model) == nil ? nil : model,
                         isSelected: account.provider == selected?.provider && model == selected?.model,
                         modelTest: AgentModelTestRequest(provider: account.provider, model: model),
+                        badges: account.abilityBadges(for: model),
                     ) { [weak self] in
                         guard let self, self.chat?.id == id else { return }
                         ChatActions.switchModel(
@@ -1283,6 +1284,34 @@ final class ChatController: UIViewController {
         }
     }
 
+
+    /// The magnifier on the bar: find a message in this conversation and go
+    /// to it. Only text the page can show is indexed; a tool's raw output is
+    /// not a thing a reader can scroll to.
+    @objc func presentMessageSearch() {
+        guard presentedViewController == nil else { return }
+        view.endEditing(true)
+        let entries = messages.compactMap { message -> (id: UUID, role: String, text: String)? in
+            guard !message.text.isEmpty, !message.role.isActivity else { return nil }
+            return (message.id, Self.roleLabel(message.role), message.text)
+        }
+        let page = ChatMessageSearchController(messages: entries) { [weak self] id in
+            guard let self, chat != nil, messages.contains(where: { $0.id == id }) else { return }
+            messageList.scrollToRow(with: id, at: .top, animated: !UIAccessibility.isReduceMotionEnabled)
+            updateLatestMessageButton()
+        }
+        presentPageAsFormSheet(page)
+    }
+
+    private static func roleLabel(_ role: ChatMessage.Role) -> String {
+        switch role {
+        case .user: String(localized: "You")
+        case .assistant: String(localized: "Assistant")
+        case .compaction: String(localized: "Summary")
+        case .approval: String(localized: "Approval")
+        case .turn, .thinking, .tool: String(localized: "Activity")
+        }
+    }
 
     /// The sparks were tapped: the levels this model offers, in the same sheet.
     /// The pick is the reader's own, kept apart from the model, so a later

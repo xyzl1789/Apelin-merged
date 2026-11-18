@@ -27,4 +27,36 @@ extension AgentAccount {
     func displayName(for model: String) -> String {
         catalogTitle(for: model) ?? model
     }
+
+    /// The abilities a catalog knows, in the order a row shows them. Only
+    /// affirmative ones: a missing `false` is a catalog that did not say, and
+    /// a badge claiming a model cannot see would be a worse lie than none.
+    func abilityBadges(for model: String) -> [AbilityBadge] {
+        guard let ability = capabilities?[model] else { return [] }
+        var badges: [AbilityBadge] = []
+        if ability.acceptsImages == true { badges.append(.vision) }
+        if ability.reasoning == true { badges.append(.reasoning) }
+        return badges
+    }
+
+    enum AbilityBadge: Sendable {
+        case vision
+        case reasoning
+
+        /// The symbol drawn beside the model's name.
+        var symbolName: String {
+            switch self {
+            case .vision: "eye"
+            case .reasoning: "brain"
+            }
+        }
+
+        /// The spoken name, so an icon-only mark never goes unnamed.
+        var label: String {
+            switch self {
+            case .vision: String(localized: "Vision")
+            case .reasoning: String(localized: "Reasoning")
+            }
+        }
+    }
 }

@@ -22,6 +22,8 @@ final class ComposerChoiceSheet: UIViewController {
         var isSelected: Bool
         /// Present a test without choosing the model or closing this picker.
         var modelTest: AgentModelTestRequest? = nil
+        /// What the catalog says this model can do, drawn beside its name.
+        var badges: [AgentAccount.AbilityBadge] = []
         var handler: () -> Void
     }
 
@@ -165,7 +167,12 @@ final class ComposerChoiceSheet: UIViewController {
                 stack.setCustomSpacing(4, after: label)
             }
             for choice in group.choices {
-                let row = ChoiceRow(title: choice.title, detail: choice.subtitle, chosen: choice.isSelected)
+                let row = ChoiceRow(
+                    title: choice.title,
+                    detail: choice.subtitle,
+                    chosen: choice.isSelected,
+                    badges: choice.badges,
+                )
                 row.isEnabled = !loading && failure == nil
                 if !row.isEnabled {
                     row.alpha = 0.55
@@ -260,11 +267,13 @@ private final class ChoiceRow: UIControl {
     private let detailLabel = UILabel()
     private let check = UIImageView()
     private let testButton = UIButton(type: .system)
+    private var badgeViews: [UIImageView] = []
+    private static let badgeSize: CGFloat = 15
     @objc private dynamic var testAction: (() -> Void)?
     private static let inset = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
     private static let checkSize: CGFloat = 22
 
-    init(title: String, detail: String?, chosen: Bool) {
+    init(title: String, detail: String?, chosen: Bool, badges: [AgentAccount.AbilityBadge] = []) {
         super.init(frame: .zero)
         backgroundColor = .tertiarySystemFill
         layer.cornerRadius = 10
@@ -288,9 +297,22 @@ private final class ChoiceRow: UIControl {
             view.isUserInteractionEnabled = false
             addSubview(view)
         }
+        for badge in badges {
+            let view = UIImageView(image: UIImage(systemName: badge.symbolName))
+            view.tintColor = .secondaryLabel
+            view.contentMode = .scaleAspectFit
+            view.isUserInteractionEnabled = false
+            addSubview(view)
+            badgeViews.append(view)
+        }
 
         isAccessibilityElement = true
-        accessibilityLabel = [title, detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+        // The icons have no words of their own; say what each one means here,
+        // where VoiceOver reads the whole row as one choice.
+        let spokenBadges = badges.map(\.label).joined(separator: ", ")
+        accessibilityLabel = ([title, detail, spokenBadges]
+            .compactMap { $0 }.filter { !$0.isEmpty } as [String])
+            .joined(separator: ", ")
         accessibilityTraits = chosen ? [.button, .selected] : .button
     }
 
@@ -336,9 +358,15 @@ private final class ChoiceRow: UIControl {
         return max(44, min(width * 0.4, ceil(testButton.intrinsicContentSize.width) + 12))
     }
 
+    @objc private dynamic func badgeWidth(for width: CGFloat) -> CGFloat {
+        guard !badgeViews.isEmpty else { return 0 }
+        return CGFloat(badgeViews.count) * (Self.badgeSize + 4) + 4
+    }
+
     @objc private dynamic func textWidth(for width: CGFloat) -> CGFloat {
         let test = testWidth(for: width)
-        return max(1, width - Self.inset.left - Self.inset.right - Self.checkSize - 10 - (test > 0 ? test + 8 : 0))
+        return max(1, width - Self.inset.left - Self.inset.right - Self.checkSize - 10
+            - badgeWidth(for: width) - (test > 0 ? test + 8 : 0))
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
@@ -368,6 +396,16 @@ private final class ChoiceRow: UIControl {
             x: bounds.width - Self.inset.right - testWidth,
             y: 0, width: testWidth, height: bounds.height,
         )
+        var badgeX = titleLabel.frame.maxX + 4
+        for badge in badgeViews {
+            badge.frame = CGRect(
+                x: badgeX,
+                y: titleLabel.frame.midY - Self.badgeSize / 2,
+                width: Self.badgeSize,
+                height: Self.badgeSize,
+            )
+            badgeX += Self.badgeSize + 4
+        }
         y += titleHeight
         if !detailLabel.isHidden {
             let detailHeight = ceil(detailLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
@@ -375,7 +413,7 @@ private final class ChoiceRow: UIControl {
             detailLabel.frame = CGRect(x: titleLabel.frame.minX, y: y, width: width, height: detailHeight)
         }
         if effectiveUserInterfaceLayoutDirection == .rightToLeft {
-            for view in [check, titleLabel, detailLabel, testButton] {
+            for view in [check, titleLabel, detailLabel, testButton] + badgeViews {
                 view.frame.origin.x = bounds.width - view.frame.maxX
             }
         }

@@ -127,6 +127,14 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
             content.secondaryText = model
             content.secondaryTextProperties.color = .secondaryLabel
         }
+        // The catalog's abilities, in words under the name: an icon no
+        // VoiceOver user could name would be worse than a short label.
+        let abilities = account.abilityBadges(for: model).map(\.label)
+        if !abilities.isEmpty {
+            let suffix = abilities.joined(separator: " · ")
+            content.secondaryText = content.secondaryText.map { "\($0) · \(suffix)" } ?? suffix
+            content.secondaryTextProperties.color = .secondaryLabel
+        }
         cell.contentConfiguration = content
         cell.accessoryType = row.selected ? .checkmark : .none
         cell.accessibilityTraits = row.selected ? [.button, .selected] : [.button]

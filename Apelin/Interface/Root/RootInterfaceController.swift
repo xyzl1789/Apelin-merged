@@ -643,10 +643,11 @@ final class RootInterfaceController: UIViewController {
         }
         if isRoot, !isSidebarShown {
             // Read from the trailing edge in: the page's own menu keeps the
-            // edge, and the two shortcuts sit inside it — Git first, then
-            // New Chat — so the bar reads, left to right, New Chat, Git,
-            // and the menu.
+            // edge, and the shortcuts sit inside it — Git, Search, then
+            // New Chat — so the bar reads, left to right, New Chat, Search,
+            // Git, and the menu.
             let git = UIAction { [weak self] _ in self?.openGit() }
+            let search = UIAction { [weak self] _ in self?.chatController.presentMessageSearch() }
             let newChat = UIAction { [weak self] _ in self?.sidebar.startNewChat() }
             if #available(iOS 26.0, *) {
                 // Liquid Glass puts the bar's own controls in one capsule,
@@ -661,6 +662,14 @@ final class RootInterfaceController: UIViewController {
                 )
                 trailing.append(
                     RootBarItem(
+                        image: UIImage(systemName: "magnifyingglass"),
+                        primaryAction: search,
+                    ).then {
+                        $0.accessibilityLabel = String(localized: "Search in Conversation")
+                    },
+                )
+                trailing.append(
+                    RootBarItem(
                         image: UIImage(systemName: "square.and.pencil"),
                         primaryAction: newChat,
                     ).then {
@@ -670,9 +679,9 @@ final class RootInterfaceController: UIViewController {
             } else {
                 // Before it, the bar sets a gap of its own between items, and
                 // three of them took the room the conversation's name needs:
-                // the two shortcuts share one item and sit a couple of
-                // points apart in it.
-                trailing.append(RootBarItem(customView: rootToolGroup(git: git, newChat: newChat)))
+                // the shortcuts share one item and sit a couple of points
+                // apart in it.
+                trailing.append(RootBarItem(customView: rootToolGroup(git: git, search: search, newChat: newChat)))
             }
         }
         item.leftBarButtonItems = leading.isEmpty ? nil : leading
@@ -681,12 +690,13 @@ final class RootInterfaceController: UIViewController {
 
     // MARK: - Root tools
 
-    /// The root's two shortcuts as one bar item, their glyphs a couple of
+    /// The root's shortcuts as one bar item, their glyphs a couple of
     /// points apart: the gap the bar sets between items of its own is wider
     /// than the room the conversation's name beside them can spare.
-    private func rootToolGroup(git: UIAction, newChat: UIAction) -> UIView {
+    private func rootToolGroup(git: UIAction, search: UIAction, newChat: UIAction) -> UIView {
         RootToolGroup(tools: [
             (symbol: "arrow.triangle.branch", label: String(localized: "Git"), action: git),
+            (symbol: "magnifyingglass", label: String(localized: "Search in Conversation"), action: search),
             (symbol: "square.and.pencil", label: String(localized: "New Chat"), action: newChat),
         ])
     }
@@ -764,9 +774,9 @@ extension RootInterfaceController: UIGestureRecognizerDelegate {
 private final class RootBarItem: UIBarButtonItem {}
 
 /// The root's own shortcuts on the chat page, in one bar item: the bar lays
-/// separate items out with a gap of its own, and three of them took the room
-/// the conversation's name needs. Two glyphs share a frame this close
-/// instead, each still a button of its own to a reader and to VoiceOver.
+/// separate items out with a gap of its own, and several of them took the room
+/// the conversation's name needs. The glyphs share a frame this close instead,
+/// each still a button of its own to a reader and to VoiceOver.
 private final class RootToolGroup: UIView {
     /// One button's square, and the points between two of them.
     private static let buttonSize: CGFloat = 34
