@@ -50,10 +50,11 @@ public struct ModelCatalogIndex: Sendable {
     public init() {}
 
     /// A lookup over tables handed in, so tests read the same rules without a
-    /// device's files behind them.
-    private let testTables: (bundled: Table, snapshot: () -> Table)?
+    /// device's files behind them. `Table` is internal, so is this initializer:
+    /// only the module's own `@testable` tests build an index this way.
+    private let testTables: (bundled: Table, snapshot: Table)?
 
-    public init(bundled: Table, snapshot: @autoclosure @escaping () -> Table) {
+    init(bundled: Table, snapshot: Table) {
         self.testTables = (bundled, snapshot)
     }
 
@@ -69,7 +70,7 @@ public struct ModelCatalogIndex: Sendable {
     /// `cn:deepseek-v4.1-flash` finds it through that name and no other way.
     public func entry(for id: String, catalogKey: String? = nil) -> Entry? {
         if let tables = testTables {
-            return Self.entry(for: id, catalogKey: catalogKey, bundled: tables.bundled, snapshot: tables.snapshot())
+            return Self.entry(for: id, catalogKey: catalogKey, bundled: tables.bundled, snapshot: tables.snapshot)
         }
         return Self.entry(
             for: id,
