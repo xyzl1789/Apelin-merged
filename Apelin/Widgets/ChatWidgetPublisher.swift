@@ -1,6 +1,7 @@
 import ActivityKit
 import Foundation
 import os
+import UIKit
 import WidgetKit
 
 /// Mirrors the conversations into the widgets: the snapshot the home screen
