@@ -45,20 +45,23 @@ struct ChatsActivityWidget: Widget {
                 MarkView(size: 16, braces: .white)
             } compactTrailing: {
                 // 右侧多样化显示：不同状态换不同的 SF Symbol 图标——
-                // 有会话等审批亮警告，有失败亮叉，全在跑亮进度圆环；
-                // 多于一个会话时图标旁带计数。
-                HStack(spacing: 2) {
+                // 有会话等审批亮警告，有失败亮叉，全在跑亮进度圆环，
+                // 多会话时把计数用小字叠进圆环中空处，不占额外宽度。
+                // 圆环有中空，数字能放进去；实心图标（⚠️、❌、✓）无
+                // 中空，计数改放旁边。
+                ZStack {
                     Image(systemName: state.statusSymbol)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(state.statusColor)
-                    if state.totalCount > 1 {
+                    if state.totalCount > 1, state.statusSymbol == "arrow.triangle.2.circlepath" {
                         Text(verbatim: "\(state.totalCount)")
-                            .font(.rounded(.caption2, .bold))
+                            .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(.white)
                             .contentTransition(.numericText())
                             .accessibilityHidden(true)
                     }
                 }
+                .frame(minWidth: 17, alignment: .center)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(state.summaryLine ?? ""))
             } minimal: {
