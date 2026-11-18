@@ -1538,18 +1538,25 @@ extension ChatController {
             guard let listed = try? await loadModelAccounts(),
                   !Task.isCancelled, self.chat?.id == id
             else { return }
-            if let current = ComposerModelSelection.selection(for: id),
-               let account = listed.first(where: { $0.provider == current.provider && $0.signedIn })
-            {
-                if account.models == nil || account.models?.contains(current.model) == true {
-                    let refreshed = Self.selection(of: current.model, in: account)
-                    if refreshed.supportedEfforts != current.supportedEfforts
-                        || refreshed.supportedTiers != current.supportedTiers
-                    {
-                        ComposerModelSelection.choose(refreshed, for: id)
+            if let current = ComposerModelSelection.selection(for: id) {
+                if let account = listed.first(where: { $0.provider == current.provider && $0.signedIn }) {
+                    if account.models == nil || account.models?.contains(current.model) == true {
+                        let refreshed = Self.selection(of: current.model, in: account)
+                        if refreshed.supportedEfforts != current.supportedEfforts
+                            || refreshed.supportedTiers != current.supportedTiers
+                        {
+                            ComposerModelSelection.choose(refreshed, for: id)
+                        }
+                        return
                     }
-                    return
                 }
+                // 已有选择就不再动：账号这一次没答上（凭据未就绪、请求被裁剪、
+                // 端点临时不可用）不构成换模型的理由。真的想清掉一个选择，
+                // 设置里的启用模型页会明说；点输入框、进对话都不该换。
+                Self.modelLogger.notice(
+                    "keep current selection \\(current.provider.rawValue, privacy: .public) \\(current.model, privacy: .public): this read did not list it",
+                )
+                return
             }
             let accounts = EnabledModels.accounts(from: listed.filter { $0.models != nil })
             guard let account = accounts.first, let model = account.models?.first else { return }
