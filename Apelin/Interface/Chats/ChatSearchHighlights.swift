@@ -1,3 +1,4 @@
+import Litext
 import UIKit
 
 /// 聊天内搜索的命中高亮中心，照 Minis 的 ChatSearchHighlightCenter：
@@ -152,7 +153,7 @@ final class ChatSearchHighlightRenderer: TextLabel.LineRenderer {
         context.saveGState()
         context.setFillColor(color.cgColor)
         for rect in rects {
-            context.fill(CGPath(rect: rect, transform: nil))
+            context.fill(rect)
         }
         context.restoreGState()
     }
