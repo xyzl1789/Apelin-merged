@@ -40,16 +40,17 @@ struct ChatsActivityWidget: Widget {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } compactLeading: {
-                // 收窄胶囊：标记不加固定宽框，系统按实际尺寸撑。
-                MarkView(size: 18, braces: .white)
-                    .padding(.trailing, 4)
+                // 标记加大顶向挖孔锚点：中间那块空白是摄像头挖孔区，
+                // 系统固定，只有把内容撑大才能让它看起来不空。
+                MarkView(size: 24, braces: .white)
+                    .padding(.leading, 2)
             } compactTrailing: {
                 // 右侧多样化显示：不同状态换不同的 SF Symbol 图标——
                 // 有会话等审批亮警告，有失败亮叉，全在跑亮进度圆环；
                 // 多于一个会话时图标旁带计数。
                 HStack(spacing: 3) {
                     Image(systemName: state.statusSymbol)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(state.statusColor)
                     if state.totalCount > 1 {
                         Text(verbatim: "\(state.totalCount)")
@@ -59,6 +60,7 @@ struct ChatsActivityWidget: Widget {
                             .accessibilityHidden(true)
                     }
                 }
+                .padding(.trailing, 2)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(state.summaryLine ?? ""))
             } minimal: {
