@@ -1056,11 +1056,11 @@ final class ChatController: UIViewController {
         composer.modelBar.setEfforts(selection?.supportedEfforts ?? [], selected: selection?.effort)
         composer.modelBar.setTiers(selection?.supportedTiers ?? [], selected: selection?.tier)
         updateBalanceRing()
-        // 选中的供应商支持查余额、而距上次查询已超过自动间隔时，立刻查一次：
-        // 切到 DeepSeek 这类能报余额的服务商时，数字应当是刚刚读的。
+        // 选中的供应商支持查余额时立即查一次：worker 侧有短缓存兜底，
+        // 不会打满服务商的余额接口。切到 DeepSeek 这类能报余额的服务商
+        // 时，数字应当是刚刚读的，而不是上一次会话留下的。
         if let provider = selection?.provider,
-           ProviderBalanceStore.shared.current(for: provider) != nil || balancesMaySupport(provider),
-           ProviderBalanceStore.shared.stale()
+           ProviderBalanceStore.shared.current(for: provider) != nil || balancesMaySupport(provider)
         {
             refreshBalances()
         }
