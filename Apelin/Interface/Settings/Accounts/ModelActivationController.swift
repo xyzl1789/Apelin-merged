@@ -110,6 +110,14 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
         }
     }
 
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        // 徽章图标按当前外观着色后是原样图，深浅色切换要重排单元格换新图。
+        if previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle {
+            updateRows()
+        }
+    }
+
     @objc dynamic func updateSearchResults(for searchController: UISearchController) {
         let query = (searchController.searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { shown = models; updateRows(); return }
@@ -148,8 +156,12 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
             for badge in badges {
                 let config = UIImage.SymbolConfiguration(pointSize: 11, weight: .medium)
                 guard let image = UIImage(systemName: badge.symbolName, withConfiguration: config) else { continue }
+                // NSTextAttachment 里的模板图不会随深浅色切换重新着色，深色下
+                // 留着浅色的描边就看不清了。按当前外观着成 label 色的原样图，
+                // 外观变化时 traitCollectionDidChange 重排单元格换新图。
+                let tinted = image.withTintColor(.label, renderingMode: .alwaysOriginal)
                 let attachment = NSTextAttachment()
-                attachment.image = image
+                attachment.image = tinted
                 attachment.bounds = CGRect(x: 0, y: -2, width: image.size.width, height: image.size.height)
                 result.append(NSAttributedString(attachment: attachment))
                 result.append(NSAttributedString(string: " "))
