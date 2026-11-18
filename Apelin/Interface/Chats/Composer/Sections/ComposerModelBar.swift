@@ -354,17 +354,14 @@ final class ComposerModelBar: ComposerSectionView {
         ))
         x += ringSize + spacing
 
-        // The balance ring sits after the context ring; hidden, it takes no
-        // room and the row reads as it did without it. Its width follows the
-        // amount, so a long figure stretches into an ellipse, not a shrink.
-        if !balanceButton.isHidden {
-            let width = balanceButton.preferredWidth()
-            balanceButton.frame = directionalFrame(CGRect(
-                x: x,
-                y: (bounds.height - ProviderBalanceButton.height) / 2,
-                width: width,
-                height: ProviderBalanceButton.height,
-            ))
-        }
+        // The balance pill sits after the context ring, always laid out now
+        // that it shows a "--" placeholder while nothing has been read yet.
+        let width = balanceButton.preferredWidth()
+        balanceButton.frame = directionalFrame(CGRect(
+            x: x,
+            y: (bounds.height - ProviderBalanceButton.height) / 2,
+            width: width,
+            height: ProviderBalanceButton.height,
+        ))
     }
 }

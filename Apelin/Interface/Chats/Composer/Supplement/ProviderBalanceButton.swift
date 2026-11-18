@@ -71,10 +71,18 @@ final class ProviderBalanceButton: UIControl {
 
     func set(_ balance: ProviderBalance?) {
         self.balance = balance
-        // 有查到的余额就显示（哪怕不是当前供应商的）；只有全都查不到时
-        // 才隐藏，与第一版行为一致。
-        isHidden = balance == nil
-        guard let balance else { return }
+        // 常显：只要控件在布局里就显示，查询不到时显示灰色的「--」，
+        // 不再整块消失。
+        isHidden = false
+        guard let balance else {
+            tintColor = .tertiaryLabel
+            label.textColor = .tertiaryLabel
+            label.text = "--"
+            invalidateIntrinsicContentSize()
+            setNeedsLayout()
+            accessibilityValue = String(localized: "Balance unavailable")
+            return
+        }
         let color: UIColor = balance.stale ? .systemOrange : .secondaryLabel
         label.textColor = color
         tintColor = color
