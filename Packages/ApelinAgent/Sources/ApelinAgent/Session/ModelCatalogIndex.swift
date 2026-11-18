@@ -115,7 +115,11 @@ public struct ModelCatalogIndex: Sendable {
 
     /// 把同一模型在两张表里所有匹配条目的模态与推理声明并进 `self`。
     /// 上下文窗口等数字仍以最佳条目为准；模态取并集、推理取或。
-    func mergingModalities(bundled: Table, snapshot: Table, candidates: [String]) -> Entry {
+    /// （`Entry` 的扩展：模态与推理归条目所有，不在索引上。）
+}
+
+extension ModelCatalogIndex.Entry {
+    func mergingModalities(bundled: ModelCatalogIndex.Table, snapshot: ModelCatalogIndex.Table, candidates: [String]) -> ModelCatalogIndex.Entry {
         var merged = self
         var modalities = Set(inputModalities.map { $0.lowercased() })
         func absorb(_ rows: [String: [Entry]]) {
@@ -139,7 +143,9 @@ public struct ModelCatalogIndex: Sendable {
             + modalities.subtracting(order).sorted()
         return merged
     }
+}
 
+extension ModelCatalogIndex {
     /// The entries of several models at once, over one read of each table.
     ///
     /// Each model is read exactly as `entry(for:catalogKey:)` reads it — a
