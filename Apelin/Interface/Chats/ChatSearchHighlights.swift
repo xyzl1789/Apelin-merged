@@ -106,7 +106,8 @@ final class ChatSearchHighlightRenderer: TextLabel.LineRenderer {
         layout: TextLabel.Layout,
     ) {
         guard !ranges.isEmpty else { return }
-        let lineRange = NSRange(CTLineGetStringRange(line))
+        let cfRange = CTLineGetStringRange(line)
+        let lineRange = NSRange(location: cfRange.location, length: cfRange.length)
         guard lineRange.location != NSNotFound, lineRange.length > 0 else { return }
         let text = layout.attributedString.string as NSString
         if !isCurrent {
