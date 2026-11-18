@@ -1061,18 +1061,17 @@ final class ChatController: UIViewController {
         // 选中的供应商支持查余额时立即查一次：worker 侧有短缓存兜底，
         // 不会打满服务商的余额接口。切到 DeepSeek 这类能报余额的服务商
         // 时，数字应当是刚刚读的，而不是上一次会话留下的。
+        // 不能依赖内存里已有的余额行判断"是否可能支持"：App 重启后存储
+        // 是空的，支持余额的服务商从此再也不会被查，圆环整个消失。改用
+        // 存储自带的间隔判断——首启动或超过自动间隔就查，worker 的磁盘
+        // 缓存与失败保留保证它既便宜又不会把数字刷没。
         if let provider = selection?.provider,
-           ProviderBalanceStore.shared.current(for: provider) != nil || balancesMaySupport(provider)
+           ProviderBalanceStore.shared.current(for: provider) != nil
+              || ProviderBalanceStore.shared.balances.contains(where: { $0.provider == provider })
+              || ProviderBalanceStore.shared.stale()
         {
             refreshBalances()
         }
-    }
-
-    /// Whether any balance line ever named this provider. A provider the
-    /// worker has never reported cannot be told apart from one whose account
-    /// is simply signed out, so the probe only saves requests, never gates.
-    private func balancesMaySupport(_ provider: AgentProvider) -> Bool {
-        !ProviderBalanceStore.shared.balances.isEmpty
     }
 
     /// The provider's balance, read through the credential worker. A failed
