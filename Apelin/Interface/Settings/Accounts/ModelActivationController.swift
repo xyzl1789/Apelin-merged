@@ -139,13 +139,23 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
             content.secondaryText = model
             content.secondaryTextProperties.color = .secondaryLabel
         }
-        // The catalog's abilities, in words under the name: an icon no
-        // VoiceOver user could name would be worse than a short label.
-        let abilities = account.abilityBadges(for: model).map(\.label)
-        if !abilities.isEmpty {
-            let suffix = abilities.joined(separator: " · ")
-            content.secondaryText = content.secondaryText.map { "\($0) · \(suffix)" } ?? suffix
-            content.secondaryTextProperties.color = .secondaryLabel
+        // 照 Minis：能力直接以图标显示在模型名后（SF Symbols 的
+        // text.bubble / eye / video / doc.text / mic.fill / brain），不做
+        // 文字后缀——图标一行看全，占位也小。
+        let badges = account.abilityBadges(for: model)
+        if !badges.isEmpty {
+            let result = NSMutableAttributedString(string: (content.text ?? "") + "  ")
+            for badge in badges {
+                let config = UIImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+                guard let image = UIImage(systemName: badge.symbolName, withConfiguration: config) else { continue }
+                let attachment = NSTextAttachment()
+                attachment.image = image
+                attachment.bounds = CGRect(x: 0, y: -2, width: image.size.width, height: image.size.height)
+                result.append(NSAttributedString(attachment: attachment))
+                result.append(NSAttributedString(string: " "))
+            }
+            content.text = nil
+            content.attributedText = result
         }
         cell.contentConfiguration = content
         cell.accessoryType = row.selected ? .checkmark : .none

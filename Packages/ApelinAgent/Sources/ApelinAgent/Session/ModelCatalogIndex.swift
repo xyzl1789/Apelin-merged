@@ -89,20 +89,55 @@ public struct ModelCatalogIndex: Sendable {
     static func entry(for id: String, catalogKey: String?, bundled: Table, snapshot: Table) -> Entry? {
         let candidates = ModelIdentity.candidates(id)
         guard !candidates.isEmpty else { return nil }
+        let found: Entry?
         if let key = catalogKey?.lowercased(), !key.isEmpty {
-            if let entry = best(in: bundled.byProvider[key] ?? [:], for: candidates)
+            found = best(in: bundled.byProvider[key] ?? [:], for: candidates)
                 ?? bestByName(in: bundled.byProviderName[key] ?? [:], for: candidates)
                 ?? best(in: snapshot.byProvider[key] ?? [:], for: candidates)
-                ?? bestByName(in: snapshot.byProviderName[key] ?? [:], for: candidates) {
-                return entry
+                ?? bestByName(in: snapshot.byProviderName[key] ?? [:], for: candidates)
+                ?? best(in: bundled.byID, for: candidates)
+                ?? bestByName(in: bundled.byName, for: candidates)
+                ?? best(in: snapshot.byID, for: candidates)
+                ?? bestByName(in: snapshot.byName, for: candidates)
+        } else {
+            found = best(in: bundled.byID, for: candidates)
+                ?? bestByName(in: bundled.byName, for: candidates)
+                ?? best(in: snapshot.byID, for: candidates)
+                ?? bestByName(in: snapshot.byName, for: candidates)
+        }
+        guard let entry = found else { return nil }
+        // 照 Minis：同一个模型在 models.dev 上被许多供应商分挂，各家对
+        // 输入模态的声明不一（Nemotron 3.5 Super VL 有的写 video，有的
+        // 只写 image）。取全部声明的并集，再按固定顺序排出，这样不管
+        // 用户走哪个网关，模型的能力徽标都一致且完整。
+        return entry.mergingModalities(bundled: bundled, snapshot: snapshot, candidates: candidates)
+    }
+
+    /// 把同一模型在两张表里所有匹配条目的模态与推理声明并进 `self`。
+    /// 上下文窗口等数字仍以最佳条目为准；模态取并集、推理取或。
+    func mergingModalities(bundled: Table, snapshot: Table, candidates: [String]) -> Entry {
+        var merged = self
+        var modalities = Set(inputModalities.map { $0.lowercased() })
+        func absorb(_ rows: [String: [Entry]]) {
+            for candidate in candidates {
+                for stretch in ModelIdentity.stretches(candidate) {
+                    guard let entries = rows[stretch] else { continue }
+                    for other in entries {
+                        modalities.formUnion(other.inputModalities.map { $0.lowercased() })
+                        if other.reasoning { merged.reasoning = true }
+                    }
+                }
             }
         }
-        if let entry = best(in: bundled.byID, for: candidates)
-            ?? bestByName(in: bundled.byName, for: candidates) {
-            return entry
-        }
-        return best(in: snapshot.byID, for: candidates)
-            ?? bestByName(in: snapshot.byName, for: candidates)
+        absorb(bundled.byID)
+        absorb(bundled.byName)
+        absorb(snapshot.byID)
+        absorb(snapshot.byName)
+        // 固定顺序输出，行不因字典顺序抖动。
+        let order = ["text", "image", "pdf", "video", "audio"]
+        merged.inputModalities = order.filter { modalities.contains($0) }
+            + modalities.subtracting(order).sorted()
+        return merged
     }
 
     /// The entries of several models at once, over one read of each table.
