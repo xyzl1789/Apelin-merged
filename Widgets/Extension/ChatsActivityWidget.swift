@@ -168,6 +168,21 @@ private struct ChatActivitySessionRow: View {
                         .foregroundStyle(.tertiary)
                 }
                 Spacer(minLength: 6)
+                // 照 Minis：计时胶囊在标题行右侧（Spacer 之后），caption2 字号。
+                if let start = chat.startedAt, chat.status == .working || chat.status == .waiting {
+                    Text("00:00")
+                        .font(.caption2.monospacedDigit())
+                        .hidden()
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .overlay {
+                            Text(start, style: .timer)
+                                .font(.caption2.monospacedDigit())
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(.secondary)
+                        }
+                        .background(.white.opacity(0.12), in: Capsule())
+                }
             }
             HStack(spacing: 5) {
                 Image(systemName: chat.activitySymbol)
@@ -178,24 +193,6 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 6)
-                // 照 Minis 的 RunClock：`Text(_, style: .timer)` 自走计时，
-                // 外面套隐藏占位 + 半透明胶囊底；之前自创的
-                // `Text(timerInterval:)` 带着到明天为止的区间，在锁屏卡片
-                // 渲染里可能整块画不出来（实时活动变空白的嫌疑之一）。
-                if let start = chat.startedAt, chat.status == .working || chat.status == .waiting {
-                    Text("00:00")
-                        .font(.caption.monospacedDigit())
-                        .hidden()
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .overlay {
-                            Text(start, style: .timer)
-                                .font(.caption.monospacedDigit())
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(.secondary)
-                        }
-                        .background(.white.opacity(0.12), in: Capsule())
-                }
                 Text(verbatim: chat.projectName)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
