@@ -47,7 +47,7 @@ public struct ModelCatalogIndex: Sendable {
     /// app wrote a newer copy, or deleted it) replaces the other.
     private static let shared = SharedIndex()
 
-    public init() {}
+    public init() { self.testTables = nil }
 
     /// A lookup over tables handed in, so tests read the same rules without a
     /// device's files behind them. `Table` is internal, so is this initializer:
