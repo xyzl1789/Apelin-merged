@@ -45,20 +45,22 @@ struct ChatsActivityWidget: Widget {
                 MarkView(size: 22, braces: .white)
                     .frame(width: 30, alignment: .leading)
             } compactTrailing: {
-                HStack(spacing: 3) {
-                    // 有会话在等审批时亮一枚琥珀点，数字仍是会话总数。
-                    if state.waitingCount > 0 {
-                        Circle()
-                            .fill(WidgetTheme.island.amber)
-                            .frame(width: 7, height: 7)
-                            .accessibilityLabel(Text(verbatim: "●"))
+                // 右侧多样化显示：不同状态换不同的 SF Symbol 图标——
+                // 有会话等审批亮警告，有失败亮叉，全在跑亮进度圆环；
+                // 多于一个会话时图标旁带计数。
+                HStack(spacing: 4) {
+                    Image(systemName: statusSymbol)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(statusColor)
+                    if state.totalCount > 1 {
+                        Text(verbatim: "\(state.totalCount)")
+                            .font(.rounded(.title3, .bold))
+                            .foregroundStyle(.white)
+                            .contentTransition(.numericText())
+                            .accessibilityHidden(true)
                     }
-                    Text(verbatim: "\(state.totalCount)")
-                        .font(.rounded(.title3, .bold))
-                        .foregroundStyle(.white)
-                        .contentTransition(.numericText())
                 }
-                .frame(width: 34, alignment: .trailing)
+                .frame(minWidth: 26, alignment: .trailing)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(state.summaryLine ?? ""))
             } minimal: {
@@ -69,11 +71,31 @@ struct ChatsActivityWidget: Widget {
     }
 }
 
-/// The lock screen card. Two styles: the compact list, and the leaf garden —
-/// one leaf per conversation in progress, green while it works, amber while
-/// it waits for an approval, red when it failed. Which one shows is the
-/// app's setting (`ChatWidgetAppearance.cardStyle`), read each time the
-/// activity renders, so a switch applies on the next update.
+/// The compact trailing region's status icon: the most urgent conversation's
+/// state decides it — a warning triangle while an approval waits, an x-mark
+/// when the newest failed, a progress ring while anything runs, a checkmark
+/// when everything is done.
+@available(iOS 16.2, *)
+private extension ChatWidgetSnapshot {
+    var statusSymbol: String {
+        if waitingCount > 0 { return "exclamationmark.triangle.fill" }
+        if chats.contains(where: { $0.status == .failed }) { return "xmark.circle.fill" }
+        if workingCount > 0 { return "arrow.triangle.2.circlepath" }
+        return "checkmark.circle.fill"
+    }
+
+    var statusColor: Color {
+        if waitingCount > 0 { return WidgetTheme.island.amber }
+        if chats.contains(where: { $0.status == .failed }) { return WidgetTheme.island.red }
+        if workingCount > 0 { return WidgetTheme.island.green }
+        return WidgetTheme.island.idle
+    }
+}
+
+/// The lock screen card: the compact list, over the adaptive semi-transparent
+/// background tint — dark mode translucent black, light mode translucent
+/// white — layered into the system material, which keeps the wallpaper
+/// showing through and follows the appearance.
 @available(iOS 16.2, *)
 private struct ChatsLockScreenView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -81,104 +103,19 @@ private struct ChatsLockScreenView: View {
     let state: ChatWidgetSnapshot
 
     var body: some View {
-        let custom = ChatWidgetAppearance.customBackground
-        // 开启自定义底色时沿用恒定深色主题；关闭时回到随系统深浅色切换的
-        // 主题，并把底色交回系统——不传 tint，材质跟着壁纸与深浅色走。
-        let theme = custom ? WidgetTheme.lockScreen : WidgetTheme(colorScheme)
-        Group {
-            switch ChatWidgetAppearance.cardStyle {
-            case .compact:
-                VStack(alignment: .leading, spacing: WidgetSpacing.line) {
-                    ChatWidgetHeader(snapshot: state, theme: theme)
-                    ChatWidgetRows(snapshot: state, theme: theme, limit: 3)
-                }
-                .foregroundStyle(theme.ink)
-                .activityBackgroundTint(
-                    custom ? Color(red: 0, green: 0, blue: 0, opacity: ChatWidgetAppearance.defaultOpacity) : nil
-                )
-            case .leaf:
-                ChatsLeafGarden(state: state, theme: theme)
-                    .activityBackgroundTint(
-                        custom ? Color(red: 0, green: 0, blue: 0, opacity: ChatWidgetAppearance.defaultOpacity) : nil
-                    )
-            }
+        // 跟随深浅色的主题与半透明 tint；材质由系统提供。
+        let theme = WidgetTheme(colorScheme)
+        VStack(alignment: .leading, spacing: WidgetSpacing.line) {
+            ChatWidgetHeader(snapshot: state, theme: theme)
+            ChatWidgetRows(snapshot: state, theme: theme, limit: 3)
         }
+        .foregroundStyle(theme.ink)
         .padding(WidgetSpacing.card)
+        .activityBackgroundTint(ChatWidgetAppearance.backgroundTint)
         .animation(.easeInOut(duration: 0.35), value: state)
         .activitySystemActionForegroundColor(theme.green)
         .widgetURL(state.mostUrgent?.link)
     }
 }
 
-/// The leaf garden: a row of leaves, one per conversation in progress, over
-/// the name and counts. Each leaf grows a little with its conversation's
-/// rank in the list and takes its status's colour; done chats keep a dim
-/// leaf so the garden never looks empty. The change of state replays the
-/// grow-in, the one animation the lock screen replays with the activity.
-@available(iOS 16.2, *)
-private struct ChatsLeafGarden: View {
-    let state: ChatWidgetSnapshot
-    let theme: WidgetTheme
 
-    /// The tallest a leaf, in points; the rest scale down the row.
-    private static let tallest: CGFloat = 46
-
-    var body: some View {
-        let shown = Array(state.chats.prefix(4))
-        VStack(alignment: .leading, spacing: WidgetSpacing.line) {
-            ChatWidgetHeader(snapshot: state, theme: theme)
-            HStack(alignment: .bottom, spacing: 10) {
-                ForEach(Array(shown.enumerated()), id: \.element.id) { index, chat in
-                    LeafPlant(chat: chat, theme: theme, height: Self.tallest - CGFloat(index) * 6)
-                }
-                if shown.count < state.totalCount {
-                    Text(String(localized: "+%lld").replacingOccurrences(of: "%lld", with: "\(state.totalCount - shown.count)"))
-                        .font(.rounded(.footnote, .bold))
-                        .padding(.bottom, 4)
-                }
-                Spacer(minLength: 0)
-            }
-            .frame(minHeight: Self.tallest + 6, alignment: .bottom)
-            if let summary = state.summaryLine {
-                Text(summary)
-                    .font(.rounded(.footnote))
-                    .opacity(0.6)
-                    .lineLimit(1)
-            }
-        }
-        .foregroundStyle(theme.ink)
-        .accessibilityElement(children: .combine)
-    }
-
-    /// One conversation's plant: a stem with a leaf whose colour is the
-    /// status's. Working leaves sit a touch higher than the others so the
-    /// garden reads at a glance.
-    private struct LeafPlant: View {
-        let chat: ChatWidgetSnapshot.Chat
-        let theme: WidgetTheme
-        let height: CGFloat
-
-        var body: some View {
-            VStack(spacing: 2) {
-                LeafShape()
-                    .fill(color, style: FillStyle(eoFill: true))
-                    .frame(width: height * 0.62, height: height * 0.62)
-                    .scaleEffect(chat.status == .working ? 1 : 0.88, anchor: .bottom)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.7), value: chat.status)
-                Rectangle()
-                    .fill(theme.ink.opacity(0.35))
-                    .frame(width: 1.5, height: height * 0.30)
-            }
-            .accessibilityHidden(true)
-        }
-
-        private var color: Color {
-            switch chat.status {
-            case .working: MarkView.leafGreen
-            case .waiting: theme.amber
-            case .failed: theme.red
-            case .done: theme.idle
-            }
-        }
-    }
-}

@@ -138,50 +138,20 @@ enum ChatWidgetStore {
     }
 }
 
-/// 锁屏卡片的背景与样式设置：app 在偏好设置里选择，沙盒里的扩展通过写入
-/// 快照用的同一个 App Group 默认设置读取——扩展读不到 app 自己的偏好。
+/// 实时活动卡片的背景：给 `activityBackgroundTint` 一层跟随系统深浅色的
+/// 半透明颜色——深色模式半透明黑、浅色模式半透明白——系统把它揉进自带
+/// 的毛玻璃材质里，壁纸隐约透出，深浅色自动切换。
 enum ChatWidgetAppearance {
-    private static let customKey = "widgets.liveActivity.customBackground"
-    private static let styleKey = "widgets.liveActivity.cardStyle"
-
-    /// 锁屏卡片的样式。`compact` 是一直沿用的列表；`leaf` 是叶子园：每条
-    /// 进行中的对话一片叶子，颜色随状态。
-    enum CardStyle: String, CaseIterable, Sendable {
-        case compact
-        case leaf
-
-        var title: String {
-            switch self {
-            case .compact: String(localized: "Compact List")
-            case .leaf: String(localized: "Leaf Garden")
-            }
-        }
-    }
-
-    /// 一直沿用的底色：黑色半透明盖在系统自带材质之上，壁纸隐约可见，
-    /// 文字仍看得清。
+    /// 半透明层的透明度。
     static let defaultOpacity: Double = 0.45
 
-    private static var defaults: UserDefaults? {
-        UserDefaults(suiteName: ChatWidgetStore.appGroup)
-    }
-
-    /// 开：按 `defaultOpacity` 画自定义底色。关：不传 tint，恢复系统自带
-    /// 卡片材质，随壁纸与深浅色自动切换（原版的样子）。
-    static var customBackground: Bool {
-        get { defaults?.object(forKey: customKey) as? Bool ?? true }
-        set {
-            defaults?.set(newValue, forKey: customKey)
-            defaults?.synchronize()
-        }
-    }
-
-    /// 锁屏卡片选的样式，缺省是沿用至今的紧凑列表。
-    static var cardStyle: CardStyle {
-        get { CardStyle(rawValue: defaults?.string(forKey: styleKey) ?? "") ?? .compact }
-        set {
-            defaults?.set(newValue.rawValue, forKey: styleKey)
-            defaults?.synchronize()
-        }
+    /// 当前深浅色对应的半透明 tint 颜色。暗色黑、亮色白。
+    static var backgroundTint: Color {
+        Color(UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(white: 0, alpha: ChatWidgetAppearance.defaultOpacity)
+                : UIColor(white: 1, alpha: ChatWidgetAppearance.defaultOpacity)
+        })
     }
 }
+
