@@ -165,7 +165,7 @@ final class UsageStatsController: UIViewController {
         for record in records {
             let provider = record.provider ?? String(localized: "未知供应商")
             let p = providers[provider, default: (0, 0, 0)]
-            providers[provider] = (p.count + 1, p.input + record.promptTokens, p.output + record.output)
+            providers[provider] = (p.count + 1, p.input + record.input, p.output + record.output)
             let m = models[record.model, default: (0, 0, 0, 0, 0)]
             models[record.model] = (
                 m.count + 1,
@@ -222,9 +222,10 @@ final class UsageStatsController: UIViewController {
         if byProvider.isEmpty {
             providersStack.addArrangedSubview(emptyNote(String(localized: "还没有任何请求记录。")))
         } else {
-            let maxTokens = byProvider.map { $0.input + $0.output }.max() ?? 0
+            let maxInput = byProvider.map(\.input).max() ?? 0
+            let maxOutput = byProvider.map(\.output).max() ?? 0
             for entry in byProvider {
-                providersStack.addArrangedSubview(providerRow(entry: entry, maxTokens: maxTokens))
+                providersStack.addArrangedSubview(providerRow(entry: entry, maxInput: maxInput, maxOutput: maxOutput))
             }
         }
 
@@ -322,21 +323,27 @@ final class UsageStatsController: UIViewController {
         return row
     }
 
-    /// 按供应商行：行名 + 次数，右侧总量，下面一条「输入/输出」双段比例
-    /// 条——橙色段是输入（含缓存）、绿色段是输出，长度按各家总量在全表
-    /// 最大值里的占比，两端各标一笔数字。
-    private func providerRow(entry: (name: String, count: Int, input: Int, output: Int), maxTokens: Int) -> UIView {
+    /// 按供应商行：行名 + 次数，右侧总量；下面两条独立比例条——橙色是
+    /// 输入（不含缓存）、绿色是输出，每条右端带数字，长度按本家该向
+    /// token 在全表同向最大值里的占比（TrollAgent 的样式）。
+    private func providerRow(entry: (name: String, count: Int, input: Int, output: Int),
+                             maxInput: Int, maxOutput: Int) -> UIView {
         let top = statRow(
             title: entry.name,
             subtitle: String(localized: "\(entry.count) 次请求"),
             value: Self.tokenText(entry.input + entry.output),
         )
-        let total = max(entry.input + entry.output, 1)
 
-        // 两条独立的比例条（照 TrollAgent 的样式）：上面橙色是输入、
-        // 下面绿色是输出，各自按本家该向 token 在全表同向最大值里的
-        // 占比截长，长度只在同行之间比较。
-        func bar(fraction: CGFloat, color: UIColor) -> UIView {
+        // 一行 = 一条条 + 右侧数字。条高 6pt，数字 caption2、颜色随条。
+        func barRow(fraction: CGFloat, color: UIColor, text: String) -> UIView {
+            let label = UILabel().then {
+                $0.text = text
+                $0.font = .preferredFont(forTextStyle: .caption2)
+                $0.textColor = color
+                $0.adjustsFontForContentSizeCategory = true
+                $0.setContentHuggingPriority(.required, for: .horizontal)
+                $0.setContentCompressionResistancePriority(.required, for: .horizontal)
+            }
             let fill = UIView().then { $0.backgroundColor = color }
             let track = UIView().then {
                 $0.backgroundColor = .tertiarySystemFill
@@ -344,59 +351,33 @@ final class UsageStatsController: UIViewController {
                 $0.clipsToBounds = true
             }
             track.addSubview(fill)
-            fill.snp.makeConstraints { make in
-                make.leading.top.bottom.equalToSuperview()
+            fill.snp.makeConstraints {
+                $0.leading.top.bottom.equalToSuperview()
+                $0.width.equalTo(track.snp.width).multipliedBy(min(max(fraction, 0), 1))
             }
-            fill.snp.makeConstraints { make in
-                make.width.equalTo(track.snp.width).multipliedBy(min(max(fraction, 0), 1))
+            let row = UIStackView(arrangedSubviews: [track, label]).then {
+                $0.axis = .horizontal
+                $0.spacing = 8
+                $0.alignment = .center
             }
-            return track
+            track.snp.makeConstraints { $0.height.equalTo(6) }
+            row.isAccessibilityElement = true
+            row.accessibilityLabel = text
+            return row
         }
 
-        let inputHolder = UIView()
-        let inputTrack = bar(fraction: CGFloat(entry.input) / CGFloat(max(maxTokens, 1)), color: .systemOrange)
-        inputHolder.addSubview(inputTrack)
-        inputTrack.snp.makeConstraints {
-            $0.leading.top.bottom.equalToSuperview()
-            $0.height.equalTo(6)
-            $0.width.lessThanOrEqualTo(inputHolder.snp.width)
-        }
+        let inputRow = barRow(
+            fraction: CGFloat(entry.input) / CGFloat(max(maxInput, 1)),
+            color: .systemOrange,
+            text: String(localized: "输入 \(Self.tokenText(entry.input))"),
+        )
+        let outputRow = barRow(
+            fraction: CGFloat(entry.output) / CGFloat(max(maxOutput, 1)),
+            color: .systemGreen,
+            text: String(localized: "输出 \(Self.tokenText(entry.output))"),
+        )
 
-        let outputHolder = UIView()
-        let outputTrack = bar(fraction: CGFloat(entry.output) / CGFloat(max(maxTokens, 1)), color: .systemGreen)
-        outputHolder.addSubview(outputTrack)
-        outputTrack.snp.makeConstraints {
-            $0.leading.top.bottom.equalToSuperview()
-            $0.height.equalTo(6)
-            $0.width.lessThanOrEqualTo(outputHolder.snp.width)
-        }
-        let bars = UIStackView(arrangedSubviews: [inputHolder, outputHolder]).then {
-            $0.axis = .vertical
-            $0.spacing = 4
-        }
-        for holder in [inputHolder, outputHolder] {
-            holder.accessibilityElementsHidden = true
-        }
-
-        let inputLabel = UILabel().then {
-            $0.text = String(localized: "输入 \(Self.tokenText(entry.input))")
-            $0.font = .preferredFont(forTextStyle: .caption2)
-            $0.textColor = .systemOrange
-            $0.adjustsFontForContentSizeCategory = true
-        }
-        let outputLabel = UILabel().then {
-            $0.text = String(localized: "输出 \(Self.tokenText(entry.output))")
-            $0.font = .preferredFont(forTextStyle: .caption2)
-            $0.textColor = .systemGreen
-            $0.adjustsFontForContentSizeCategory = true
-        }
-        let legend = UIStackView(arrangedSubviews: [inputLabel, outputLabel]).then {
-            $0.axis = .horizontal
-            $0.spacing = 8
-            $0.alignment = .firstBaseline
-        }
-
-        let column = UIStackView(arrangedSubviews: [top, bars, legend]).then {
+        let column = UIStackView(arrangedSubviews: [top, inputRow, outputRow]).then {
             $0.axis = .vertical
             $0.spacing = 6
             $0.isAccessibilityElement = true
