@@ -51,11 +51,12 @@ struct ChatsActivityWidget: Widget {
                 // 中空，计数改放旁边。
                 ZStack {
                     Image(systemName: state.statusSymbol)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(state.statusColor)
                     if state.totalCount > 1, state.statusSymbol == "arrow.triangle.2.circlepath" {
                         Text(verbatim: "\(state.totalCount)")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 7, weight: .black))
+                            .minimumScaleFactor(0.6)
                             .foregroundStyle(.white)
                             .contentTransition(.numericText())
                             .accessibilityHidden(true)
