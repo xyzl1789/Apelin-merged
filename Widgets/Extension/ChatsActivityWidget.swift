@@ -176,13 +176,14 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 6)
-                if let start = chat.startedAt {
-                    // 照 minis：当前任务的进行时长，系统自走计时，不需要每秒推快照。
-                    Text(timerInterval: start ... Date().addingTimeInterval(86_400), countsDown: false)
+                // 照 Minis 的 RunClock：`Text(_, style: .timer)` 自走计时；
+                // 之前自创的 `Text(timerInterval:)` 带着到明天为止的区间，
+                // 在锁屏卡片渲染里可能整块画不出来（实时活动变空白的
+                // 嫌疑之一），系统 .timer 没有 `fixedSize`，也不会撑爆行。
+                if let start = chat.startedAt, chat.status == .working || chat.status == .waiting {
+                    Text(start, style: .timer)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.trailing)
-                        .fixedSize()
                 }
                 Text(verbatim: chat.projectName)
                     .font(.caption2)
@@ -194,7 +195,9 @@ private struct ChatActivitySessionRow: View {
 }
 
 /// 锁屏卡片：顶部身份胶囊 + 状态摘要胶囊，下面当前会话行。
-/// 半透明背景仍由 activityBackgroundTint 交给系统材质，外观跟随深浅色。
+/// 照 Minis：不加 `activityBackgroundTint`，交给系统默认的毛玻璃材质，
+/// 深浅色永远由系统自己画——自创的半透明 tint 只在活动内容更新时被
+/// 重画，配合外观探针重推也追不稳，是实时活动整卡空白的另一个嫌疑。
 @available(iOS 16.2, *)
 private struct ChatLockScreenView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -236,9 +239,7 @@ private struct ChatLockScreenView: View {
         }
         .foregroundStyle(theme.ink)
         .padding()
-        .activityBackgroundTint(ChatWidgetAppearance.backgroundTint(for: colorScheme))
         .animation(.easeInOut(duration: 0.35), value: state)
-        .activitySystemActionForegroundColor(theme.green)
         .widgetURL(state.mostUrgent?.link)
     }
 }

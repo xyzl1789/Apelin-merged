@@ -2,7 +2,6 @@ import ImageIO
 import PDFKit
 import QuickLookThumbnailing
 import UIKit
-import UniformTypeIdentifiers
 
 /// Presentation thumbnails never replace the original attachment or its MIME type.
 @MainActor
@@ -83,7 +82,10 @@ final class MessageAttachmentPreviews {
               // 却是可渲染的图片：图片扩展名不走纯文本守卫，否则 SVG
               // 的缩略图永远出不来，只能落成文档卡片。
               !(attachment.isImage || ChatInlineFiles.isImagePath(attachment.name)),
-              UTType(filenameExtension: (attachment.name as NSString).pathExtension)?.conforms(to: .text) != true
+              // 纯文本守卫只拦真正的文本文件：markdown、代码这些交给
+              // 文档卡片，其余任何文件（docx、xlsx、zip、视频、音频……）
+              // 都交给 Quick Look 出缩略图——预览是所有文件的，不止图片。
+              ChatInlineFiles.isTextPath(attachment.name) != true
         else { return }
         if pending[attachment.id] != nil {
             pending[attachment.id]?.append(completion)

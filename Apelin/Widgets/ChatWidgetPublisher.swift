@@ -56,15 +56,6 @@ final class ChatWidgetPublisher {
         chatsChanged()
     }
 
-    /// 背景或卡片样式变了：快照本身不变，`chatsChanged` 的比较不会推送，
-    /// 这里把当前活动原样重推一次，让扩展按新设置重新渲染。深浅色切换
-    /// 也走这里——tint 只在内容更新时才被系统重画。
-    func appearanceChanged() {
-        guard shownActivity != nil, !Self.isClosedForQuit else { return }
-        if shownActivity!.chats.isEmpty, shownActivity!.totalCount == 0 { return }
-        showActivity(shownActivity!)
-    }
-
     /// Something in the runtime changed: looks again within a second.
     @objc dynamic func chatsChanged() {
         guard !isScheduled else { return }
@@ -202,14 +193,16 @@ final class ChatWidgetPublisher {
     }
 }
 
-/// iOS 16 没有全局的深浅色变化通知：一个不加入任何可见层的小视图，
-/// 隐藏着加进 key window，系统外观切换时它的 `traitCollectionDidChange`
-/// 会被调用，转成回调交给发布器。
+/// 之前为实时活动自画 tint 服务的深浅色探针；tint 交回系统后不再挂载，
+/// 类先留着，样式变化需要重推活动时可以再接。
 final class AppearanceProbeView: UIView {
     private static var onAppearanceChange: (() -> Void)?
+    private static var installed = false
 
     static func install(onChange: @escaping () -> Void) {
         onAppearanceChange = onChange
+        guard !installed else { return }
+        installed = true
         DispatchQueue.main.async {
             guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                   let window = scene.keyWindow ?? scene.windows.first else { return }

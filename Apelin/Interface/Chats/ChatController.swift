@@ -1120,6 +1120,12 @@ final class ChatController: UIViewController {
     private func updateMessageListInsets() {
         let covered = max(view.bounds.height - composer.frame.minY + 8, 0)
         let bottom = max(covered - view.safeAreaInsets.bottom, 0)
+        // 搜索条打开时顶部多让出它的高度：条挂在导航栏下，列表内容从
+        // 它下面开始读。收起时回到导航栏的常规 inset。
+        let top = (view.safeAreaInsets.top) + searchListInset
+        if messageList.contentInset.top != top {
+            messageList.contentInset.top = top
+        }
         if messageList.contentInset.bottom != bottom + 16 {
             // a reader at the latest message, or following a turn, stays there
             let keepsLatest = followedTurn != nil || distanceFromLatestMessage <= 2
@@ -1287,19 +1293,42 @@ final class ChatController: UIViewController {
 
     /// The magnifier on the bar: find a message in this conversation and go
     /// to it. Only text the page can show is indexed; a tool's raw output is
-    /// not a thing a reader can scroll to.
+    /// not a thing a reader can scroll to. 照 Minis：聊天页顶部内嵌搜索条，
+    /// 不再弹独立表单页；🔍 只是打开它的入口。
     @objc func presentMessageSearch() {
-        guard presentedViewController == nil else { return }
-        view.endEditing(true)
-        let entries = messages.compactMap { message -> (id: UUID, role: String, text: String)? in
-            guard !message.text.isEmpty, !message.role.isActivity else { return nil }
-            return (message.id, Self.roleLabel(message.role), message.text)
+        if inlineSearch.isActive {
+            inlineSearchBar.field.becomeFirstResponder()
+            return
         }
-        let page = ChatMessageSearchController(messages: entries) { [weak self] id in
+        view.endEditing(true)
+        inlineSearch.activate()
+        setSearchBarShown(true)
+        inlineSearchBar.field.text = ""
+        inlineSearchBar.update(counter: nil, hasResults: false)
+        inlineSearchBar.field.becomeFirstResponder()
+    }
+
+    /// 搜索状态：命中按会话顺序排，上下步进循环，跳转断开跟随。
+    private lazy var inlineSearch: ChatInlineSearch = {
+        let search = ChatInlineSearch { [weak self] in
+            guard let self else { return [] }
+            return self.messages.compactMap { message -> (id: UUID, role: String, text: String)? in
+                guard !message.text.isEmpty, !message.role.isActivity else { return nil }
+                return (message.id, Self.roleLabel(message.role), message.text)
+            }
+        }
+        search.onUpdate = { [weak self] in
+            guard let self else { return }
+            inlineSearchBar.update(counter: search.counterText, hasResults: search.hasResults)
+            if let notice = search.notice {
+                inlineSearchBar.showNotice(notice.text)
+            }
+        }
+        // 跳转语义照 Minis：进入阅读态，断开「跟随最新输出」——
+        // followedTurn、holdsLatestMessage 都收掉，流式输出不再把列表
+        // 拽回底部把刚跳到的位置吃掉。用户拖到底部附近才重新跟随。
+        search.onNavigate = { [weak self] id in
             guard let self, chat != nil, messages.contains(where: { $0.id == id }) else { return }
-            // 照 Minis 的搜索跳转：进入阅读态，断开「跟随最新输出」——
-            // followedTurn、holdsLatestMessage 都收掉，流式输出不再把列表
-            // 拽回底部把刚跳到的位置吃掉。用户拖到底部附近才重新跟随。
             followedTurn = nil
             holdsLatestMessage = false
             readingPlace = nil
@@ -1308,7 +1337,69 @@ final class ChatController: UIViewController {
             messageList.scrollToRow(with: id, at: .top, animated: !UIAccessibility.isReduceMotionEnabled)
             updateLatestMessageButton()
         }
-        presentPageAsFormSheet(page)
+        search.onDeactivate = { [weak self] in
+            guard let self else { return }
+            // 关闭后列表停在原处；「滚到最新」按钮按位置恢复。
+            updateLatestMessageButton()
+        }
+        return search
+    }()
+
+    private lazy var inlineSearchBar: ChatInlineSearchBar = {
+        let bar = ChatInlineSearchBar()
+        bar.onQueryChange = { [weak self] text in
+            self?.inlineSearch.search(text)
+        }
+        bar.onNext = { [weak self] in self?.inlineSearch.next() }
+        bar.onPrevious = { [weak self] in self?.inlineSearch.previous() }
+        bar.onDone = { [weak self] in
+            guard let self else { return }
+            inlineSearchBar.field.resignFirstResponder()
+            inlineSearch.deactivate()
+            setSearchBarShown(false)
+        }
+        bar.isHidden = true
+        bar.alpha = 0
+        return bar
+    }()
+
+    /// 搜索条是否已挂上（内嵌时代的开关；旧弹窗时期的阅读位置变量不再需要）。
+    private var searchBarTopShown = false
+
+    private func setSearchBarShown(_ shown: Bool) {
+        guard searchBarTopShown != shown else { return }
+        searchBarTopShown = shown
+        if shown {
+            view.addSubview(inlineSearchBar)
+            inlineSearchBar.snp.makeConstraints { make in
+                make.leading.equalTo(view.safeAreaLayoutGuide).offset(12)
+                make.trailing.equalTo(view.safeAreaLayoutGuide).offset(-12)
+                inlineSearchBarTopConstraint = make.top.equalTo(view.safeAreaLayoutGuide).offset(6).constraint
+                make.height.equalTo(40)
+            }
+            inlineSearchBar.isHidden = false
+            UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.2) {
+                self.inlineSearchBar.alpha = 1
+            }
+        } else {
+            UIView.animate(
+                withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.2,
+                animations: { self.inlineSearchBar.alpha = 0 },
+            ) { _ in
+                self.inlineSearchBar.removeFromSuperview()
+                self.inlineSearchBarTopConstraint = nil
+                self.view.setNeedsLayout()
+            }
+        }
+        view.setNeedsLayout()
+    }
+
+    /// 搜索条的顶部约束，收起时移除。
+    private var inlineSearchBarTopConstraint: Constraint?
+
+    /// 搜索打开时列表顶部多让出一条搜索条的高度；列表内容随之滚动。
+    private var searchListInset: CGFloat {
+        searchBarTopShown ? inlineSearchBar.frame.height + 14 : 0
     }
 
     private static func roleLabel(_ role: ChatMessage.Role) -> String {

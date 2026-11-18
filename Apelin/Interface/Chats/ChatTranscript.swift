@@ -111,7 +111,11 @@ struct ChatTranscript {
             guard !references.isEmpty else { continue }
             var attachments: [ComposerAttachment] = []
             var taken: [NSRange] = []
-            for (range, path) in references where ChatInlineFiles.isImagePath(path) {
+            // 预览是所有文件的，不止图片：`![x](a.png)` 走相册，
+            // `[note](report.md)` 之类的文件引用也解析成附件——纯文本
+            // 落文档卡片，其余（docx、zip、视频……）走 Quick Look 缩略图。
+            // 外链、锚点在解析阶段已排除；目录不存在时留原引用不动。
+            for (range, path) in references where !ChatInlineFiles.isTextPath(path) {
                 guard let file = resolve(path) else { continue }
                 attachments.append(file)
                 taken.append(range)

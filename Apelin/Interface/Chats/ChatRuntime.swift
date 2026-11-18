@@ -390,7 +390,6 @@ final class ChatRuntime {
     /// is left for the next build, as Minis does.
     private func inlineAttachment(path: String, in id: UUID) -> ComposerAttachment? {
         let name = (path as NSString).lastPathComponent
-        let ext = (name as NSString).pathExtension
         let key = "inline:\(id.uuidString):\(path)"
         if let cached = inlineCache[key] { return cached }
         guard let resolved = attachmentPath(AgentAttachment(path: path, name: name, mimeType: ""), in: id) else { return nil }
@@ -398,10 +397,13 @@ final class ChatRuntime {
               size <= 32 * 1024 * 1024, let data = try? Data(contentsOf: URL(fileURLWithPath: resolved))
         else { return nil }
         let isImage = ChatInlineFiles.isImagePath(path)
+        let isText = ChatInlineFiles.isTextPath(path)
         let file = ComposerAttachment(
             name: name,
             data: data,
-            text: ext.isEmpty || isImage ? nil : String(decoding: data.prefix(8192), as: UTF8.self),
+            // 只有纯文本文件把开头几行当预览；其余（含无扩展名与目录名）
+            // 交给 Quick Look 出缩略图。
+            text: isText ? String(decoding: data.prefix(8192), as: UTF8.self) : nil,
             isImage: isImage,
         )
         inlineCache[key] = file

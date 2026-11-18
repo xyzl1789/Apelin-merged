@@ -42,12 +42,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // when the channel's page opens. The host may still be starting,
         // hence the retries.
         Task { await ChannelLanguage.pushIfChanged(retries: 5) }
-        // 深浅色切换时重推一次当前活动：实时活动的 backgroundTint 只在
-        // 内容更新时被系统重画，不重推就一直是旧外观的颜色。iOS 16 没有全局的外观变化通知，借一个不进层级的视图的
-        // traitCollectionDidChange 来听。
-        AppearanceProbeView.install {
-            ChatWidgetPublisher.shared.appearanceChanged()
-        }
+        // 深浅色切换时不再需要重推活动：锁屏卡片已照 Minis 交回系统默认
+        // 材质，tint 不再由我们自己画。
         return true
     }
 
