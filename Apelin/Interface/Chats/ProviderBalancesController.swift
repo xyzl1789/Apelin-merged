@@ -2,17 +2,17 @@ import ApelinProtocol
 import Then
 import UIKit
 
-/// 点击余额徽章后的详情页：每个服务商一条卡片——服务商名、账户标签、
-/// 余额数字（大字）、币种、该条自己的查询时间；查询失败的那条以橙色
-/// 标出原因。顶部是当前选中服务商的汇总卡，支持查询的服务商在页内
-/// 立即刷新。查过的余额永远显示上次的数值（「暂无」只出现在真的
-/// 一条余额都没有、也从没查到过的时候）。
+/// 点击余额徽章后的详情页：每个能查询余额的服务商一张卡片——服务商名、大字
+/// 余额与币种，底部一行小字是这条自己的查询时间，同一行紧跟站点地址（如
+/// api.deepseek.com）；查询失败的那条以橙色写出原因，站点照旧。列表从第一张
+/// 卡开始排，过期的那条排在最前，其余按查询时间从新到旧。查过的余额永远
+/// 显示上次的数值（「暂无」只出现在真的一条余额都没有、也从没查到过的时候）。
 final class ProviderBalancesController: UITableViewController {
+    /// 页内正在画的行，已按排序规则排好。
     private var balances: [ProviderBalance] = []
     private var refreshing = false
 
-    private let spinnerContainer = UIView()
-    private let summaryCard = ProviderBalanceSummaryCard()
+    private let emptyContainer = UIView()
     private let emptyCard = ProviderBalanceEmptyCard()
 
     private static let timeFormatter: DateFormatter = {
@@ -35,6 +35,15 @@ final class ProviderBalancesController: UITableViewController {
         return timeFormatter.string(from: date)
     }
 
+    /// 过期（本次查询失败）的排最前，其余按查询时间从新到旧：一进页面
+    /// 先看到的是需要处理的那条，然后是刚查过的。
+    private static func sorted(_ balances: [ProviderBalance]) -> [ProviderBalance] {
+        balances.sorted { left, right in
+            if left.stale != right.stale { return left.stale }
+            return left.updatedAt > right.updatedAt
+        }
+    }
+
     init() {
         super.init(style: .insetGrouped)
     }
@@ -55,10 +64,16 @@ final class ProviderBalancesController: UITableViewController {
             $0.accessibilityLabel = String(localized: "Refresh")
         }
         navigationItem.rightBarButtonItem = refreshItem
-        balances = ProviderBalanceStore.shared.balances
-        tableView.separatorInset = UIEdgeInsets(top: 0, left: 20, bottom: 0, right: 20)
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Balance")
-        tableView.tableFooterView = makeFooter()
+        // 卡片自己画圆角与底色，表格只当容器：不要分隔线，行高按内容算。
+        tableView.separatorStyle = .none
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 112
+        tableView.register(
+            ProviderBalanceCardCell.self,
+            forCellReuseIdentifier: ProviderBalanceCardCell.reuseIdentifier,
+        )
+        buildEmptyState()
+        apply(ProviderBalanceStore.shared.balances)
         refresh()
     }
 
@@ -83,8 +98,7 @@ final class ProviderBalancesController: UITableViewController {
     }
 
     @objc private func balancesChanged() {
-        balances = ProviderBalanceStore.shared.balances
-        reload()
+        apply(ProviderBalanceStore.shared.balances)
     }
 
     /// 手动刷新：强制绕过 worker 的短缓存，按钮转菊花，页内所有数字
@@ -103,19 +117,26 @@ final class ProviderBalancesController: UITableViewController {
             refreshing = false
             item?.customView = nil
             item?.isEnabled = true
-            balances = ProviderBalanceStore.shared.balances
-            reload()
+            apply(ProviderBalanceStore.shared.balances)
         }
     }
 
-    private func reload() {
-        summaryCard.configure(
-            selection: nil,
-            balances: balances,
-        )
-        summaryCard.setNeedsLayout()
+    /// 换一份数据重画：排好序、决定空态，再整表刷新。
+    private func apply(_ next: [ProviderBalance]) {
+        balances = Self.sorted(next)
+        emptyContainer.isHidden = !balances.isEmpty
         tableView.reloadData()
-        tableView.tableFooterView = makeFooter()
+    }
+
+    private func buildEmptyState() {
+        emptyContainer.addSubview(emptyCard)
+        emptyCard.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            emptyCard.topAnchor.constraint(equalTo: emptyContainer.topAnchor, constant: 16),
+            emptyCard.leadingAnchor.constraint(equalTo: emptyContainer.leadingAnchor, constant: 16),
+            emptyCard.trailingAnchor.constraint(equalTo: emptyContainer.trailingAnchor, constant: -16),
+        ])
+        tableView.backgroundView = emptyContainer
     }
 
     // MARK: - Table
@@ -126,150 +147,124 @@ final class ProviderBalancesController: UITableViewController {
         balances.count
     }
 
-    override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        balances.isEmpty ? nil : String(localized: "All Providers")
-    }
-
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "Balance", for: indexPath)
-        let balance = balances[indexPath.row]
-        var content = UIListContentConfiguration.valueCell()
-        content.text = balance.provider.displayName
-        content.secondaryText = balance.label
-        content.textProperties.font = .preferredFont(forTextStyle: .body)
-        content.textProperties.numberOfLines = 1
-        content.secondaryTextProperties.font = .preferredFont(forTextStyle: .footnote)
-        content.secondaryTextProperties.color = .secondaryLabel
-        content.secondaryTextProperties.numberOfLines = 1
-        // 右侧大字余额 + 币种小字，失败的那条橙色并写原因。
-        let amountLabel = UILabel()
-        amountLabel.text = balance.amount
-        amountLabel.font = .monospacedDigitSystemFont(ofSize: 17, weight: .semibold)
-        amountLabel.textAlignment = .right
-        amountLabel.adjustsFontSizeToFitWidth = true
-        amountLabel.textColor = balance.stale ? .systemOrange : .label
-        let currencyLabel = UILabel()
-        currencyLabel.text = balance.currency
-        currencyLabel.font = .preferredFont(forTextStyle: .footnote)
-        currencyLabel.textColor = .secondaryLabel
-        let stack = UIStackView(arrangedSubviews: [amountLabel, currencyLabel]).then {
-            $0.axis = .horizontal
-            $0.alignment = .firstBaseline
-            $0.spacing = 4
-        }
-        cell.contentConfiguration = content
-        cell.accessoryView = stack
-        cell.accessibilityValue = "\(balance.amount) \(balance.currency)，\(Self.relativeTime(balance.updatedAt))"
-        if balance.stale {
-            cell.accessibilityValue = "\(cell.accessibilityValue ?? "")，\(balance.problem ?? String(localized: "Balance unavailable"))"
-        }
-        cell.selectionStyle = .none
+        let cell = tableView.dequeueReusableCell(
+            withIdentifier: ProviderBalanceCardCell.reuseIdentifier,
+            for: indexPath,
+        ) as! ProviderBalanceCardCell
+        cell.configure(with: balances[indexPath.row])
         return cell
     }
 
-    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
-    }
-
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        String(localized: "A provider that cannot report a balance is not shown; unavailable is not zero.")
-    }
-
-    // MARK: - Header & footer
-
-    /// 顶部汇总卡：当前选中服务商的余额（查过就显示上次数值），下面
-    /// 一行小字写刷新时间；没有任何可显示的余额时换空态卡。
-    override func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-        if balances.isEmpty {
-            emptyCard.configure()
-            return emptyCard
-        }
-        summaryCard.configure(selection: currentSelectionProvider(), balances: balances)
-        return summaryCard
-    }
-
-    override func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
-        balances.isEmpty ? 120 : 108
-    }
-
-    /// 当前聊天页选中的服务商；从模型选择里读，与徽章同一来源。
-    private func currentSelectionProvider() -> AgentProvider? {
-        ComposerModelSelection.current?.provider
-    }
-
-    private func makeFooter() -> UIView {
-        let container = UIView()
-        let label = UILabel()
-        if let latest = balances.map(\.updatedAt).max() {
-            label.text = String(localized: "Last refresh \(Self.relativeTime(latest))")
-        } else {
-            label.text = String(localized: "Not refreshed yet")
-        }
-        label.font = .preferredFont(forTextStyle: .footnote)
-        label.textColor = .secondaryLabel
-        label.textAlignment = .center
-        label.frame = CGRect(x: 0, y: 8, width: tableView.bounds.width, height: 20)
-        container.addSubview(label)
-        container.frame = CGRect(x: 0, y: 0, width: tableView.bounds.width, height: 32)
-        return container
+        balances.isEmpty ? nil : String(localized: "A provider that cannot report a balance is not shown; unavailable is not zero.")
     }
 }
 
-/// 顶部汇总卡：当前选中服务商的名字 + 大字余额 + 刷新时间。
-final class ProviderBalanceSummaryCard: UIView {
+/// 一个服务商一张卡：名字一行，大字余额 + 币种一行，底部一行小字是查询时间
+/// 与站点地址（失败时是失败原因与站点地址）。
+final class ProviderBalanceCardCell: UITableViewCell {
+    static let reuseIdentifier = "ProviderBalanceCard"
+
+    private let card = UIView()
     private let providerLabel = UILabel()
     private let amountLabel = UILabel()
+    private let currencyLabel = UILabel()
     private let timeLabel = UILabel()
+    private let hostLabel = UILabel()
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .secondarySystemGroupedBackground
-        layer.cornerRadius = 14
-        layer.cornerCurve = .continuous
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        backgroundColor = .clear
+        contentView.backgroundColor = .clear
+        selectionStyle = .none
+
+        card.backgroundColor = .secondarySystemGroupedBackground
+        card.layer.cornerRadius = 14
+        card.layer.cornerCurve = .continuous
+        card.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(card)
+
         providerLabel.font = .preferredFont(forTextStyle: .subheadline)
         providerLabel.textColor = .secondaryLabel
+        providerLabel.numberOfLines = 1
+
         amountLabel.font = .monospacedDigitSystemFont(ofSize: 34, weight: .semibold)
         amountLabel.textColor = .label
+        amountLabel.numberOfLines = 1
+        amountLabel.adjustsFontSizeToFitWidth = true
+        amountLabel.minimumScaleFactor = 0.6
+        // 金额很长时先压缩它自己，币种始终留在后面。
+        amountLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        currencyLabel.font = .preferredFont(forTextStyle: .footnote)
+        currencyLabel.textColor = .secondaryLabel
+        currencyLabel.setContentHuggingPriority(.required, for: .horizontal)
+        let amountRow = UIStackView(arrangedSubviews: [amountLabel, currencyLabel]).then {
+            $0.axis = .horizontal
+            $0.alignment = .firstBaseline
+            $0.spacing = 6
+        }
+
+        // 时间在前、站点紧随其后，同一行：站点把剩余宽度占满，太长时截断。
         timeLabel.font = .preferredFont(forTextStyle: .footnote)
         timeLabel.textColor = .tertiaryLabel
-        let stack = UIStackView(arrangedSubviews: [providerLabel, amountLabel, timeLabel]).then {
+        timeLabel.setContentHuggingPriority(.required, for: .horizontal)
+        timeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        hostLabel.font = .preferredFont(forTextStyle: .footnote)
+        hostLabel.textColor = .tertiaryLabel
+        hostLabel.lineBreakMode = .byTruncatingMiddle
+        hostLabel.numberOfLines = 1
+        let footerRow = UIStackView(arrangedSubviews: [timeLabel, hostLabel]).then {
+            $0.axis = .horizontal
+            $0.alignment = .firstBaseline
+            $0.spacing = 6
+        }
+
+        let stack = UIStackView(arrangedSubviews: [providerLabel, amountRow, footerRow]).then {
             $0.axis = .vertical
-            $0.alignment = .leading
+            $0.alignment = .fill
             $0.spacing = 4
             $0.translatesAutoresizingMaskIntoConstraints = false
         }
-        addSubview(stack)
+        card.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 14),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -18),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -14),
+            card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
+            card.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -6),
+            card.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 14),
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -14),
         ])
+
         isAccessibilityElement = true
         accessibilityTraits = .staticText
     }
 
     @available(*, unavailable)
     required init?(coder _: NSCoder) {
-        fatalError("Use init(frame:)")
+        fatalError("Use init(style:reuseIdentifier:)")
     }
 
-    func configure(selection provider: AgentProvider?, balances: [ProviderBalance]) {
-        // 当前选中且有自己余额的服务商优先；否则取最近更新的一条代表。
-        let balance = provider.flatMap { own in balances.first { $0.provider == own } }
-            ?? balances.max { $0.updatedAt < $1.updatedAt }
-        guard let balance else {
-            providerLabel.text = nil
-            amountLabel.text = "--"
-            timeLabel.text = nil
-            return
-        }
+    func configure(with balance: ProviderBalance) {
         providerLabel.text = balance.provider.displayName
-        amountLabel.text = "\(balance.amount) \(balance.currency)"
+        amountLabel.text = balance.amount
         amountLabel.textColor = balance.stale ? .systemOrange : .label
-        timeLabel.text = String(localized: "Updated \(ProviderBalancesController.relativeTime(balance.updatedAt))")
-        accessibilityLabel = String(localized: "Provider Balances")
-        accessibilityValue = "\(balance.provider.displayName)，\(balance.amount) \(balance.currency)"
+        currencyLabel.text = balance.currency
+        hostLabel.text = balance.label
+        if balance.stale {
+            // 查不到时这一行写原因，站点照旧跟在后面。
+            timeLabel.text = balance.problem ?? String(localized: "Balance unavailable")
+            timeLabel.textColor = .systemOrange
+        } else {
+            timeLabel.text = String(
+                localized: "Updated \(ProviderBalancesController.relativeTime(balance.updatedAt))",
+            )
+            timeLabel.textColor = .tertiaryLabel
+        }
+        accessibilityLabel = "\(balance.provider.displayName)，\(balance.amount) \(balance.currency)"
+        accessibilityValue = "\(timeLabel.text ?? "")，\(balance.label)"
     }
 }
 
@@ -300,6 +295,7 @@ final class ProviderBalanceEmptyCard: UIView {
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 16),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16),
         ])
         isAccessibilityElement = true
         accessibilityTraits = .staticText
@@ -311,6 +307,4 @@ final class ProviderBalanceEmptyCard: UIView {
     required init?(coder _: NSCoder) {
         fatalError("Use init(frame:)")
     }
-
-    func configure() {}
 }
