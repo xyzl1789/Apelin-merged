@@ -143,6 +143,33 @@ jobs:
         shell: bash
         run: Packages/ApelinAgent/Scripts/sync-prompts.sh
 
+      # Binary xcframeworks (libgit2, libghostty, libarchive) are GitHub release
+      # assets and occasionally time out here; a finished clone or download is
+      # kept, so a retry re-fetches only what failed. This runs before the build
+      # so a timeout is named here instead of surfacing inside it.
+      - name: Resolve package dependencies
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p "$DERIVED_DATA"
+          status=0
+          for attempt in 1 2 3; do
+            status=0
+            xcodebuild -resolvePackageDependencies \
+              -derivedDataPath "$DERIVED_DATA" \
+              -project Apelin.xcodeproj -scheme Apelin > "$RUNNER_TEMP/resolve.log" 2>&1 || status=$?
+            tail -n 20 "$RUNNER_TEMP/resolve.log"
+            if [[ "$status" -eq 0 ]]; then
+              exit 0
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              echo "::warning::resolving package dependencies failed (exit $status), retrying (attempt $attempt of 3)"
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "::error::resolving package dependencies failed (exit $status) after 3 attempts"
+          exit "$status"
+
       # The harness runs in the job beside this one. deb-all packages the IDE
       # for both flavours, then every extension: the development extensions
       # (their templates built with the iPhoneOS SDK first) and the agent

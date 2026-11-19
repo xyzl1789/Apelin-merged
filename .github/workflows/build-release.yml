@@ -72,12 +72,27 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
+          # The binary xcframeworks (libgit2, libghostty, libarchive) are GitHub
+          # release assets and occasionally time out on the runner. A clone or
+          # download already finished is kept, so a retry only re-fetches what
+          # failed: three attempts, then the failure is reported.
           mkdir -p "$RUNNER_TEMP/apelin-deriveddata"
           status=0
-          xcodebuild -resolvePackageDependencies \
-            -derivedDataPath "$RUNNER_TEMP/apelin-deriveddata" \
-            -project Apelin.xcodeproj -scheme Apelin > "$RUNNER_TEMP/resolve.log" 2>&1 || status=$?
-          tail -n 20 "$RUNNER_TEMP/resolve.log"
+          for attempt in 1 2 3; do
+            status=0
+            xcodebuild -resolvePackageDependencies \
+              -derivedDataPath "$RUNNER_TEMP/apelin-deriveddata" \
+              -project Apelin.xcodeproj -scheme Apelin > "$RUNNER_TEMP/resolve.log" 2>&1 || status=$?
+            tail -n 20 "$RUNNER_TEMP/resolve.log"
+            if [[ "$status" -eq 0 ]]; then
+              exit 0
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              echo "::warning::resolving package dependencies failed (exit $status), retrying (attempt $attempt of 3)"
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "::error::resolving package dependencies failed (exit $status) after 3 attempts"
           exit "$status"
 
       # One iOS build, packaged for both bootstraps (roothide and rootless)
