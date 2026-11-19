@@ -82,18 +82,9 @@ struct ChatsActivityWidget: Widget {
                     .id(state.statusSymbol)
                     .transition(.opacity.animation(.easeInOut(duration: 0.35)))
             } minimal: {
-                // 多个实时活动折叠成一点时，照 Minis 的 MinimalIconView：
-                // 标记本体挂计数小字（9pt，offset 8,-8），计数为 0 时只有
-                // 标记本身。
-                ZStack {
-                    MarkView(size: 26, braces: .white)
-                    if state.inProgressCount > 0 {
-                        Text(verbatim: "\(state.inProgressCount)")
-                            .font(.system(size: 9, weight: .bold).monospacedDigit())
-                            .foregroundStyle(.white)
-                            .offset(x: 8, y: -8)
-                    }
-                }
+                // 多个实时活动折叠成一点时只画标记本体。原先在图标右上角
+                // 叠的计数小字（9pt，offset 8,-8）在小岛里又挤又难看，去掉。
+                MarkView(size: 26, braces: .white)
             }
             .widgetURL(state.mostUrgent?.link)
         }
