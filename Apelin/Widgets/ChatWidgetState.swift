@@ -24,9 +24,15 @@ extension ChatRecord {
             let payload = event.payload
             switch event.kind {
             case "prompt", "steer", "messageStarted":
+                // 一轮的开始时间只认第一次：`messageStarted` 在一轮里
+                // 每个助手消息段都会发一次（中途插入的引导也算），每次
+                // 都写会让计时器回到 0 重新走，显示时长与真实运行时间
+                // 对不上。turn 已经开着就保留原来的开始时间。
+                if !turnOpen {
+                    turnStart = event.time
+                }
                 turnOpen = true
                 failed = false
-                turnStart = event.time
             case "approvalRequested":
                 if let id = payload?["approvalID"]?.stringValue {
                     // By today's name: the widget names only those.
