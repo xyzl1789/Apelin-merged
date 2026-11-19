@@ -1384,10 +1384,10 @@ final class ChatController: UIViewController {
     private func applySearchHighlights() {
         let query = inlineSearch.isActive ? inlineSearch.query : ""
         var next: [UUID: ChatSearchHighlightCenter.State] = [:]
+        let current = inlineSearch.currentIndex.flatMap {
+            inlineSearch.matches.indices.contains($0) ? inlineSearch.matches[$0] : nil
+        }
         if !query.isEmpty {
-            let current = inlineSearch.currentIndex.flatMap {
-                inlineSearch.matches.indices.contains($0) ? inlineSearch.matches[$0] : nil
-            }
             // 每条命中（消息 + 出现序号）都要有一份状态：同一条消息里
             // 的三次出现，当前是第几次必须传下去，绘制器才只染那一处。
             for match in inlineSearch.matches {
