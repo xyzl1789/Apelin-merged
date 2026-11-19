@@ -340,23 +340,26 @@ final class ChatUsageDetailController: UIViewController {
     private func loadRecords() {
         let url = UsageRecorder.file(in: DataFolder.app.root)
         let session = sessionID
-        let loaded = Task.detached {
-            let all = UsageRecorder.readAll(from: url)
-            // 会话 id → 侧边栏标题，给「最大会话 TOP8」的行名用。
-            var titles: [String: String] = [:]
+        // 标题读取走 ChatStore.load()：遍历 Chats/、还原或移走坏文件，可能变慢
+        // 甚至挂起。它不能挡住统计——用量记录与它在两套目录，互不依赖。
+        // 两者并行，统计先渲染，标题拿到后只补刷 TOP8 卡。
+        let usage = Task.detached {
+            UsageRecorder.readAll(from: url)
+        }
+        let titles = Task.detached {
+            var result: [String: String] = [:]
             if let chats = try? await ChatStore(folder: .app).load() {
                 for record in chats.records {
                     guard let id = record.sessionID, !id.isEmpty else { continue }
-                    if titles[id] == nil { titles[id] = record.summary.displayTitle }
+                    if result[id] == nil { result[id] = record.summary.displayTitle }
                 }
             }
-            return (all, titles)
+            return result
         }
         Task { [weak self] in
-            let (all, titles) = await loaded.value
+            let all = await usage.value
             guard let self else { return }
             self.allRecords = all
-            self.sessionTitles = titles
             let records = all.filter { $0.sessionID == session }.sorted { $0.time < $1.time }
             var totals = Totals()
             var models: [String: (count: Int, prompt: Int, output: Int)] = [:]
@@ -378,6 +381,11 @@ final class ChatUsageDetailController: UIViewController {
                 .map { (model: $0.key, count: $0.value.count, prompt: $0.value.prompt, output: $0.value.output) }
                 .sorted { $0.prompt + $0.output > $1.prompt + $1.output }
             self.render()
+
+            let loadedTitles = await titles.value
+            guard !loadedTitles.isEmpty else { return }
+            self.sessionTitles = loadedTitles
+            self.renderRanking()
         }
     }
 
