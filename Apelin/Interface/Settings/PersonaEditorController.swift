@@ -2,9 +2,9 @@ import ApelinCore
 import Then
 import UIKit
 
-/// One persona's detail page. Every field saves as it changes: the next chat
-/// reads the file directly, and a chat already open reads it at its next
-/// message. There is no Save button to forget to press.
+/// One persona's detail page. An existing persona saves every field as it
+/// changes; a chat already open reads the file at its next message. A new
+/// persona is kept only when 「保存」 is tapped — going back discards it.
 final class PersonaEditorController: TableController, UITextViewDelegate {
     private enum Row: Equatable {
         case name
@@ -65,6 +65,12 @@ final class PersonaEditorController: TableController, UITextViewDelegate {
         super.viewDidLoad()
         title = isNew ? String(localized: "New Persona") : persona.name
         navigationItem.backButtonDisplayMode = .minimal
+        if isNew {
+            navigationItem.rightBarButtonItem = UIBarButtonItem(
+                title: String(localized: "保存"),
+                primaryAction: UIAction { [weak self] _ in self?.saveNew() },
+            ).then { $0.accessibilityLabel = String(localized: "保存") }
+        }
         tableView.keyboardDismissMode = .interactive
 
         nameField.text = persona.name
@@ -127,8 +133,15 @@ final class PersonaEditorController: TableController, UITextViewDelegate {
         updatePlaceholder()
 
         dataSource.headerTitle = { _ in nil }
-        dataSource.footerTitle = { _ in
-            String(localized: "This text is prepended to the system prompt. Automatic personas take over for matching models; higher priority wins.")
+        dataSource.footerTitle = { [weak self] _ in
+            var lines = [
+                String(localized: "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"),
+                String(localized: "置顶只让人设在列表中排在最前，不影响注入效果。"),
+            ]
+            if self?.isNew == true {
+                lines.append(String(localized: "新建的人设只有点「保存」才会加入；直接返回会丢弃。"))
+            }
+            return lines.joined(separator: "\n")
         }
         refresh()
     }
@@ -199,7 +212,8 @@ final class PersonaEditorController: TableController, UITextViewDelegate {
         return cell
     }
 
-    private func commit() {
+    @discardableResult
+    private func commit() -> Bool {
         var next = snapshot
         if let index = next.personas.firstIndex(where: { $0.id == persona.id }) {
             next.personas[index] = persona
@@ -209,53 +223,94 @@ final class PersonaEditorController: TableController, UITextViewDelegate {
         do {
             try Preferences.PromptInjection.save(next)
             snapshot = next
+            return true
         } catch {
             presentNotice(title: "Error", message: error.readableMessage)
+            return false
         }
     }
 
+    /// A new persona exists only in this editor until 「保存」 is tapped.
+    /// Every field updates the in-memory copy and the visible title, but
+    /// never touches the store; leaving the page discards it all.
+    private func change(_ apply: () -> Void) {
+        apply()
+        if !isNew { commit() }
+    }
+
+    private func saveNew() {
+        persona.name = persona.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        nameField.text = persona.name
+        guard !persona.name.isEmpty else {
+            presentNotice(title: "Error", message: String(localized: "请先填写名称"))
+            nameField.becomeFirstResponder()
+            return
+        }
+        if persona.matchMode == .manual, snapshot.activeID == nil {
+            snapshot.activeID = persona.id
+        }
+        guard commit() else { return }
+        navigationController?.popViewController(animated: true)
+    }
+
     @objc private dynamic func nameChanged() {
-        persona.name = nameField.text ?? ""
-        title = persona.name
-        commit()
+        change { [weak self] in
+            guard let self else { return }
+            persona.name = nameField.text ?? ""
+            title = persona.name
+        }
     }
 
     @objc private dynamic func modeChanged() {
-        persona.matchMode = modeControl.selectedSegmentIndex == 1 ? .automatic : .manual
-        if persona.matchMode == .manual, snapshot.activeID == nil { snapshot.activeID = persona.id }
-        commit()
-        refresh()
+        change { [weak self] in
+            guard let self else { return }
+            persona.matchMode = modeControl.selectedSegmentIndex == 1 ? .automatic : .manual
+            if !isNew, persona.matchMode == .manual, snapshot.activeID == nil {
+                snapshot.activeID = persona.id
+            }
+            refresh()
+        }
     }
 
     @objc private dynamic func patternsChanged() {
-        persona.modelPatterns = (patternsField.text ?? "")
-            .split(separator: ",")
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        commit()
+        change { [weak self] in
+            guard let self else { return }
+            persona.modelPatterns = (patternsField.text ?? "")
+                .split(separator: ",")
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
     }
 
     @objc private dynamic func priorityChanged() {
-        persona.priority = Int(priorityField.text ?? "") ?? 0
-        commit()
+        change { [weak self] in
+            guard let self else { return }
+            persona.priority = Int(priorityField.text ?? "") ?? 0
+        }
     }
 
     @objc private dynamic func pinnedChanged() {
-        persona.pinned = pinnedSwitch.isOn
-        commit()
+        change { [weak self] in
+            guard let self else { return }
+            persona.pinned = pinnedSwitch.isOn
+        }
     }
 
     @objc private dynamic func enabledChanged() {
-        snapshot.enabled = enabledSwitch.isOn
-        commit()
+        change { [weak self] in
+            guard let self else { return }
+            snapshot.enabled = enabledSwitch.isOn
+        }
     }
 
     @objc dynamic func textViewDidChange(_: UITextView) {
-        persona.body = String(textView.text.prefix(Preferences.PromptInjection.maximumCharacters))
-        commit()
-        updatePlaceholder()
-        tableView.beginUpdates()
-        tableView.endUpdates()
+        change { [weak self] in
+            guard let self else { return }
+            persona.body = String(textView.text.prefix(Preferences.PromptInjection.maximumCharacters))
+            updatePlaceholder()
+            tableView.beginUpdates()
+            tableView.endUpdates()
+        }
     }
 
     @objc private dynamic func updatePlaceholder() {

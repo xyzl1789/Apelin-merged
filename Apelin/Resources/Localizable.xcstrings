@@ -1,6 +1,587 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"
+          }
+        }
+      }
+    },
+    "手动：由上方「生效中」选定，没有自动人设命中时生效。": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由上方「生效中」选定，没有自动人设命中时生效。"
+          }
+        }
+      }
+    },
+    "保存": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        }
+      }
+    },
+    "请先填写名称": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先填写名称"
+          }
+        }
+      }
+    },
+    "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动与自动的区别：手动人设由「生效中」选定，在没有自动匹配时生效；自动人设按模型匹配规则命中时压过手动，多个命中取优先级最高的。"
+          }
+        }
+      }
+    },
+    "置顶只让人设在列表中排在最前，不影响注入效果。": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶只让人设在列表中排在最前，不影响注入效果。"
+          }
+        }
+      }
+    },
+    "新建的人设只有点「保存」才会加入；直接返回会丢弃。": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建的人设只有点「保存」才会加入；直接返回会丢弃。"
+          }
+        }
+      }
+    },
     "%lldh ago": {
       "localizations": {
         "ar": {

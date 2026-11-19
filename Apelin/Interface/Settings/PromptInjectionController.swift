@@ -8,11 +8,17 @@ import UIKit
 /// is in force with the current model. Changes save as they are made — a
 /// conversation already open reads the file at its next message.
 final class PromptInjectionController: TableController {
-    private enum Section: Hashable { case settings, personas }
+    private enum Section: Hashable {
+        case settings
+        case persona(String)
+        case empty
+    }
     private enum Row: Equatable {
         case enabled
-        case active
-        case persona(String)
+        case active(name: String)
+        // 名字、置顶、副标题都进 Row：改名后 Equatable 检测到变化，列表
+        // 才会重配这一行，否则只按 id 比较会被当成没变，名字不刷新。
+        case persona(id: String, name: String, pinned: Bool, detail: String, inUse: Bool)
         case empty
     }
 
@@ -22,7 +28,7 @@ final class PromptInjectionController: TableController {
             switch row {
             case .enabled: "enabled"
             case .active: "active"
-            case let .persona(id): "persona:" + id
+            case let .persona(id, _, _, _, _): "persona:" + id
             case .empty: "empty"
             }
         },
@@ -59,16 +65,29 @@ final class PromptInjectionController: TableController {
         dataSource.headerTitle = { section in
             switch section {
             case .settings: nil
-            case .personas: String(localized: "Personas")
+            case .persona: nil
+            case .empty: nil
             }
         }
         dataSource.footerTitle = { [weak self] section in
             switch section {
             case .settings:
                 String(localized: "A persona's text is prepended to every conversation. An automatic persona matching the model takes over from the manual one.")
-            case .personas:
-                self?.snapshot.personas.isEmpty == true
-                    ? String(localized: "Tap “+” to add a persona.") : nil
+            case let .persona(id):
+                // 每张人设卡片下方写明它的用处，自动/手动与置顶各说明一次。
+                guard let persona = self?.snapshot.personas.first(where: { $0.id == id }) else { return nil }
+                var lines: [String] = []
+                if persona.matchMode == .automatic {
+                    lines.append(String(localized: "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。"))
+                } else {
+                    lines.append(String(localized: "手动：由上方「生效中」选定，没有自动人设命中时生效。"))
+                }
+                if persona.pinned {
+                    lines.append(String(localized: "置顶只让人设在列表中排在最前，不影响注入效果。"))
+                }
+                return lines.joined(separator: "\n")
+            case .empty:
+                String(localized: "Tap “+” to add a persona.")
             }
         }
         load()
@@ -86,11 +105,30 @@ final class PromptInjectionController: TableController {
             if lhs.pinned != rhs.pinned { return lhs.pinned }
             return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
         }
-        let personaRows: [Row] = sorted.isEmpty ? [.empty] : sorted.map { .persona($0.id) }
-        dataSource.update(
-            [(.settings, [.enabled, .active]), (.personas, personaRows)],
-            reconfigure: true,
-        )
+        var sections: [(Section, [Row])] = [
+            (.settings, [.enabled, .active(name: snapshot.personas.first { $0.id == snapshot.activeID }?.name ?? String(localized: "None"))]),
+        ]
+        if sorted.isEmpty {
+            sections.append((.empty, [.empty]))
+        } else {
+            // 每个人设单独一节：设置表格里一节就是一张独立卡片。
+            for persona in sorted {
+                let detail = persona.matchMode == .automatic
+                    ? String(localized: "Automatic") + " · " + (persona.modelPatterns.joined(separator: ", "))
+                    : String(localized: "Manual")
+                sections.append((
+                    .persona(persona.id),
+                    [.persona(
+                        id: persona.id,
+                        name: persona.name,
+                        pinned: persona.pinned,
+                        detail: detail,
+                        inUse: snapshot.activeID == persona.id,
+                    )],
+                ))
+            }
+        }
+        dataSource.update(sections, reconfigure: true)
     }
 
     private func save(_ next: PersonaSnapshot) {
@@ -115,31 +153,24 @@ final class PromptInjectionController: TableController {
             cell.selectionStyle = .none
             cell.isAccessibilityElement = false
             return cell
-        case .active:
+        case let .active(name):
             let cell = tableView.dequeueReusableCell(withIdentifier: "active")
                 ?? UITableViewCell(style: .value1, reuseIdentifier: "active")
             var content = UIListContentConfiguration.valueCell()
             content.text = String(localized: "Active")
-            let active = snapshot.personas.first { $0.id == snapshot.activeID }
-            content.secondaryText = active?.name ?? String(localized: "None")
+            content.secondaryText = name
             content.secondaryTextProperties.color = .secondaryLabel
             cell.contentConfiguration = content
             cell.accessoryType = .disclosureIndicator
             return cell
-        case let .persona(id):
+        case let .persona(_, name, pinned, detail, inUse):
             let cell = tableView.dequeueReusableCell(withIdentifier: "persona")
                 ?? UITableViewCell(style: .subtitle, reuseIdentifier: "persona")
-            guard let persona = snapshot.personas.first(where: { $0.id == id }) else { return cell }
             var content = UIListContentConfiguration.explanatoryCell()
-            content.text = persona.name + (persona.pinned ? " 📌" : "")
+            content.text = name + (pinned ? " 📌" : "")
             content.textProperties.numberOfLines = 1
-            content.secondaryText = persona.matchMode == .automatic
-                ? String(localized: "Automatic") + " · " + (persona.modelPatterns.joined(separator: ", "))
-                : String(localized: "Manual")
+            content.secondaryText = inUse ? detail + " · " + String(localized: "In Use") : detail
             content.secondaryTextProperties.numberOfLines = 2
-            if snapshot.activeID == id {
-                content.secondaryText = (content.secondaryText ?? "") + " · " + String(localized: "In Use")
-            }
             cell.contentConfiguration = content
             cell.accessoryType = .disclosureIndicator
             cell.isAccessibilityElement = false
@@ -163,7 +194,7 @@ final class PromptInjectionController: TableController {
     }
 
     private func persona(at indexPath: IndexPath) -> Persona? {
-        guard case let .persona(id)? = dataSource.value(at: indexPath) else { return nil }
+        guard case let .persona(id, _, _, _, _)? = dataSource.value(at: indexPath) else { return nil }
         return snapshot.personas.first { $0.id == id }
     }
 
@@ -179,13 +210,12 @@ final class PromptInjectionController: TableController {
         switch dataSource.value(at: indexPath) {
         case .active:
             pickActive()
-        case let .persona(id):
+        case .persona:
             guard let persona = persona(at: indexPath) else { return }
             navigationController?.pushViewController(
                 PersonaEditorController(persona: persona, snapshot: snapshot),
                 animated: true,
             )
-            _ = id
         default:
             break
         }
@@ -216,7 +246,7 @@ final class PromptInjectionController: TableController {
     }
 
     @objc private dynamic func add() {
-        let persona = Persona(name: String(localized: "Default"), body: "")
+        let persona = Persona(name: "", body: "")
         navigationController?.pushViewController(
             PersonaEditorController(persona: persona, snapshot: snapshot, isNew: true),
             animated: true,
