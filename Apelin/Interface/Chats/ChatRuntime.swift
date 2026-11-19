@@ -712,7 +712,7 @@ final class ChatRuntime {
                 approvalMode: AgentPermissions.mode,
                 asksBeforeScreen: AgentPermissions.asksBeforeScreen,
                 runMode: ComposerModeStore.mode(for: id).runMode,
-                promptInjection: Preferences.PromptInjection.forPrompt,
+                promptInjection: Preferences.PromptInjection.forPrompt(model: selected?.model),
                 modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,
             ),
             descriptors: descriptors,
@@ -1001,7 +1001,7 @@ final class ChatRuntime {
             reasoningEffort: selected?.effort,
             serviceTier: selected?.tier,
             modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,
-            promptInjection: Preferences.PromptInjection.wire,
+            promptInjection: Preferences.PromptInjection.wire(for: selected?.model),
         )
         if request.temporaryID != nil {
             try DataFolder.app.makeLevels(to: DataFolder.app.root.appendingPathComponent("Temporary/" + id.uuidString))

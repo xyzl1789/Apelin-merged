@@ -1,3 +1,4 @@
+import ApelinCore
 import ApelinProtocol
 import Foundation
 
@@ -105,24 +106,26 @@ enum Preferences {
     }
 
     /// The text the reader wants every conversation to start under: what the
-    /// agent's system prompt carries before anything else. Kept beside the
-    /// other settings; a session's open carries it, and so does every prompt
-    /// (`forPrompt`), so turning it on or off reaches a chat that is already
-    /// open at its next message.
+    /// agent's system prompt carries before anything else. Now backed by the
+    /// persona collection; the single text/switch below is kept only as a
+    /// one-time migration source for readers upgrading from the old page.
     enum PromptInjection {
-        /// What one prompt may carry, as project instructions are capped.
-        static let maximumCharacters = 16 * 1024
+        static let maximumCharacters = PersonaStore.maximumBodyCharacters
+        private static let migratedKey = "agent.promptInjection.migratedToPersonas"
+        // The store appends `Personas/` to its root itself; passing the folder
+        // here would make it `Personas/Personas/personas.json`.
+        private static let store = PersonaStore(root: DataFolder.app.root)
 
-        static var enabled: Bool {
+        /// The single-switch setting before personas. Never written again once
+        /// the migration has run; kept so an upgrade carries the old prompt.
+        static var legacyEnabled: Bool {
             get { UserDefaults.standard.bool(forKey: "agent.promptInjection.enabled") }
             set { UserDefaults.standard.set(newValue, forKey: "agent.promptInjection.enabled") }
         }
 
-        static var text: String {
+        static var legacyText: String {
             get { UserDefaults.standard.string(forKey: "agent.promptInjection.text") ?? "" }
             set {
-                // Kept as typed: what the page shows must be what was written,
-                // and the trim happens where the prompt is made.
                 UserDefaults.standard.set(
                     String(newValue.prefix(maximumCharacters)),
                     forKey: "agent.promptInjection.text",
@@ -130,25 +133,70 @@ enum Preferences {
             }
         }
 
-        /// Whether there is anything to inject at all.
-        static var isEmpty: Bool {
-            text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        /// The persona collection, read straight from disk at each use: a
+        /// change in Settings must reach a chat that is already open. The
+        /// first read migrates the old single prompt into one manual persona.
+        static var snapshot: PersonaSnapshot {
+            get {
+                migrateLegacyIfNeeded()
+                return (try? store.read()) ?? PersonaSnapshot()
+            }
+            set {
+                migrateLegacyIfNeeded()
+                try? store.save(newValue)
+            }
         }
 
-        /// What a session's open carries: the text while the switch is on and
-        /// something is written, nil otherwise.
-        static var wire: String? {
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return enabled && !trimmed.isEmpty ? trimmed : nil
+        static var enabled: Bool {
+            get { snapshot.enabled }
+            set {
+                var next = snapshot
+                next.enabled = newValue
+                snapshot = next
+            }
         }
 
-        /// What every prompt carries, to a chat that was already open too:
-        /// the text while the switch is on and something is written, "" while
-        /// it is off — where `wire` is nil in both cases, and a prompt that
-        /// said nothing would leave an open chat under instructions the reader
-        /// has turned off.
-        static var forPrompt: String {
-            wire ?? ""
+        /// Compatible surface for the settings summary and any code that only
+        /// asks whether an injection is in force.
+        static var wire: String? { wire(for: nil) }
+
+        /// The body for the given model, nil when no persona is in force.
+        static func wire(for model: String?) -> String? {
+            let text = forPrompt(model: model)
+            return text.isEmpty ? nil : text
+        }
+
+        /// Saves the collection, surfacing a failure (a corrupt file, a full
+        /// disk, an unsafe path) to the caller rather than losing the edit.
+        static func save(_ snapshot: PersonaSnapshot) throws {
+            migrateLegacyIfNeeded()
+            try store.createRootIfNeeded(folder: DataFolder.app)
+            try store.save(snapshot)
+        }
+
+        static func forPrompt: String { forPrompt(model: nil) }
+
+        /// The body for the persona in force at the given model, or "".
+        static func forPrompt(model: String?) -> String {
+            PersonaResolver.text(snapshot, model: model)
+        }
+
+        private static func migrateLegacyIfNeeded() {
+            guard !UserDefaults.standard.bool(forKey: migratedKey) else { return }
+            let text = legacyText
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let persona = Persona(name: "Default", body: text, matchMode: .manual)
+                let migrated = PersonaSnapshot(enabled: legacyEnabled, activeID: persona.id, personas: [persona])
+                do {
+                    try store.createRootIfNeeded(folder: DataFolder.app)
+                    try store.save(migrated)
+                } catch {
+                    // Keep the old text and retry on the next read: marking the
+                    // migration done here would lose the reader's only prompt.
+                    return
+                }
+            }
+            UserDefaults.standard.set(true, forKey: migratedKey)
         }
     }
 
