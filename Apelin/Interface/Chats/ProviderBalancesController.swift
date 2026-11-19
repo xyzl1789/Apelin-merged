@@ -3,9 +3,9 @@ import Then
 import UIKit
 
 /// 点击余额徽章后的详情页：每个能查询余额的服务商一张卡片——服务商名、大字
-/// 余额与币种，底部一行小字是这条自己的查询时间，同一行紧跟站点地址（如
-/// api.deepseek.com）；查询失败的那条以橙色写出原因，站点照旧。列表从第一张
-/// 卡开始排，过期的那条排在最前，其余按查询时间从新到旧。查过的余额永远
+/// 余额与币种，底部一行小字左边是这条自己的查询时间，站点地址推到这一行最右端
+/// （如 api.deepseek.com）；查询失败的那条以橙色写出原因，站点照旧在最右。列表
+/// 从第一张卡开始排，过期的那条排在最前，其余按查询时间从新到旧。查过的余额永远
 /// 显示上次的数值（「暂无」只出现在真的一条余额都没有、也从没查到过的时候）。
 final class ProviderBalancesController: UITableViewController {
     /// 页内正在画的行，已按排序规则排好。
@@ -205,19 +205,29 @@ final class ProviderBalanceCardCell: UITableViewCell {
             $0.spacing = 6
         }
 
-        // 时间在前、站点紧随其后，同一行：站点把剩余宽度占满，太长时截断。
+        // 底部一行：左边是查询时间（失败时是原因），站点推到卡片最右端，
+        // 中间留弹性空白，两者不贴在一起。宽度不够时先截断左边的时间。
         timeLabel.font = .preferredFont(forTextStyle: .footnote)
         timeLabel.textColor = .tertiaryLabel
+        timeLabel.numberOfLines = 1
+        timeLabel.lineBreakMode = .byTruncatingTail
         timeLabel.setContentHuggingPriority(.required, for: .horizontal)
-        timeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        timeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         hostLabel.font = .preferredFont(forTextStyle: .footnote)
         hostLabel.textColor = .tertiaryLabel
         hostLabel.lineBreakMode = .byTruncatingMiddle
         hostLabel.numberOfLines = 1
-        let footerRow = UIStackView(arrangedSubviews: [timeLabel, hostLabel]).then {
+        hostLabel.setContentHuggingPriority(.required, for: .horizontal)
+        hostLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        // 中间的空白：先被拉伸到占满剩余宽度，也先被压缩到 0。
+        let footerGap = UIView().then {
+            $0.setContentHuggingPriority(.init(1), for: .horizontal)
+            $0.setContentCompressionResistancePriority(.init(1), for: .horizontal)
+        }
+        let footerRow = UIStackView(arrangedSubviews: [timeLabel, footerGap, hostLabel]).then {
             $0.axis = .horizontal
-            $0.alignment = .firstBaseline
-            $0.spacing = 6
+            $0.alignment = .center
+            $0.spacing = 8
         }
 
         let stack = UIStackView(arrangedSubviews: [providerLabel, amountRow, footerRow]).then {
