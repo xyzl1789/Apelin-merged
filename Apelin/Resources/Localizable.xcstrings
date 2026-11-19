@@ -144459,7 +144459,89 @@
         }
       }
     },
-    "总览": {
+    "所有会话总览": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有会话总览"
+          }
+        }
+      }
+    },    "总览": {
       "extractionState": "manual",
       "localizations": {
         "ar": {

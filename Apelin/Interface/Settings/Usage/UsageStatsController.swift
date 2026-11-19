@@ -109,9 +109,9 @@ final class UsageStatsController: UIViewController {
     }
 
     private func buildCards() {
-        // 总览：彩色数字格。
+        // 总览：彩色数字格。统计的是全部会话，标题照实写。
         overviewTilesStack.spacing = 10
-        stack.addArrangedSubview(makeCard(title: String(localized: "总览"), content: overviewTilesStack))
+        stack.addArrangedSubview(makeCard(title: String(localized: "所有会话总览"), content: overviewTilesStack))
         // 按供应商。
         providersStack.spacing = 10
         stack.addArrangedSubview(makeCard(title: String(localized: "按供应商"), content: providersStack))
@@ -229,17 +229,15 @@ final class UsageStatsController: UIViewController {
             }
         }
 
-        // 按模型。
+        // 按模型：与按供应商同样的两条比例条，模型名过长时换行显示全名。
         for row in modelsStack.arrangedSubviews { row.removeFromSuperview() }
         if byModel.isEmpty {
             modelsStack.addArrangedSubview(emptyNote(String(localized: "还没有任何请求记录。")))
         } else {
+            let maxInput = byModel.map(\.input).max() ?? 0
+            let maxOutput = byModel.map(\.output).max() ?? 0
             for entry in byModel {
-                modelsStack.addArrangedSubview(statRow(
-                    title: entry.model,
-                    subtitle: String(localized: "\(entry.count) 次请求"),
-                    value: Self.tokenText(entry.input + entry.output),
-                ))
+                modelsStack.addArrangedSubview(modelRow(entry: entry, maxInput: maxInput, maxOutput: maxOutput))
             }
         }
 
@@ -286,13 +284,15 @@ final class UsageStatsController: UIViewController {
     }
 
     /// 明细行：行名 + 小字说明，右侧大数字（TrollAgent 同款结构）。
+    /// 行名放不下时换行显示全名，绝不截断成省略号——模型 id 常常很长。
     private func statRow(title: String, subtitle: String, value: String) -> UIView {
         let nameLabel = UILabel().then {
             $0.text = title
             $0.font = .preferredFont(forTextStyle: .callout)
             $0.textColor = .label
             $0.adjustsFontForContentSizeCategory = true
-            $0.lineBreakMode = .byTruncatingMiddle
+            $0.numberOfLines = 0
+            $0.lineBreakMode = .byCharWrapping
         }
         let subtitleLabel = UILabel().then {
             $0.text = subtitle
@@ -334,38 +334,6 @@ final class UsageStatsController: UIViewController {
             value: Self.tokenText(entry.input + entry.output),
         )
 
-        // 一行 = 一条条 + 右侧数字。条高 6pt，数字 caption2、颜色随条。
-        func barRow(fraction: CGFloat, color: UIColor, text: String) -> UIView {
-            let label = UILabel().then {
-                $0.text = text
-                $0.font = .preferredFont(forTextStyle: .caption2)
-                $0.textColor = color
-                $0.adjustsFontForContentSizeCategory = true
-                $0.setContentHuggingPriority(.required, for: .horizontal)
-                $0.setContentCompressionResistancePriority(.required, for: .horizontal)
-            }
-            let fill = UIView().then { $0.backgroundColor = color }
-            let track = UIView().then {
-                $0.backgroundColor = .tertiarySystemFill
-                $0.layer.cornerRadius = 3
-                $0.clipsToBounds = true
-            }
-            track.addSubview(fill)
-            fill.snp.makeConstraints {
-                $0.leading.top.bottom.equalToSuperview()
-                $0.width.equalTo(track.snp.width).multipliedBy(min(max(fraction, 0), 1))
-            }
-            let row = UIStackView(arrangedSubviews: [track, label]).then {
-                $0.axis = .horizontal
-                $0.spacing = 8
-                $0.alignment = .center
-            }
-            track.snp.makeConstraints { $0.height.equalTo(6) }
-            row.isAccessibilityElement = true
-            row.accessibilityLabel = text
-            return row
-        }
-
         let inputRow = barRow(
             fraction: CGFloat(entry.input) / CGFloat(max(maxInput, 1)),
             color: .systemOrange,
@@ -387,6 +355,71 @@ final class UsageStatsController: UIViewController {
             )
         }
         return column
+    }
+
+    /// 按模型行：与按供应商同构——行名（过长换行）+ 次数 + 右侧总量，
+    /// 下面橙色输入条与绿色输出条，长度按该模型在本向最大值里的占比。
+    private func modelRow(entry: (model: String, count: Int, input: Int, output: Int, cacheRead: Int, cacheWrite: Int),
+                          maxInput: Int, maxOutput: Int) -> UIView {
+        let top = statRow(
+            title: entry.model,
+            subtitle: String(localized: "\(entry.count) 次请求"),
+            value: Self.tokenText(entry.input + entry.output),
+        )
+
+        let inputRow = barRow(
+            fraction: CGFloat(entry.input) / CGFloat(max(maxInput, 1)),
+            color: .systemOrange,
+            text: String(localized: "输入 \(Self.tokenText(entry.input))"),
+        )
+        let outputRow = barRow(
+            fraction: CGFloat(entry.output) / CGFloat(max(maxOutput, 1)),
+            color: .systemGreen,
+            text: String(localized: "输出 \(Self.tokenText(entry.output))"),
+        )
+
+        let column = UIStackView(arrangedSubviews: [top, inputRow, outputRow]).then {
+            $0.axis = .vertical
+            $0.spacing = 6
+            $0.isAccessibilityElement = true
+            $0.accessibilityLabel = entry.model
+            $0.accessibilityValue = String(
+                localized: "\(entry.count) 次请求，输入 \(Self.tokenText(entry.input))，输出 \(Self.tokenText(entry.output))"
+            )
+        }
+        return column
+    }
+
+    /// 一条比例条 + 右端数字：条高 6pt，数字 caption2、颜色随条。
+    private func barRow(fraction: CGFloat, color: UIColor, text: String) -> UIView {
+        let label = UILabel().then {
+            $0.text = text
+            $0.font = .preferredFont(forTextStyle: .caption2)
+            $0.textColor = color
+            $0.adjustsFontForContentSizeCategory = true
+            $0.setContentHuggingPriority(.required, for: .horizontal)
+            $0.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
+        let fill = UIView().then { $0.backgroundColor = color }
+        let track = UIView().then {
+            $0.backgroundColor = .tertiarySystemFill
+            $0.layer.cornerRadius = 3
+            $0.clipsToBounds = true
+        }
+        track.addSubview(fill)
+        fill.snp.makeConstraints {
+            $0.leading.top.bottom.equalToSuperview()
+            $0.width.equalTo(track.snp.width).multipliedBy(min(max(fraction, 0), 1))
+        }
+        let row = UIStackView(arrangedSubviews: [track, label]).then {
+            $0.axis = .horizontal
+            $0.spacing = 8
+            $0.alignment = .center
+        }
+        track.snp.makeConstraints { $0.height.equalTo(6) }
+        row.isAccessibilityElement = true
+        row.accessibilityLabel = text
+        return row
     }
 
     private func emptyNote(_ text: String) -> UILabel {

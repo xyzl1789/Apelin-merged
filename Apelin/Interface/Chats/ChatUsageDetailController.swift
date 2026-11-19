@@ -245,14 +245,15 @@ final class ChatUsageDetailController: UIViewController {
     }
 
     /// 「总览」卡（TrollAgent 同构）：会话数、消息数无法从这里拿到，
-    /// 用请求次数、总输入（含缓存）、总输出与最大会话代替。
+    /// 用请求次数、总输入（含缓存）、总输出与最大会话代替。统计的是
+    /// 全部会话，标题照实写。
     private func buildOverviewCard() {
         overviewCard.backgroundColor = .secondarySystemGroupedBackground
         overviewCard.layer.cornerRadius = 14
         overviewCard.layer.cornerCurve = .continuous
 
         let title = UILabel()
-        title.text = String(localized: "总览")
+        title.text = String(localized: "所有会话总览")
         title.font = Self.weighted(.preferredFont(forTextStyle: .subheadline), .semibold)
         title.textColor = .label
         title.adjustsFontForContentSizeCategory = true
@@ -439,11 +440,10 @@ final class ChatUsageDetailController: UIViewController {
             empty.adjustsFontForContentSizeCategory = true
             modelsStack.addArrangedSubview(empty)
         } else {
+            let maxInput = byModel.map(\.prompt).max() ?? 0
+            let maxOutput = byModel.map(\.output).max() ?? 0
             for entry in byModel {
-                modelsStack.addArrangedSubview(statRow(
-                    title: "\(entry.model) ｜ \(entry.count) 次",
-                    value: String(localized: "输入 \(Self.tokenText(entry.prompt)) ｜ 输出 \(Self.tokenText(entry.output))"),
-                ))
+                modelsStack.addArrangedSubview(modelRow(entry: entry, maxInput: maxInput, maxOutput: maxOutput))
             }
         }
         renderOverview()
@@ -563,6 +563,65 @@ final class ChatUsageDetailController: UIViewController {
         }
     }
 
+    /// 按模型行：行名（过长换行，绝不截断）+ 次数 + 右侧总量，下面橙色
+    /// 输入条与绿色输出条，长度按该模型在本向最大值里的占比——与设置里
+    /// 「按供应商」同一种条。
+    private func modelRow(entry: (model: String, count: Int, prompt: Int, output: Int),
+                          maxInput: Int, maxOutput: Int) -> UIView {
+        let top = statRow(title: entry.model, value: "\(Self.tokenText(entry.prompt + entry.output)) · \(entry.count) 次")
+        let inputRow = barRow(
+            fraction: CGFloat(entry.prompt) / CGFloat(max(maxInput, 1)),
+            color: .systemOrange,
+            text: String(localized: "输入 \(Self.tokenText(entry.prompt))"),
+        )
+        let outputRow = barRow(
+            fraction: CGFloat(entry.output) / CGFloat(max(maxOutput, 1)),
+            color: .systemGreen,
+            text: String(localized: "输出 \(Self.tokenText(entry.output))"),
+        )
+        return UIStackView(arrangedSubviews: [top, inputRow, outputRow]).then {
+            $0.axis = .vertical
+            $0.spacing = 6
+            $0.isAccessibilityElement = true
+            $0.accessibilityLabel = entry.model
+            $0.accessibilityValue = String(
+                localized: "\(entry.count) 次请求，输入 \(Self.tokenText(entry.prompt))，输出 \(Self.tokenText(entry.output))"
+            )
+        }
+    }
+
+    /// 一条比例条 + 右端数字：条高 6pt，数字 caption2、颜色随条。
+    private func barRow(fraction: CGFloat, color: UIColor, text: String) -> UIView {
+        let label = UILabel().then {
+            $0.text = text
+            $0.font = .preferredFont(forTextStyle: .caption2)
+            $0.textColor = color
+            $0.adjustsFontForContentSizeCategory = true
+            $0.setContentHuggingPriority(.required, for: .horizontal)
+            $0.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
+        let fill = UIView().then { $0.backgroundColor = color }
+        let track = UIView().then {
+            $0.backgroundColor = .tertiarySystemFill
+            $0.layer.cornerRadius = 3
+            $0.clipsToBounds = true
+        }
+        track.addSubview(fill)
+        fill.snp.makeConstraints {
+            $0.leading.top.bottom.equalToSuperview()
+            $0.width.equalTo(track.snp.width).multipliedBy(min(max(fraction, 0), 1))
+        }
+        let row = UIStackView(arrangedSubviews: [track, label]).then {
+            $0.axis = .horizontal
+            $0.spacing = 8
+            $0.alignment = .center
+        }
+        track.snp.makeConstraints { $0.height.equalTo(6) }
+        row.isAccessibilityElement = true
+        row.accessibilityLabel = text
+        return row
+    }
+
     private func statRow(title: String, value: String) -> UIView {
         let row = UIStackView(arrangedSubviews: [
             UILabel().then {
@@ -570,6 +629,9 @@ final class ChatUsageDetailController: UIViewController {
                 $0.font = .preferredFont(forTextStyle: .callout)
                 $0.textColor = .secondaryLabel
                 $0.adjustsFontForContentSizeCategory = true
+                // 模型 id 常常很长：放不下就换行显示全名，不截断。
+                $0.numberOfLines = 0
+                $0.lineBreakMode = .byCharWrapping
             },
             UILabel().then {
                 $0.text = value
@@ -581,6 +643,7 @@ final class ChatUsageDetailController: UIViewController {
         ])
         row.axis = .horizontal
         row.spacing = 8
+        row.alignment = .firstBaseline
         return row
     }
 
