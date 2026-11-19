@@ -426,6 +426,13 @@ actor WorkerState {
                         asksBeforeScreen: ScreenConsent.asks(open.asksBeforeScreen),
                     ),
                     dataRoot: dataRoot,
+                    mcpServers: (open.mcpServers ?? []).compactMap { connection in
+                        guard let url = URL(string: connection.url) else { return nil }
+                        return try? MCPServerConfiguration(
+                            name: connection.name, url: url,
+                            headers: connection.headers, description: connection.note
+                        )
+                    },
                     thinking: .init(rawValue: open.reasoningEffort?.rawValue ?? "off") ?? .off,
                     serviceTier: AgentWorker.serviceTier(open.serviceTier),
                     modelParameters: open.modelParameters ?? .init(),

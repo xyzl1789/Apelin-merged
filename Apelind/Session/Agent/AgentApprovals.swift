@@ -353,6 +353,9 @@ actor AgentSessionTable {
         /// The reader's standing instructions, as the session opened with
         /// them: an agent's session has its opener's.
         var promptInjection: String? = nil
+        /// The MCP servers the session opened with; an agent's session has
+        /// its opener's. A child must not name its own server.
+        var mcpServers: [MCPConnection]? = nil
         var title: String?
         var createdAt: Date
         var approvals: [String: ApprovalDecision] = [:]

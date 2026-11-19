@@ -105,6 +105,29 @@ enum Preferences {
         }
     }
 
+    enum MCPServers {
+        private static let store = MCPServerStore(root: DataFolder.app.root)
+
+        /// Read at each use: an edit in Settings must reach a chat that is
+        /// already open, just as a persona edit does. A bad file is shown as
+        /// no servers instead of blocking every conversation.
+        static var snapshot: MCPServerSnapshot {
+            get { (try? store.read()) ?? MCPServerSnapshot() }
+            set { try? store.save(newValue) }
+        }
+
+        /// Sent with an open. Reading a bad file yields nil, which the
+        /// worker treats as no servers (safe degradation); no enabled
+        /// server is an empty list, the same result.
+        static var wire: [MCPConnection]? {
+            (try? store.enabledConnections()).map { $0 }
+        }
+
+        static func save(_ snapshot: MCPServerSnapshot) throws {
+            try store.save(snapshot)
+        }
+    }
+
     /// The text the reader wants every conversation to start under: what the
     /// agent's system prompt carries before anything else. Now backed by the
     /// persona collection; the single text/switch below is kept only as a

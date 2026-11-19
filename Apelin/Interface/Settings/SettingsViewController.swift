@@ -23,6 +23,7 @@ final class SettingsViewController: TableController {
         case permissionMode
         /// Settings ▸ Agent ▸ Prompt Injection: the text before every prompt.
         case promptInjection
+        case mcpServers
 
         /// 设置 ▸ Agent ▸ 自动助手：测速、自动测速间隔与排除列表。
         case autoAssistant
@@ -67,6 +68,7 @@ final class SettingsViewController: TableController {
                 case .promptInjection: Preferences.PromptInjection.enabled
                     ? String(localized: "On")
                     : String(localized: "Off")
+                case .mcpServers: Preferences.MCPServers.snapshot.servers.items.filter(\.enabled).count.formatted()
                 case .weChat: channelSummary
                 case .memories: memorySummary
                 default: nil
@@ -132,7 +134,7 @@ final class SettingsViewController: TableController {
     private func rows(in section: Section) -> [Row] {
         switch section {
         case .chat: [.preferences]
-        case .agent: [.modelProviders, .defaultModels, .permissionMode, .promptInjection, .autoAssistant, .usageStats, .memories, .skills]
+        case .agent: [.modelProviders, .defaultModels, .permissionMode, .promptInjection, .mcpServers, .autoAssistant, .usageStats, .memories, .skills]
         case .environment: [.toolchain, .sdks, .apps, .templates]
         case .git: [.git]
         case .plugins: [.weChat]
@@ -194,6 +196,8 @@ final class SettingsViewController: TableController {
             content.text = String(localized: "Permission Mode")
         case .promptInjection:
             content.text = String(localized: "Prompt Injection")
+        case .mcpServers:
+            content.text = String(localized: "MCP Servers")
         case .autoAssistant:
             content.text = String(localized: "Auto Assistant")
         case .usageStats:
@@ -249,6 +253,7 @@ final class SettingsViewController: TableController {
         case .defaultModels: page = DefaultModelsController()
         case .permissionMode: page = PermissionModeController()
         case .promptInjection: page = PromptInjectionController()
+        case .mcpServers: page = MCPServersController()
         case .autoAssistant: page = AutoAssistantController()
         case .usageStats: page = UsageStatsController()
 

@@ -1,3 +1,4 @@
+import ApelinCore
 import Foundation
 
 // Agent: one apelin-agent process per session (KWWKAgent), spawned by the
@@ -525,6 +526,9 @@ public struct AgentOpenRequest: OperationRequest {
     /// reaches no worker, so a chat opened before the setting changed hears it
     /// through every prompt instead (`AgentPromptRequest.promptInjection`).
     public var promptInjection: String?
+    /// The MCP servers from Settings at this session's open. Existing
+    /// sessions keep their connections; a new session uses later edits.
+    public var mcpServers: [MCPConnection]?
     /// A first prompt, submitted as soon as the session is open.
     public var prompt: String?
     /// End the session (its task) when the first run finishes: `succeeded`
@@ -561,6 +565,7 @@ public struct AgentOpenRequest: OperationRequest {
         serviceTier: AgentServiceTier? = nil,
         modelParameters: AgentModelParameters? = nil,
         promptInjection: String? = nil,
+        mcpServers: [MCPConnection]? = nil,
         prompt: String? = nil,
         closeWhenFinished: Bool? = nil,
         title: String? = nil,
@@ -580,6 +585,7 @@ public struct AgentOpenRequest: OperationRequest {
         self.serviceTier = serviceTier
         self.modelParameters = modelParameters
         self.promptInjection = promptInjection
+        self.mcpServers = mcpServers
         self.prompt = prompt
         self.closeWhenFinished = closeWhenFinished
         self.title = title

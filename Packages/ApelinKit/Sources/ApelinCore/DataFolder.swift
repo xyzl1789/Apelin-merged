@@ -111,6 +111,11 @@ public struct DataFolder: Sendable, Equatable {
         folder("WeChatChannel")
     }
 
+    /// User MCP servers the agent connects to at the start of a session.
+    public var mcpServers: URL {
+        folder("MCP").appendingPathComponent("servers.json")
+    }
+
     /// The directory of the project named `name`, or nil when the name breaks
     /// `ProjectName`'s rules.
     public func project(named name: String) -> URL? {

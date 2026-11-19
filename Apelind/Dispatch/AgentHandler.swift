@@ -408,6 +408,7 @@ enum AgentHandler: DomainHandler {
                 mode: open.approvalMode,
                 asksBeforeScreen: asksBeforeScreen,
                 promptInjection: resolved.promptInjection,
+                mcpServers: resolved.mcpServers,
                 title: title ?? existing?.title,
                 createdAt: Date(),
                 parentSessionID: opener?.sessionID ?? existing?.parentSessionID ?? saved?.parentSessionID,

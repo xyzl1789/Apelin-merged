@@ -57,6 +57,7 @@ enum AgentConversationRules {
             reasoningEffort: open.reasoningEffort,
             serviceTier: open.serviceTier,
             promptInjection: opener.promptInjection,
+            mcpServers: opener.mcpServers,
             prompt: prompt,
             title: title(open.title),
         )
