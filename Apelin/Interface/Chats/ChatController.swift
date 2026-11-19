@@ -1334,7 +1334,12 @@ final class ChatController: UIViewController {
     private lazy var inlineSearch: ChatInlineSearch = {
         let search = ChatInlineSearch { [weak self] in
             guard let self else { return [] }
-            return self.messages.compactMap { message -> (id: UUID, role: String, text: String)? in
+            // 必须索引列表真正画出来的那批行：折叠掉的 thinking 行、没有正文的
+            // 助手行、审批行都不在列表里，命中它们时跳不过去、也没有高亮可画。
+            let visible = ChatProcessPresentation.rows(messages) {
+                ChatTraceExpansion.isExpanded(turn: $0)
+            }
+            return visible.compactMap { message -> (id: UUID, role: String, text: String)? in
                 guard !message.text.isEmpty, !message.role.isActivity else { return nil }
                 return (message.id, Self.roleLabel(message.role), message.text)
             }
@@ -1380,20 +1385,23 @@ final class ChatController: UIViewController {
         let query = inlineSearch.isActive ? inlineSearch.query : ""
         var next: [UUID: ChatSearchHighlightCenter.State] = [:]
         if !query.isEmpty {
-            let currentID = inlineSearch.currentIndex.flatMap {
-                inlineSearch.matches.indices.contains($0) ? inlineSearch.matches[$0].messageID : nil
+            let current = inlineSearch.currentIndex.flatMap {
+                inlineSearch.matches.indices.contains($0) ? inlineSearch.matches[$0] : nil
             }
+            // 每条命中（消息 + 出现序号）都要有一份状态：同一条消息里
+            // 的三次出现，当前是第几次必须传下去，绘制器才只染那一处。
             for match in inlineSearch.matches {
                 next[match.messageID] = ChatSearchHighlightCenter.State(
                     query: query,
-                    isCurrent: match.messageID == currentID,
+                    currentOccurrence: match.messageID == current?.messageID ? match.occurrence : nil,
                 )
             }
         }
         searchHighlightCenter.apply(
             query: query,
             highlightedIDs: Set(next.keys),
-            current: next.first(where: { $0.value.isCurrent })?.key,
+            current: current?.messageID,
+            occurrence: current?.occurrence
         )
         // 状态没变的行不碰：State 是 Equatable，黄与橙、有与无都可比。
         let changed = next.filter { lastSearchHighlightStates[$0.key] != $0.value }.keys

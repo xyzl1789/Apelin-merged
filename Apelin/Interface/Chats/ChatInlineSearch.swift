@@ -10,10 +10,12 @@ import UIKit
 /// 结果存在会话内，按消息分组排序（自上而下），便于上下步进。
 @MainActor
 final class ChatInlineSearch: NSObject {
-    /// 一处命中。
+    /// 一处命中：消息里的第 `occurrence` 次出现（0 起）。逐步跳转按
+    /// 出现走，而不是按消息走——一条消息里出现三次，上下键就停三次。
     struct Match {
         let messageID: UUID
         let text: String
+        let occurrence: Int
     }
 
     enum Notice {
@@ -76,8 +78,9 @@ final class ChatInlineSearch: NSObject {
         onUpdate?()
     }
 
-    /// 输入变化：立即重搜（消息量级内一次全文扫描足够快，Minis 的
-    /// 250ms 防抖防的是每键一次的重排，这里搜索本身轻，直接跑）。
+    /// 输入变化：立即重搜。只看连续出现的子串——搜索要能定位到具体的
+    /// 一处并把它高亮，子序列式的模糊命中找不到可画的区间，计数再漂亮
+    /// 也没法跳到「那一个词」上。匹配规则与 ChatSearchMatcher 一致。
     func search(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         query = trimmed
@@ -87,16 +90,17 @@ final class ChatInlineSearch: NSObject {
             onUpdate?()
             return
         }
-        // Best first 之后按会话顺序还原：先按分数过滤（要不要出现），
-        // 再按消息在会话里的位置排序（Minis 的上下步进语义）。
-        let entries = messages()
-        let hits = SearchScorer.ranked(entries, query: trimmed) { $0.text }
-            .map { $0.item }
-        let order = Dictionary(uniqueKeysWithValues: entries.indices.map { (entries[$0].id, $0) })
-        matches = hits.sorted { (order[$0.id] ?? .max) < (order[$1.id] ?? .max) }
-            .map { Match(messageID: $0.id, text: $0.text) }
-        // 新查询落到最新一处结果之前先跳到第一处；Minis 是「最新优先」，
-        // 这里顺序自上而下，落到第一条命中等价于「最先能看到的」。
+        // 命中按消息在会话里的位置自上而下排（与显示顺序一致），
+        // 每条消息里的多处出现再按出现次序排。
+        var found: [Match] = []
+        for entry in messages() where !entry.text.isEmpty {
+            let ranges = ChatSearchMatcher.ranges(of: trimmed, in: entry.text)
+            for (index, _) in ranges.enumerated() {
+                found.append(Match(messageID: entry.id, text: entry.text, occurrence: index))
+            }
+        }
+        matches = found
+        // 落到第一处命中，等同「最先能看到的那一处」。
         currentIndex = matches.isEmpty ? nil : 0
         onUpdate?()
         navigateToCurrent()

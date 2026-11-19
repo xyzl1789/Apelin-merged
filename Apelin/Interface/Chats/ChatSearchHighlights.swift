@@ -7,32 +7,43 @@ import UIKit
 /// ChatController 通过 reconfigureRow 驱动，这里不主动通知。
 @MainActor
 final class ChatSearchHighlightCenter {
-    /// 一条消息的高亮状态：在这段显示文本里找 `query`，本条是否是
-    /// 当前聚焦的命中（下一处/上一处跳到的那条消息）。
+    /// 一条消息的高亮状态：`query` 是要在显示文本里找的词；
+    /// `currentOccurrence` 是「当前聚焦的那处出现」在这段文本里的序号
+    /// （0 起）。nil 表示本条不是当前命中，只画普通的黄。
     struct State: Equatable {
         let query: String
-        let isCurrent: Bool
+        let currentOccurrence: Int?
     }
 
     private(set) var query: String = ""
     private var currentMessageID: UUID?
+    private var currentOccurrence: Int?
     /// 搜索打开时命中的消息集合：只有这些行需要重配重绘。
     private(set) var highlightedIDs: Set<UUID> = []
 
     /// 搜索状态整体交给它；query 为空即清空。
-    func apply(query: String, highlightedIDs: Set<UUID>, current: UUID?) {
+    func apply(
+        query: String,
+        highlightedIDs: Set<UUID>,
+        current: UUID?,
+        occurrence: Int?
+    ) {
         self.query = query
         self.highlightedIDs = query.isEmpty ? [] : highlightedIDs
         currentMessageID = query.isEmpty ? nil : current
+        currentOccurrence = query.isEmpty ? nil : occurrence
     }
 
     func clear() {
-        apply(query: "", highlightedIDs: [], current: nil)
+        apply(query: "", highlightedIDs: [], current: nil, occurrence: nil)
     }
 
     func state(for messageID: UUID) -> State? {
         guard highlightedIDs.contains(messageID) else { return nil }
-        return State(query: query, isCurrent: messageID == currentMessageID)
+        return State(
+            query: query,
+            currentOccurrence: messageID == currentMessageID ? currentOccurrence : nil,
+        )
     }
 }
 
@@ -78,7 +89,7 @@ enum ChatSearchMatcher {
 @MainActor
 final class ChatSearchHighlightRenderer: TextLabel.LineRenderer {
     private var ranges: [NSRange] = []
-    private var isCurrent = false
+    private var currentOccurrence: Int?
     private let matchColor = ChatSearchHighlightStyle.matchColor()
     private let currentColor = ChatSearchHighlightStyle.currentColor()
 
@@ -87,16 +98,16 @@ final class ChatSearchHighlightRenderer: TextLabel.LineRenderer {
     func update(state: ChatSearchHighlightCenter.State?, text: String) {
         guard let state, !state.query.isEmpty else {
             ranges = []
-            isCurrent = false
+            currentOccurrence = nil
             return
         }
         ranges = ChatSearchMatcher.ranges(of: state.query, in: text)
-        isCurrent = state.isCurrent
+        currentOccurrence = state.currentOccurrence
     }
 
     func clear() {
         ranges = []
-        isCurrent = false
+        currentOccurrence = nil
     }
 
     override func drawBackground(
@@ -110,18 +121,20 @@ final class ChatSearchHighlightRenderer: TextLabel.LineRenderer {
         let lineRange = NSRange(location: cfRange.location, length: cfRange.length)
         guard lineRange.location != NSNotFound, lineRange.length > 0 else { return }
         let text = layout.attributedString.string as NSString
-        if !isCurrent {
-            for range in ranges {
-                draw(color: matchColor, range: range, lineRange: lineRange, text: text, layout: layout, context: context)
-            }
-        } else {
-            // 当前命中的消息：先画全部命中的黄，再把每处画成橙盖上去。
-            for range in ranges {
-                draw(color: matchColor, range: range, lineRange: lineRange, text: text, layout: layout, context: context)
-            }
-            for range in ranges {
-                draw(color: currentColor, range: range, lineRange: lineRange, text: text, layout: layout, context: context)
-            }
+        for range in ranges {
+            draw(color: matchColor, range: range, lineRange: lineRange, text: text, layout: layout, context: context)
+        }
+        // 当前聚焦的那处出现覆盖成橙：只改一处，不把整条消息的所有命中
+        // 都染橙，否则「第几处」这条信息在画面上就看不见了。
+        if let index = currentOccurrence, ranges.indices.contains(index) {
+            draw(
+                color: currentColor,
+                range: ranges[index],
+                lineRange: lineRange,
+                text: text,
+                layout: layout,
+                context: context,
+            )
         }
     }
 
@@ -138,14 +151,18 @@ final class ChatSearchHighlightRenderer: TextLabel.LineRenderer {
     ) {
         let overlap = NSIntersectionRange(range, lineRange)
         guard overlap.location != NSNotFound, overlap.length > 0 else { return }
-        // 修整区间到字符边界，避免把代理对（emoji 等）从中剖开。
+        // 修整区间到字符边界，避免把代理对（emoji 等）从中剖开：
+        // 起点落在低位代理上说明高位在区间外，右移一位；终点落在高位
+        // 代理上说明低位在区间外，缩短一位。
         var location = overlap.location
         var length = overlap.length
-        while length > 0, location + length < text.length, text.character(at: location).isHighSurrogate {
+        while length > 0, text.character(at: location) >= 0xDC00, text.character(at: location) <= 0xDFFF {
             location += 1
             length -= 1
         }
-        while length > 0, text.character(at: location + length - 1).isLowSurrogate {
+        while length > 0 {
+            let last = text.character(at: location + length - 1)
+            guard last >= 0xD800, last <= 0xDBFF else { break }
             length -= 1
         }
         guard length > 0 else { return }
@@ -158,10 +175,4 @@ final class ChatSearchHighlightRenderer: TextLabel.LineRenderer {
         }
         context.restoreGState()
     }
-}
-
-private extension UniChar {
-    /// UTF-16 代理对：高位 0xD800–0xDBFF，低位 0xDC00–0xDFFF。
-    var isHighSurrogate: Bool { (0xD800 ... 0xDBFF).contains(self) }
-    var isLowSurrogate: Bool { (0xDC00 ... 0xDFFF).contains(self) }
 }
