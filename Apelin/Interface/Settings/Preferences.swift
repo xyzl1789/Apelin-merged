@@ -174,8 +174,6 @@ enum Preferences {
             try store.save(snapshot)
         }
 
-        static func forPrompt: String { forPrompt(model: nil) }
-
         /// The body for the persona in force at the given model, or "".
         static func forPrompt(model: String?) -> String {
             PersonaResolver.text(snapshot, model: model)
