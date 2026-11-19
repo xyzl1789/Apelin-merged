@@ -72,7 +72,7 @@ final class PromptInjectionController: TableController {
         dataSource.footerTitle = { [weak self] section in
             switch section {
             case .settings:
-                String(localized: "A persona's text is prepended to every conversation. An automatic persona matching the model takes over from the manual one.")
+                return String(localized: "A persona's text is prepended to every conversation. An automatic persona matching the model takes over from the manual one.")
             case let .persona(id):
                 // 每张人设卡片下方写明它的用处，自动/手动与置顶各说明一次。
                 guard let persona = self?.snapshot.personas.first(where: { $0.id == id }) else { return nil }
@@ -87,7 +87,7 @@ final class PromptInjectionController: TableController {
                 }
                 return lines.joined(separator: "\n")
             case .empty:
-                String(localized: "Tap “+” to add a persona.")
+                return String(localized: "Tap “+” to add a persona.")
             }
         }
         load()
