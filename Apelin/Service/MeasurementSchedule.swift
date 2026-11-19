@@ -5,6 +5,9 @@ import Foundation
 enum MeasurementSchedule {
     enum Interval: String, CaseIterable, Sendable {
         case off
+        case thirtyMinutes
+        case hourly
+        case threeHours
         case sixHours
         case daily
         case everyThreeDays
@@ -12,6 +15,9 @@ enum MeasurementSchedule {
         var title: String {
             switch self {
             case .off: String(localized: "Auto Measure Off")
+            case .thirtyMinutes: String(localized: "Auto Measure Every 30 Minutes")
+            case .hourly: String(localized: "Auto Measure Every Hour")
+            case .threeHours: String(localized: "Auto Measure Every 3 Hours")
             case .sixHours: String(localized: "Auto Measure Every 6 Hours")
             case .daily: String(localized: "Auto Measure Every Day")
             case .everyThreeDays: String(localized: "Auto Measure Every 3 Days")
@@ -21,6 +27,9 @@ enum MeasurementSchedule {
         var duration: TimeInterval? {
             switch self {
             case .off: nil
+            case .thirtyMinutes: 30 * 60
+            case .hourly: 60 * 60
+            case .threeHours: 3 * 60 * 60
             case .sixHours: 6 * 60 * 60
             case .daily: 24 * 60 * 60
             case .everyThreeDays: 72 * 60 * 60
