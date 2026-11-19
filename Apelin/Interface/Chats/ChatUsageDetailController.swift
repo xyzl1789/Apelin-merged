@@ -341,12 +341,22 @@ final class ChatUsageDetailController: UIViewController {
         let url = UsageRecorder.file(in: DataFolder.app.root)
         let session = sessionID
         let loaded = Task.detached {
-            UsageRecorder.readAll(from: url)
+            let all = UsageRecorder.readAll(from: url)
+            // 会话 id → 侧边栏标题，给「最大会话 TOP8」的行名用。
+            var titles: [String: String] = [:]
+            if let chats = try? await ChatStore(folder: .app).load() {
+                for record in chats.records {
+                    guard let id = record.sessionID, !id.isEmpty else { continue }
+                    if titles[id] == nil { titles[id] = record.summary.displayTitle }
+                }
+            }
+            return (all, titles)
         }
         Task { [weak self] in
-            let all = await loaded.value
+            let (all, titles) = await loaded.value
             guard let self else { return }
             self.allRecords = all
+            self.sessionTitles = titles
             let records = all.filter { $0.sessionID == session }.sorted { $0.time < $1.time }
             var totals = Totals()
             var models: [String: (count: Int, prompt: Int, output: Int)] = [:]
@@ -476,8 +486,8 @@ final class ChatUsageDetailController: UIViewController {
         overviewStack.addArrangedSubview(statRow(title: String(localized: "最大会话"), value: Self.tokenText(maxSession)))
     }
 
-    /// 「最大会话 TOP8」：按请求量最大的会话排，行名是会话 id 的前 8 位
-    /// （记录里没有标题可读）。
+    /// 「最大会话 TOP8」：按请求量最大的会话排，行名是侧边栏里的会话标题，
+    /// 已删除或没标题的会话退回 id 前 8 位。
     private func renderRanking() {
         for row in rankingStack.arrangedSubviews { row.removeFromSuperview() }
         if allRecords.isEmpty {
@@ -494,7 +504,7 @@ final class ChatUsageDetailController: UIViewController {
             .sorted { $0.tokens > $1.tokens }
             .prefix(8)
         for (index, entry) in top.enumerated() {
-            let name = String(entry.id.prefix(8))
+            let name = sessionTitles[entry.id] ?? String(entry.id.prefix(8))
             let row = UIStackView(arrangedSubviews: [
                 UILabel().then {
                     $0.text = "\(index + 1)"
