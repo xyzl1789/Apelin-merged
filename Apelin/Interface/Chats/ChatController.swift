@@ -556,6 +556,32 @@ final class ChatController: UIViewController {
         messageList.contentOffset = CGPoint(x: messageList.contentOffset.x, y: target)
     }
 
+    /// The list measures newly visible rows during layout. Advance a few
+    /// bounded passes so the offset jumped to is the real end, not where the
+    /// estimated heights first put it: each pass measures another screenful,
+    /// and a long conversation needs one per screen back. Returns whether the
+    /// reader reached the newest message. A clamp or an asynchronous
+    /// attachment that keeps more passes on the main thread leaves it false
+    /// for the next real layout.
+    @discardableResult
+    private func settleAtLatestMessage() -> Bool {
+        for _ in 0 ..< 4 {
+            let previousOffset = messageList.contentOffset.y
+            let previousEnd = messageList.maximumContentOffset.y
+            messageList.scrollToBottom(animated: false)
+            messageList.layoutIfNeeded()
+            if abs(messageList.contentOffset.y - messageList.maximumContentOffset.y) <= 0.5 {
+                break
+            }
+            if abs(messageList.contentOffset.y - previousOffset) <= 0.5,
+               abs(messageList.maximumContentOffset.y - previousEnd) <= 0.5
+            {
+                break
+            }
+        }
+        return abs(messageList.contentOffset.y - messageList.maximumContentOffset.y) <= 0.5
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         updateMessageListInsets()
@@ -568,30 +594,10 @@ final class ChatController: UIViewController {
            messageList.bounds.height > 0
         {
             needsInitialScroll = false
-            // The list measures newly visible rows during layout. Settle those
-            // measurements at the end too, before the page is revealed. Each
-            // advancing pass measures another screenful, and a long
-            // conversation needs one per screen back to its end: a few passes
-            // here, and the rest while the page holds the latest message
-            // (`holdLatestMessage`), so switching to a long chat does not lay
-            // it out in one go. A clamp or an asynchronous attachment must not
-            // keep the main thread here; leave the request pending for its
-            // next real layout instead.
-            for _ in 0 ..< 4 {
-                let previousOffset = messageList.contentOffset.y
-                let previousEnd = messageList.maximumContentOffset.y
-                messageList.scrollToBottom(animated: false)
-                messageList.layoutIfNeeded()
-                if abs(messageList.contentOffset.y - messageList.maximumContentOffset.y) <= 0.5 {
-                    break
-                }
-                if abs(messageList.contentOffset.y - previousOffset) <= 0.5,
-                   abs(messageList.maximumContentOffset.y - previousEnd) <= 0.5
-                {
-                    break
-                }
-            }
-            needsInitialScroll = abs(messageList.contentOffset.y - messageList.maximumContentOffset.y) > 0.5
+            // The rest of the passes run while the page holds the latest
+            // message (`holdLatestMessage`), so switching to a long chat does
+            // not lay it out in one go.
+            if !settleAtLatestMessage() { needsInitialScroll = true }
         }
         if holdsLatestMessage {
             messageList.layoutIfNeeded()
@@ -625,7 +631,22 @@ final class ChatController: UIViewController {
             guard let self else { return }
             do {
                 try await runtime.loadHistory(chat.id)
-                if self.chat?.id == chat.id { refreshRuntime() }
+                guard self.chat?.id == chat.id else { return }
+                self.refreshRuntime()
+                // loadHistory 是异步的：它可能在这页已经跳到底部之后才把
+                // 历史行插进来，把最新消息顶到屏幕下方。切换对话时读者总
+                // 是要在最新消息处的，所以插完再安稳地落一次底；用户在这
+                // 期间手动划走查看旧消息时则不打扰（holdsLatestMessage 已被清掉）。
+                if self.holdsLatestMessage, !self.isSwitchingChat, self.view.window != nil {
+                    if self.settleAtLatestMessage() {
+                        self.needsInitialScroll = false
+                    } else {
+                        // 还有异步高度没定下来：留给下一次真实布局继续安稳。
+                        self.needsInitialScroll = true
+                        self.view.setNeedsLayout()
+                    }
+                    self.updateLatestMessageButton()
+                }
             } catch is CancellationError {
                 return
             } catch {

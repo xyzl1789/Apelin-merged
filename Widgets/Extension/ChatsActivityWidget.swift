@@ -63,7 +63,7 @@ struct ChatsActivityWidget: Widget {
                 // 收起态的圆角和边界裁掉，只剩一个小点。并排的数字完整可见。
                 HStack(spacing: 3) {
                     MarkView(size: 16, braces: .white)
-                    if state.inProgressCount > 0, state.statusSymbol == "arrow.triangle.2.circlepath" {
+                    if state.inProgressCount > 0 {
                         Text(verbatim: "\(state.inProgressCount)")
                             .font(.system(size: 13, weight: .bold, design: .rounded))
                             .monospacedDigit()
@@ -100,14 +100,15 @@ struct ChatsActivityWidget: Widget {
     }
 }
 
-/// 收起状态的整体符号：等待审批是警告三角，最新失败是叉，运行中
-/// 是进度环，全部完成是纯绿对勾。
+/// 收起状态的整体符号：等待审批是警告三角，有工作在跑是进度环，
+/// 只有全部结束且出过错才是叉，全成功是纯绿对勾。进行中优先于历史失败，
+/// 免得一个旧的失败会话让新任务在跑时也一直顶着 ❌。
 @available(iOS 16.2, *)
 private extension ChatWidgetSnapshot {
     var statusSymbol: String {
         if waitingCount > 0 { return "exclamationmark.triangle.fill" }
-        if chats.contains(where: { $0.status == .failed }) { return "xmark.circle.fill" }
         if workingCount > 0 { return "arrow.triangle.2.circlepath" }
+        if chats.contains(where: { $0.status == .failed }) { return "xmark.circle.fill" }
         // 全部完成：照 Minis 的绿色圆底对勾（caption 圈勾），收起态不再
         // 用 body 字号的裸对勾——那个明显偏大。
         return "checkmark.circle.fill"
@@ -115,8 +116,8 @@ private extension ChatWidgetSnapshot {
 
     var statusColor: Color {
         if waitingCount > 0 { return WidgetTheme.island.amber }
-        if chats.contains(where: { $0.status == .failed }) { return WidgetTheme.island.red }
         if workingCount > 0 { return WidgetTheme.island.green }
+        if chats.contains(where: { $0.status == .failed }) { return WidgetTheme.island.red }
         return WidgetTheme.island.green
     }
 

@@ -144,7 +144,8 @@ final class ChatWidgetPublisher {
     /// One activity while anything is in progress, kept showing its final
     /// state (✅ / ❌) after everything has finished until the user closes
     /// it by hand. An activity the last run left is updated, or ended, by
-    /// the first look after launch.
+    /// the first look after launch. Once the user closes it, a finished
+    /// state never brings it back — only a new turn starting does.
     @available(iOS 16.2, *)
     private static func apply(_ state: ChatWidgetSnapshot, rebuild: Bool = false) async {
         guard !isClosedForQuit else { return }
@@ -158,9 +159,14 @@ final class ChatWidgetPublisher {
             return
         }
         let content = ActivityContent(state: state, staleDate: nil)
+        // 用户手动关掉活动后，纯终态（没有进行中的工作）不该把 ❌/✅ 再请回来：
+        // 活动只在工作开始时创建，工作结束后更新成最终状态，直到用户再关掉。
+        let hasWork = state.inProgressCount > 0
         // rebuild：结束全部再重新请求，系统才会用新扩展的画面重绘——
-        // 只 update 时已存在活动可能一直沿用装新版前的渲染。
+        // 只 update 时已存在活动可能一直沿用装新版前的渲染。没有现存活动
+        // 又没有工作在做时跳过，免得把用户关掉的终态活动重建出来。
         if rebuild {
+            guard !existing.isEmpty || hasWork else { return }
             for activity in existing {
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
@@ -175,7 +181,8 @@ final class ChatWidgetPublisher {
             }
             return
         }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        // 没有现存活动：只有真的有工作在做才新建，终态不再自动请回来。
+        guard hasWork, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         _ = try? Activity.request(attributes: ChatActivityAttributes(), content: content)
     }
 
