@@ -40,6 +40,11 @@ public actor AgentSession {
     private var pendingEvents: Task<Void, Error>?
     private var pendingSteers: Set<UUID> = []
     private var dispatchedSteers: Set<UUID> = []
+    /// The turns of conversations this session opened whose report it has
+    /// already taken (`AgentTurnReport.key`): a redelivered report is the
+    /// same fact and never reaches the queue twice. Seeded at open from the
+    /// log and from what `pending.json` still holds.
+    private var acceptedReportKeys: Set<AgentTurnReportKey> = []
     private var openingMessageID: UUID?
     private var acceptedPending: Set<UUID> = []
     private var lastPendingTimestamp: Int64 = 0
@@ -93,6 +98,9 @@ public actor AgentSession {
         var timestamp: Int64
         /// Provenance retained for either source or reader steering.
         var from: String? = nil
+        /// The turn reports the message carried, when the host reported them
+        /// with it; kept so the taken event still names them.
+        var reports: [AgentTurnReport]? = nil
         /// What the model had been told before this message's delta, and
         /// whether the host's restart was still to tell: put back if the run
         /// never takes it.
@@ -243,6 +251,7 @@ public actor AgentSession {
             readOnlyRoots: ReadOnlyRoots(installRoot: configuration.installRoot, dataRoot: configuration.dataRoot),
             record: { _ = try await log.append($0) },
             journal: journal,
+            delegationBrief: configuration.delegationBrief,
         )
         let connecting = Date()
         let (mcpManager, mcpTools) = await MCPBridge.connect(configuration.mcpServers)
@@ -333,9 +342,15 @@ public actor AgentSession {
         self.toolExtensions = toolExtensions
         // read in the log's opening pass, so the log is not read again
         submitted = log.opened.userMessageIDs.union(pending.state.seen)
+        // A report the log took, or one still waiting in the queue, is never
+        // taken a second time when the host delivers it again.
+        acceptedReportKeys = log.opened.reportKeys.union(
+            (pending.state.messages + pending.state.handoffs).flatMap { $0.reports ?? [] }.map(\.key),
+        )
         hasTitle = log.opened.hasTitle
         titleSource = log.opened.titleSource
             ?? (pending.state.handoffs + pending.state.messages).lazy
+                .filter { $0.reports == nil }
                 .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .first(where: { !$0.isEmpty }).map { String($0.prefix(3000)) }
         anchors = savedAnchors
@@ -781,6 +796,20 @@ public actor AgentSession {
     /// enter the active run; ordinary and source follow-ups start separate runs.
     /// `source` names what sent it besides the app (`AgentPromptRequest.source`),
     /// kept with the message until its run and told to the model then.
+    ///
+    /// `reports` are the turns of conversations this session opened that the
+    /// host reported with this message (`AgentTurnReport`). They are the
+    /// host's account of other conversations, never a command from the
+    /// reader: they keep the message's sender, never wake a stopped or
+    /// paused queue, never name this chat (`generateTitle` is the caller's),
+    /// and a batch whose turns were already taken is acknowledged and
+    /// dropped. A steering report returns once it is durable, without the
+    /// wait for the running turn to take it that a reader's steer has.
+    ///
+    /// Nil is an ordinary message. An empty list is the host's own account
+    /// event — the ledger — which carries no turn and must still be kept as
+    /// one: it is deduplicated by its message id, and it is never the
+    /// reader's.
     public func prompt(
         _ text: String,
         messageID: UUID? = nil,
@@ -789,6 +818,7 @@ public actor AgentSession {
         source: String? = nil,
         delivery: AgentMessageDelivery = .queue,
         modelChoice: PendingModelChoice? = nil,
+        reports: [AgentTurnReport]? = nil,
     ) async throws {
         let id = messageID ?? UUID()
         guard !submitted.contains(id), !pending.state.seen.contains(id) else {
@@ -796,16 +826,26 @@ public actor AgentSession {
             try await publishPending().value
             return
         }
+        // One closing turn is one fact (`AgentTurnReport.key`). Nothing new is
+        // durable to write, so a repeated delivery is acknowledged here.
+        let carried = reports ?? []
+        let fresh = carried.filter { !acceptedReportKeys.contains($0.key) }
+        guard carried.isEmpty || !fresh.isEmpty else { return }
+        // A report names the conversation whose turn ended; when the host
+        // sends no sender, that conversation is still its provenance.
+        let sender = sender ?? fresh.first.map { ConversationSender(sessionID: $0.childSessionID) }
         // A fresh reader send is an explicit request to continue a stopped
-        // chat. Source messages and duplicate deliveries must not wake it.
-        let resumeGeneration: UInt64? = sender == nil
+        // chat. Source messages, the host's own account and duplicate
+        // deliveries must not wake it.
+        let resumeGeneration: UInt64? = sender == nil && reports == nil
             && (runTask == nil || aborted || runEnding || runFailed)
             && (pendingBlocked || pending.state.paused || aborted || runFailed)
             ? stopGeneration : nil
         let attachments = try files.map { try saveAttachment(name: $0.name, mimeType: $0.mimeType, data: $0.data) }
         let item = PendingMessage(id: id, text: text, attachments: attachments, sender: sender,
-                                  source: source, delivery: delivery, modelChoice: modelChoice)
-        if sender == nil, canMutateHistory, !runEnding,
+                                  source: source, delivery: delivery, modelChoice: modelChoice,
+                                  reports: reports == nil ? nil : fresh)
+        if sender == nil, reports == nil, canMutateHistory, !runEnding,
            pending.state.messages.isEmpty, pending.state.handoffs.isEmpty {
             // Claim the idle slot synchronously. This is a handoff, not a
             // waiting message: no pendingQueue snapshot may list this ID.
@@ -824,7 +864,9 @@ public actor AgentSession {
             return
         }
         try pending.enqueue(item)
-        rememberTitleSource(text)
+        acceptedReportKeys.formUnion(item.reports?.map(\.key) ?? [])
+        // A report is about another conversation: it does not name this chat.
+        if item.reports == nil { rememberTitleSource(text) }
         submitted.insert(id)
         if delivery == .steer, runTask != nil, !runEnding, !aborted, !pendingBlocked, !pending.state.paused {
             pendingSteers.insert(id)
@@ -844,7 +886,10 @@ public actor AgentSession {
                 }
             }
         }
-        if delivery == .steer {
+        // The host's report is a fact it already holds: it returns once the
+        // message is durable, not when the running turn takes it. Waiting
+        // there would hold a child's turn behind its opener's.
+        if delivery == .steer, item.reports == nil {
             while pendingSteers.contains(id), let drain = pendingDrain {
                 await drain.value
             }
@@ -1041,6 +1086,13 @@ public actor AgentSession {
             // so in this message's `<system-state>`, as it is told the mode.
             facts.source = item.source
             facts.mcpNote = mcpStatus.stateLine
+            // The conversation whose agent opened this one: the model knows
+            // where its turns are reported back to.
+            facts.parentSessionID = configuration.openerSessionID
+            // A constrained conversation speaks from the plan as it is now:
+            // read at this input boundary, never merged into the system prompt
+            // and never a substitute for the host's admission of each call.
+            facts.delegation = await runner.delegationLine()
             // A queued item may be edited while preparing. Direct input is
             // already reserved and immutable; later arrivals only change the
             // waiting list and must not invalidate its dispatch.
@@ -1091,7 +1143,7 @@ public actor AgentSession {
             restartUntold = false
             let event: AgentSessionEvent
             if let sender = item.sender {
-                event = .conversationMessageQueued(id: item.id, text: item.text, from: sender.sessionID)
+                event = .conversationMessageQueued(id: item.id, text: item.text, from: sender.sessionID, reports: item.reports)
             } else {
                 event = steering
                     ? .userMessageQueued(id: item.id, text: item.text, attachments: item.attachments, source: item.source)
@@ -1104,7 +1156,8 @@ public actor AgentSession {
             if steering {
                 dispatchedSteers.insert(item.id)
                 queued.append(QueuedMessage(id: item.id, text: item.text, attachments: item.attachments,
-                    injected: opening, timestamp: message.timestamp, from: item.sender?.sessionID, told: toldBefore, restartUntold: restartBefore))
+                    injected: opening, timestamp: message.timestamp, from: item.sender?.sessionID,
+                    reports: item.reports, told: toldBefore, restartUntold: restartBefore))
                 agent.steer(message)
             } else {
                 aborted = false
@@ -1471,7 +1524,7 @@ public actor AgentSession {
                     let source = pending.state.handoffs.first { $0.id == id }
                     await persistAnchors()
                     if let source, let sender = source.sender {
-                        await record(.conversationMessageTaken(id: id, text: source.text, from: sender.sessionID))
+                        await record(.conversationMessageTaken(id: id, text: source.text, from: sender.sessionID, reports: source.reports))
                     }
                 }
             }
@@ -1507,7 +1560,7 @@ public actor AgentSession {
                         timestamp: user.timestamp,
                     )
                     await persistAnchors()
-                    await record(.conversationMessageTaken(id: taken.id, text: taken.text, from: from))
+                    await record(.conversationMessageTaken(id: taken.id, text: taken.text, from: from, reports: taken.reports))
                 } else {
                     await record(.userMessage(id: taken.id, text: taken.text, attachments: taken.attachments))
                 }
