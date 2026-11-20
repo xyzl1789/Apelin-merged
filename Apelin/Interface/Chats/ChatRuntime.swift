@@ -2,6 +2,7 @@ import ApelinCore
 import ApelinProtocol
 import Darwin
 import Foundation
+import UIKit
 import UniformTypeIdentifiers
 
 /// Owns chat history, drafts and live sessions independently of the selected page.
@@ -35,6 +36,9 @@ final class ChatRuntime {
     private let store = ChatStore(folder: .app)
     @objc dynamic private var revision = 0
     private var readers: [UUID: Task<Void, Never>] = [:]
+    /// The loop that asks the host which sessions are live, while the app is
+    /// in front (`watchHostRuns`).
+    private var runReconcile: Task<Void, Never>?
     private var opening: [UUID: Task<AgentOpenResponse, Error>] = [:]
     /// A newer Stop or Rewind supersedes an earlier Stop's queue continuation.
     @objc dynamic private var stopContinuations: [UUID: UUID] = [:]
@@ -239,6 +243,7 @@ final class ChatRuntime {
         restoreLineage(sessions: live)
         isReconciled = true
         onChange?()
+        watchHostRuns()
     }
 
     /// Puts every saved row in step with what the host reports now: a run it
@@ -246,8 +251,31 @@ final class ChatRuntime {
     /// that ended while the app was away, a session the host no longer has.
     /// Run whenever the app comes back in front, so a row that lost its run
     /// stops saying it is without a relaunch.
+    ///
+    /// A host that does not answer is not the same as one that has nothing:
+    /// only an answer may end a row's run. Treating a miss as an empty list
+    /// cleared every row's spinner while its turn was still going.
     func reconcileRuns() async {
-        reconcile(with: await (try? ApelinService.app.agentList().sessions) ?? [])
+        guard let answer = try? ApelinService.app.agentList() else { return }
+        reconcile(with: answer.sessions)
+    }
+
+    /// Every few seconds, while the app is in front, the host's live sessions
+    /// are asked for again. A run that ended with no page following it — a
+    /// failure, a Stop, the host restarting — otherwise leaves its row
+    /// spinning with nothing left to stop, and only the host can say it is
+    /// over. The chat page used to be the only place that asked, so every
+    /// other row kept its spinner until the next launch.
+    private func watchHostRuns() {
+        guard runReconcile == nil else { return }
+        runReconcile = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled, let self else { return }
+                guard UIApplication.shared.applicationState != .background else { continue }
+                await self.reconcileRuns()
+            }
+        }
     }
 
     private func reconcile(with live: [AgentSessionSummary]) {
@@ -273,12 +301,13 @@ final class ChatRuntime {
                         records[record.summary.id]?.run = .ended
                         changed(record.summary.id)
                     }
-                } else if records[record.summary.id]?.run != .running
-                            || records[record.summary.id]?.summary.isWorking == false
-                {
-                    // The host says this session is running again — a report it
-                    // delivered started another task — so the row stops saying
-                    // it finished, and its events are read from that task.
+                } else if record.task != session.task {
+                    // Only a task the host names that this row is not on is a
+                    // run to light up again: `reopen` above has just said so.
+                    // Judging it by `run` and `isWorking` alone made a row that
+                    // had already read its turn's end — `isWorking` false, the
+                    // saved `run` still `running` — look like a new run on
+                    // every pass, so it span forever with nothing to stop.
                     records[record.summary.id]?.run = .running
                     records[record.summary.id]?.summary.isWorking = true
                     changed(record.summary.id)

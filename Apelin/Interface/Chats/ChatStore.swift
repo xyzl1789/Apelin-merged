@@ -277,6 +277,10 @@ extension ChatRecord {
     @discardableResult
     mutating func takeMissedEnd(_ end: TaskEvent?, at seq: EventSeq) -> Bool {
         summary.isWorking = false
+        // The task has ended, so the row must not keep the run it showed as
+        // going: a saved `running` beside a cleared `isWorking` is what the
+        // host's next list made look like a new run.
+        run = .ended
         guard let end, end.seq == seq, ChatTranscript.endsTask(end), events.last != end else { return false }
         replay = nil
         events.append(end)
