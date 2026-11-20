@@ -303,14 +303,11 @@ final class ChatRuntime {
                     }
                 } else if record.task != session.task {
                     // Only a task the host names that this row is not on is a
-                    // run to light up again: `reopen` above has just said so,
-                    // and a report it delivered started another task, so the
-                    // row stops saying it finished and its events are read
-                    // from that task. Judging it by `run` and `isWorking`
-                    // alone made a row that had already read its turn's end —
-                    // `isWorking` false, the saved `run` still `running` —
-                    // look like a new run on every pass, so it span forever
-                    // with nothing to stop.
+                    // run to light up again: `reopen` above has just said so.
+                    // Judging it by `run` and `isWorking` alone made a row that
+                    // had already read its turn's end — `isWorking` false, the
+                    // saved `run` still `running` — look like a new run on
+                    // every pass, so it span forever with nothing to stop.
                     records[record.summary.id]?.run = .running
                     records[record.summary.id]?.summary.isWorking = true
                     changed(record.summary.id)
