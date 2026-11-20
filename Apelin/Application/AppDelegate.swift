@@ -28,6 +28,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         }
         NetworkAccess.start()
         ConversationNotices.start()
+        // 偏好设置页改外观后，本进程所有 window 跟着变。
+        AppAppearance.observe()
         // the progress card and the alerts carry the app's icon, as Fila's do
         AlertControllerConfiguration.alertImage = UIImage(named: "AppIconMark")
         // the app's own accent (`AppAccent`); the library's default is red
@@ -109,6 +111,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let scene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: scene)
         window.tintColor = AppAccent.windowTint
+        AppAppearance.apply(to: window)
         window.rootViewController = RootInterfaceController()
         window.makeKeyAndVisible()
         self.window = window

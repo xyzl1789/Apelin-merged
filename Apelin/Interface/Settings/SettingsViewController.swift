@@ -307,6 +307,7 @@ final class ChatPreferencesController: TableController {
     private enum Section: Hashable { case chat }
 
     private enum Row: Hashable {
+        case appearance
         case launch
         case returnKey
         case compression
@@ -348,6 +349,7 @@ final class ChatPreferencesController: TableController {
 
     private func updateRows() {
         dataSource.update([(.chat, [
+            RowContent(row: .appearance, detail: Preferences.appearance.title),
             RowContent(row: .launch, detail: Preferences.launch.title),
             RowContent(
                 row: .returnKey,
@@ -365,6 +367,7 @@ final class ChatPreferencesController: TableController {
         var content = UIListContentConfiguration.valueCell()
         content.secondaryText = value.detail
         switch value.row {
+        case .appearance: content.text = String(localized: "Appearance")
         case .launch: content.text = String(localized: "On Launch")
         case .returnKey: content.text = String(localized: "Return Key")
         case .compression: content.text = String(localized: "Compression Threshold")
@@ -379,6 +382,17 @@ final class ChatPreferencesController: TableController {
         tableView.deselectRow(at: indexPath, animated: true)
         guard let row = dataSource.value(at: indexPath)?.row else { return }
         switch row {
+        case .appearance:
+            let choices = Preferences.Appearance.allCases
+            push(
+                SettingChoiceController(
+                    title: String(localized: "Appearance"),
+                    options: choices.map(\.title),
+                    selected: choices.firstIndex(of: Preferences.appearance) ?? 0,
+                ) { index in
+                    AppAppearance.set(choices[index])
+                },
+            )
         case .launch:
             let launches = Preferences.Launch.allCases
             push(

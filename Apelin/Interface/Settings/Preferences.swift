@@ -1,6 +1,7 @@
 import ApelinCore
 import ApelinProtocol
 import Foundation
+import UIKit
 
 /// What the reader chose for the app as a whole, kept in the device's
 /// defaults beside the composer's own behaviour.
@@ -219,6 +220,39 @@ enum Preferences {
             }
             UserDefaults.standard.set(true, forKey: migratedKey)
         }
+    }
+
+    /// 应用深浅色外观。跟随系统时不写 `userInterfaceStyle`，
+    /// 由系统随日夜切换；选定时写到每一个 window 上。
+    enum Appearance: String, CaseIterable {
+        case system
+        case light
+        case dark
+
+        var title: String {
+            switch self {
+            case .system: String(localized: "Follow System")
+            case .light: String(localized: "Light")
+            case .dark: String(localized: "Dark")
+            }
+        }
+
+        /// 写到 window 上的取值；跟随系统为 nil。
+        var interfaceStyle: UIUserInterfaceStyle? {
+            switch self {
+            case .system: nil
+            case .light: .light
+            case .dark: .dark
+            }
+        }
+    }
+
+    static var appearance: Appearance {
+        get {
+            UserDefaults.standard.string(forKey: "app.appearance")
+                .flatMap(Appearance.init(rawValue:)) ?? .system
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "app.appearance") }
     }
 
     /// What the next launch opens.
