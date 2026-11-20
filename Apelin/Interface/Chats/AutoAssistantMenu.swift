@@ -1,4 +1,5 @@
 import ApelinProtocol
+import SPIndicator
 import UIKit
 
 /// The automatic assistant, one entry in the conversation's More (…) menu:
@@ -63,6 +64,10 @@ final class AutoAssistantSheet: UITableViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(scheduleChanged),
             name: .measurementScheduleChanged, object: nil,
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(scheduleChanged),
+            name: MeasurementRunner.changed, object: nil,
         )
         tableView.reloadData()
     }
@@ -149,6 +154,13 @@ final class AutoAssistantSheet: UITableViewController {
                 image: UIImage(systemName: "speedometer"),
             )
             cell.accessoryType = .none
+            if running {
+                let spinner = UIActivityIndicatorView(style: .medium)
+                spinner.startAnimating()
+                cell.accessoryView = spinner
+            } else {
+                cell.accessoryView = nil
+            }
             cell.selectionStyle = running ? .none : .default
         case .measureResults:
             let has = !Self.lastResults.isEmpty
@@ -283,6 +295,13 @@ final class MeasurementRunner {
         guard !isRunning else { return }
         isRunning = true
         post()
+        // 手动点「在后台测速模型」时立刻回一声，让读者知道点了生效；
+        // 回前台按间隔自动跑的静默一轮不打扰人。
+        if !silently {
+            let notice = String(localized: "Started Measuring Models in Background")
+            SPIndicator.present(title: notice, preset: .done, haptic: .success)
+            UIAccessibility.post(notification: .announcement, argument: notice)
+        }
         Task { @MainActor [weak presenter] in
             defer {
                 isRunning = false

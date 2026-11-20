@@ -1,6 +1,89 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Started Measuring Models in Background": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在后台开始测速模型"
+          }
+        }
+      }
+    },
     "自动：模型命中匹配规则时自动生效，压过手动；多个命中取优先级最高的。": {
       "extractionState": "manual",
       "localizations": {

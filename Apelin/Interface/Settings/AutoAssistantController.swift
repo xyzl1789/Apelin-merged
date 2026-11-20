@@ -28,6 +28,9 @@ final class AutoAssistantController: TableController {
 
     private struct RowContent: Equatable {
         let row: Row
+        /// 显示值进内容里，间隔或测速状态一变数据源就认出这行要重绘。
+        var measureRunning = false
+        var intervalTitle = ""
     }
 
     private lazy var dataSource = TableDataSource<Section, Row, RowContent>(
@@ -74,11 +77,13 @@ final class AutoAssistantController: TableController {
     }
 
     @objc private dynamic func updateRows() {
+        let running = MeasurementRunner.shared.isRunning
+        let interval = MeasurementSchedule.interval.title
         dataSource.update([
             (.where_, [RowContent(row: .whereItIs)]),
             (.models, [
-                RowContent(row: .pickFastest),
-                RowContent(row: .autoMeasureInterval),
+                RowContent(row: .pickFastest, measureRunning: running),
+                RowContent(row: .autoMeasureInterval, intervalTitle: interval),
                 RowContent(row: .lastMeasurement),
             ]),
             (.exclusions, [
@@ -104,11 +109,11 @@ final class AutoAssistantController: TableController {
         }
     }
 
-    private func title(for row: Row) -> String {
+    private func title(for row: Row, running: Bool) -> String {
         switch row {
         case .whereItIs: String(localized: "Turn It On in a Conversation")
         case .pickFastest:
-            String(localized: MeasurementRunner.shared.isRunning
+            String(localized: running
                 ? "Measuring Models in Background" : "Measure Models in Background")
         case .autoMeasureInterval: String(localized: "Auto Measure Interval")
         case .lastMeasurement: String(localized: "Last Measurement")
@@ -121,28 +126,31 @@ final class AutoAssistantController: TableController {
         let cell = tableView.dequeueReusableCell(withIdentifier: "auto-assistant")
             ?? UITableViewCell(style: .value1, reuseIdentifier: "auto-assistant")
         var content = UIListContentConfiguration.valueCell()
-        content.text = title(for: value.row)
+        content.text = title(for: value.row, running: value.measureRunning)
         cell.contentConfiguration = content
         cell.accessoryType = .none
+        cell.accessoryView = nil
         cell.selectionStyle = .default
         if value.row == .autoMeasureInterval {
             var valued = content
-            valued.secondaryText = MeasurementSchedule.interval.title
+            valued.secondaryText = value.intervalTitle
             valued.secondaryTextProperties.color = .secondaryLabel
             cell.contentConfiguration = valued
         }
         if value.row == .whereItIs {
             // Nothing to open: the instruction is the whole row.
             cell.selectionStyle = .none
-            cell.accessoryView = nil
         } else {
-            cell.accessoryView = nil
+            // 这些行才进下一级页面，才给 >。
             cell.accessoryType = .disclosureIndicator
-            if value.row == .pickFastest, MeasurementRunner.shared.isRunning {
-                let spinner = UIActivityIndicatorView(style: .medium)
-                spinner.startAnimating()
-                cell.accessoryView = spinner
+            // 测速是就地执行的动作，不是进页面：永不给 >，跑起来改转圈。
+            if value.row == .pickFastest {
                 cell.accessoryType = .none
+                if value.measureRunning {
+                    let spinner = UIActivityIndicatorView(style: .medium)
+                    spinner.startAnimating()
+                    cell.accessoryView = spinner
+                }
             }
             if value.row == .lastMeasurement, AutoAssistantSheet.lastResults.isEmpty {
                 cell.accessoryType = .none
@@ -153,9 +161,9 @@ final class AutoAssistantController: TableController {
     }
 
     override func tableView(_: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
-        guard let row = dataSource.value(at: indexPath)?.row else { return false }
-        if row == .pickFastest, MeasurementRunner.shared.isRunning { return false }
-        return row != .whereItIs
+        guard let content = dataSource.value(at: indexPath) else { return false }
+        if content.row == .pickFastest, content.measureRunning { return false }
+        return content.row != .whereItIs
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
