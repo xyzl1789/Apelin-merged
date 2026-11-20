@@ -348,7 +348,10 @@ final class ChatUsageDetailController: UIViewController {
         }
         let titles = Task.detached {
             var result: [String: String] = [:]
-            if let chats = try? await ChatStore(folder: .app).load() {
+            // 只读每个会话的「头」（summary、sessionID、事件条数），不读事件：
+            // 标题就在头里，而完整事件是几十 MB，读完再取标题既慢又可能失败，
+            // 失败时 TOP8 只能退回显示 UUID 前 8 位。
+            if let chats = try? await ChatStore(folder: .app).load(readingEvents: false) {
                 for record in chats.records {
                     guard let id = record.sessionID, !id.isEmpty else { continue }
                     if result[id] == nil { result[id] = record.summary.displayTitle }
