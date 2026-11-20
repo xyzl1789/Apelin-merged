@@ -75,6 +75,10 @@ final class PersonaEditorController: UIViewController, UITextViewDelegate, UIAda
         modeControl.selectedSegmentIndex = persona.matchMode == .automatic ? 1 : 0
         modeControl.accessibilityLabel = String(localized: "Matching")
         modeControl.addAction(UIAction { [weak self] _ in self?.modeChanged() }, for: .valueChanged)
+        modeHint.font = .preferredFont(forTextStyle: .footnote)
+        modeHint.adjustsFontForContentSizeCategory = true
+        modeHint.textColor = .secondaryLabel
+        modeHint.numberOfLines = 0
 
         pinnedSwitch.isOn = persona.pinned
         pinnedSwitch.accessibilityLabel = String(localized: "Pin")

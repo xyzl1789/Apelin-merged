@@ -97,9 +97,15 @@ final class PromptInjectionController: TableController, UISearchResultsUpdating 
         // Card surfaces own a 20pt inset; suppress the grouped table's own.
         tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 16, right: 0)
         dataSource.headerTitle = { _ in nil }
-        dataSource.footerTitle = { [weak self] section in
-            guard section == .library else { return nil }
-            return String(localized: "Automatic configurations are matched against the model at send time. Tap the round button on a card to select it manually.")
+        dataSource.footerTitle = { section in
+            switch section {
+            case .status:
+                return String(localized: "A persona's text is prepended to every conversation. An automatic persona matching the model takes over from the manual one.")
+            case .library:
+                return String(localized: "Automatic configurations are matched against the model at send time. Tap the round button on a card to select it manually.")
+            case .empty:
+                return nil
+            }
         }
         load()
     }
@@ -148,7 +154,9 @@ final class PromptInjectionController: TableController, UISearchResultsUpdating 
                 )
             }))
         }
-        dataSource.update(sections, reconfigure: true)
+        // CardCell builds its subviews in the cell provider; reload changed
+        // rows instead of reconfiguring an already mounted cell.
+        dataSource.update(sections)
     }
 
     private func save(_ next: PersonaSnapshot) {

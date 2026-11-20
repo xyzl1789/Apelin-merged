@@ -1,16 +1,12 @@
 import ApelinCore
 import UIKit
 
-/// Dylix-style management page. The repo's persona model has no separate
-/// matching-mode flag: an item is manual or automatic by its own setting, so
-/// this page explains the matching rule and owns the one app-wide switch the
-/// model does have — whether any persona body is injected at all.
+/// 配置管理：自动匹配由每项配置决定，这里只管理全局注入开关并说明匹配规则。
 final class PersonaManagementController: UITableViewController {
     var snapshot = PersonaSnapshot()
 
     private enum Row: Int {
         case enabled
-        case automatic
         case rule
         case pinning
     }
@@ -32,7 +28,7 @@ final class PersonaManagementController: UITableViewController {
 
     override func numberOfSections(in _: UITableView) -> Int { 1 }
 
-    override func tableView(_: UITableView, numberOfRowsInSection _: Int) -> Int { 4 }
+    override func tableView(_: UITableView, numberOfRowsInSection _: Int) -> Int { 3 }
 
     override func tableView(_: UITableView, titleForFooterInSection _: Int) -> String? {
         String(localized: "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。")
@@ -58,44 +54,22 @@ final class PersonaManagementController: UITableViewController {
         let cell = tableView.dequeueReusableCell(withIdentifier: "switch")
             ?? UITableViewCell(style: .subtitle, reuseIdentifier: "switch")
         let toggle = UISwitch()
+        toggle.isOn = snapshot.enabled
         toggle.addAction(UIAction { [weak self] _ in
-            self?.changed(row: row, on: toggle.isOn)
+            self?.changed(on: toggle.isOn)
         }, for: .valueChanged)
-        toggle.accessibilityLabel = row == .enabled
-            ? String(localized: "Inject Persona Body")
-            : String(localized: "Automatic Matching")
+        toggle.accessibilityLabel = String(localized: "Inject Persona Body")
         cell.accessoryView = toggle
         cell.selectionStyle = .none
         var content = UIListContentConfiguration.explanatoryCell()
-        if row == .enabled {
-            toggle.isOn = snapshot.enabled
-            content.text = String(localized: "注入人设正文")
-            content.secondaryText = String(localized: "关闭后不向对话注入任何配置正文")
-        } else {
-            let automatic = snapshot.personas.filter { $0.matchMode == .automatic }
-            toggle.isOn = !automatic.isEmpty
-            content.text = String(localized: "按当前模型自动匹配")
-            content.secondaryText = automatic.isEmpty
-                ? String(localized: "目前没有自动配置，在配置里切换为「自动」即可")
-                : String(localized: "已有 \(automatic.count) 项自动配置，命中时压过手动选择")
-        }
+        content.text = String(localized: "注入人设正文")
+        content.secondaryText = String(localized: "关闭后不向对话注入任何配置正文")
         cell.contentConfiguration = content
         cell.isAccessibilityElement = false
         return cell
     }
 
-    private func changed(row: Row, on: Bool) {
-        guard row == .enabled else {
-            // The persona model stores matching per configuration. A global
-            // automatic switch would have to rewrite every item, so this row
-            // only reports the current state; the user changes it per card.
-            tableView.reloadData()
-            presentNotice(
-                title: "Matching Is Per Configuration",
-                message: "Open a configuration and switch it between Manual and Automatic.",
-            )
-            return
-        }
+    private func changed(on: Bool) {
         var next = snapshot
         next.enabled = on
         do {

@@ -31,7 +31,11 @@ final class PersonaPreviewController: UIViewController {
         let currentModel = Preferences.DefaultModels.selection(for: .derivedConversation)?.model
         let resolved = PersonaResolver.resolve(snapshot, model: currentModel)
         let body = PersonaResolver.text(snapshot, model: currentModel)
-        text = body
+        // The app's original identity prompt follows the injected instructions.
+        // Project-specific sections are supplied by the session host at run time.
+        let identity = "You are the agent inside Apelin, an IDE on a jailbroken iPhone or iPad. You write, build, install and verify tweaks and other software on this device for the user, inside one project."
+        let injection = body.isEmpty ? "" : "# Injected instructions\nThe reader set these in Apelin's settings. They come before everything else here and take precedence over the instructions below.\n\(body)\n\n"
+        text = injection + identity
         let summary = label(
             String(localized: "\(currentModel ?? String(localized: "No model selected")) · \(resolved?.name ?? String(localized: "No matching configuration"))\n生效 1 项 · 人设正文 \(body.utf8.count) B"),
             style: .headline,
@@ -43,7 +47,7 @@ final class PersonaPreviewController: UIViewController {
             color: .secondaryLabel,
         )
         let viewer = UITextView()
-        viewer.text = body
+        viewer.text = text
         viewer.isEditable = false
         viewer.isSelectable = true
         viewer.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
