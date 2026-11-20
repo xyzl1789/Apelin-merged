@@ -116,6 +116,10 @@ enum SystemState {
         var hostRestarted = false
         /// The install root now, which the restart note names.
         var installRoot: String?
+        /// MCP servers that cannot be used right now, one short line. Kept
+        /// inside the block, not appended after it where the reader would see
+        /// it as the assistant's own text.
+        var mcpNote: String? = nil
     }
 
     static func facts(
@@ -183,6 +187,9 @@ enum SystemState {
             lines.append("- Changed since you were last told; the system prompt still shows the earlier state:")
             // an entry's later lines indented under it
             lines += facts.changes.map { "  - " + $0.replacingOccurrences(of: "\n", with: "\n    ") }
+        }
+        if let mcpNote = facts.mcpNote {
+            lines.append(mcpNote)
         }
         lines.append(closingTag)
         return lines.joined(separator: "\n") + "\n\n"

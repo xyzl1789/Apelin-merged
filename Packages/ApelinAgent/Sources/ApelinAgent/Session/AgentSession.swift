@@ -26,6 +26,9 @@ public actor AgentSession {
     let runner: ToolRunner
     private let mcpManager: MCPManager?
     private let mcpTools: [AgentTool]
+    /// 本会话开始时各 MCP 服务器的真实连接状态。配置里写了但没连上的
+    /// 服务器不能当作可用的一样列给模型。
+    private let mcpStatus: MCPStatusReport
     /// The agent tool extensions whose tools the agent has now.
     private var toolExtensions: ToolExtensionOffer
     private var unsubscribe: Unsubscribe?
@@ -243,6 +246,19 @@ public actor AgentSession {
         )
         let connecting = Date()
         let (mcpManager, mcpTools) = await MCPBridge.connect(configuration.mcpServers)
+        // What actually connected, not what the configuration asked for.
+        // `statuses()` is read after the startup wait, so a server still
+        // connecting is known to have no tools yet.
+        let mcpStatuses: [MCPServerStatus]
+        if let manager = mcpManager {
+            mcpStatuses = await manager.statuses()
+        } else {
+            mcpStatuses = []
+        }
+        let mcpStatus = MCPStatusReport(statuses: mcpStatuses)
+        for message in mcpStatus.diagnosticMessages {
+            _ = try? await log.append(.error(message: message))
+        }
         let toolExtensions = ToolExtensionOffer.read(
             installRoot: configuration.installRoot,
             policy: configuration.toolExtensionPolicy,
@@ -256,7 +272,7 @@ public actor AgentSession {
             skills: skills.skills,
             toolExtensions: toolExtensions.extensions,
         )
-        let systemPrompt = Self.systemPrompt(configuration, root: root, state: snapshot)
+        let systemPrompt = Self.systemPrompt(configuration, root: root, state: snapshot, mcpAvailable: mcpStatus.availableNames)
 
         let agent = Agent(options: AgentOptions(
             initialState: AgentInitialState(
@@ -313,6 +329,7 @@ public actor AgentSession {
         usageRecorder = UsageRecorder(dataRoot: configuration.dataRoot.url)
         self.mcpManager = mcpManager
         self.mcpTools = mcpTools
+        self.mcpStatus = mcpStatus
         self.toolExtensions = toolExtensions
         // read in the log's opening pass, so the log is not read again
         submitted = log.opened.userMessageIDs.union(pending.state.seen)
@@ -484,7 +501,7 @@ public actor AgentSession {
     /// writes the compacted conversation's prefix anyway.
     private func takeSnapshot() {
         let snapshot = currentState()
-        agent.state.systemPrompt = Self.systemPrompt(configuration, root: workspace, state: snapshot)
+        agent.state.systemPrompt = Self.systemPrompt(configuration, root: workspace, state: snapshot, mcpAvailable: mcpStatus.availableNames)
         told = snapshot
         snapshotStale = false
     }
@@ -497,12 +514,27 @@ public actor AgentSession {
     /// the environment — reaches the model as a delta in the next message's
     /// `<system-state>`, and the approval mode and the time are each
     /// message's.
-    static func systemPrompt(_ configuration: AgentSessionConfiguration, root: ScopedRoot, state: PromptState) -> String {
-        SystemPrompt.make(
+    static func systemPrompt(
+        _ configuration: AgentSessionConfiguration,
+        root: ScopedRoot,
+        state: PromptState,
+        mcpAvailable: Set<String>? = nil,
+    ) -> String {
+        // Only servers that actually have tools reach the prompt. A server
+        // named in the configuration but down must not be described as a
+        // server the model can use; callers without a live session (tests,
+        // file previews) keep the old full list.
+        let servers: [MCPServerConfiguration]
+        if let available = mcpAvailable {
+            servers = configuration.mcpServers.filter { available.contains($0.name) }
+        } else {
+            servers = configuration.mcpServers
+        }
+        return SystemPrompt.make(
             project: configuration.project,
             projectRoot: root.path,
             skills: state.skills,
-            mcpServers: configuration.mcpServers,
+            mcpServers: servers,
             projectInstructions: state.instructions,
             buildSystem: state.buildSystem,
             memory: MemoryTools.prompt(state.memory),
@@ -560,7 +592,7 @@ public actor AgentSession {
             told = now
             restartUntold = false
         }
-        let facts = await SystemState.facts(
+        var facts = await SystemState.facts(
             configuration.systemState,
             mode: runner.approvalMode,
             runMode: runner.currentRunMode,
@@ -569,6 +601,7 @@ public actor AgentSession {
             hostRestarted: delta && restartUntoldBefore,
             installRoot: configuration.installRoot,
         )
+        facts.mcpNote = mcpStatus.stateLine
         return (SystemState.make(facts) + text, toldBefore, restartUntoldBefore)
     }
 
@@ -1007,6 +1040,7 @@ public actor AgentSession {
             // A message the reader sent from a chat channel: the model is told
             // so in this message's `<system-state>`, as it is told the mode.
             facts.source = item.source
+            facts.mcpNote = mcpStatus.stateLine
             // A queued item may be edited while preparing. Direct input is
             // already reserved and immutable; later arrivals only change the
             // waiting list and must not invalidate its dispatch.
