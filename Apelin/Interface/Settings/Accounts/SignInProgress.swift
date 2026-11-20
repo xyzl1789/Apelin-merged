@@ -68,7 +68,10 @@ struct SignInProgress {
                     secure: entry["secure"] == .bool(true),
                     defaultValue: entry["defaultValue"]?.stringValue,
                     placeholder: entry["placeholder"]?.stringValue,
-                    options: (entry["options"]?.arrayValue?.compactMap { option in
+                    options: (entry["options"].flatMap { value in
+                        if case let .array(options) = value { return options }
+                        return nil
+                    }?.compactMap { option in
                         guard let value = option["value"]?.stringValue else { return nil }
                         return KeyOption(value: value, title: option["title"]?.stringValue ?? value)
                     }).flatMap { $0.isEmpty ? nil : $0 },
