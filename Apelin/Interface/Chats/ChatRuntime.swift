@@ -256,7 +256,7 @@ final class ChatRuntime {
     /// only an answer may end a row's run. Treating a miss as an empty list
     /// cleared every row's spinner while its turn was still going.
     func reconcileRuns() async {
-        guard let answer = try? ApelinService.app.agentList() else { return }
+        guard let answer = try? await ApelinService.app.agentList() else { return }
         reconcile(with: answer.sessions)
     }
 
