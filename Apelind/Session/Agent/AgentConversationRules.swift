@@ -33,7 +33,7 @@ enum AgentConversationRules {
     static func childOpen(
         _ open: AgentOpenRequest,
         opener: AgentSessionTable.Entry,
-        target: ResolvedProject,
+        target: ResolvedProject
     ) throws -> AgentOpenRequest {
         guard !target.isTemporary else {
             throw ApelinError(.denied, "an agent opens conversations only in a project; name one with its projectID or folder")
@@ -41,11 +41,21 @@ enum AgentConversationRules {
         guard opener.depth < AgentConversations.maximumDepth else {
             throw ApelinError(
                 .denied,
-                "a conversation another agent opened \(opener.depth) deep cannot open more; do the work here",
+                "a conversation another agent opened \(opener.depth) deep cannot open more; do the work here"
             )
         }
         guard let prompt = open.prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ApelinError(.badRequest, "a conversation an agent opens starts with a prompt")
+        }
+        // A brief is what bounds a *delegated* assignment: prose alone grants
+        // no authority to write. But a plain child conversation — one opened
+        // with just a prompt — stays an ordinary conversation. Many workflows
+        // live in the child chat itself, so it must remain usable: no brief
+        // means no confined delegation, not a refused open.
+        let brief = open.delegationBrief
+        if let brief {
+            do { try brief.validate() }
+            catch { throw ApelinError(.badRequest, error.localizedDescription) }
         }
         return AgentOpenRequest(
             projectID: target.id,
@@ -60,17 +70,19 @@ enum AgentConversationRules {
             mcpServers: opener.mcpServers,
             prompt: prompt,
             title: title(open.title),
+            delegationBrief: brief
         )
     }
 
     /// The prompt the host hands the target for an agent's `agentPrompt`:
     /// the text alone, as the user's message marked with the sender, with
-    /// none of the sender's mode, model or files.
+    /// none of the sender's mode, model or files — and no report, which is a
+    /// host fact about other conversations and never an agent's to send.
     static func childPrompt(
         _ prompt: AgentPromptRequest,
         sender: AgentSessionTable.Entry,
         target: AgentSessionTable.Entry?,
-        descriptorCount: Int,
+        descriptorCount: Int
     ) throws -> AgentPromptRequest {
         guard descriptorCount == 0, prompt.attachments?.isEmpty ?? true else {
             throw ApelinError(.badRequest, "a message from another conversation carries no files")
@@ -87,14 +99,17 @@ enum AgentConversationRules {
         guard !prompt.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ApelinError(.badRequest, "the message is empty")
         }
+        // No `reports`: the host writes those, and the sender's are dropped.
         return AgentPromptRequest(sessionID: target.sessionID, text: prompt.text, fromSessionID: sender.sessionID, delivery: prompt.delivery)
     }
 
-    /// The app's prompt is the user's own: whatever `fromSessionID` it
-    /// carries is dropped.
+    /// The app's prompt is the user's own: whatever `fromSessionID` or
+    /// `reports` it carries is dropped — a report is the host's, made from a
+    /// child's own events, and the app has no way to make one.
     static func appPrompt(_ prompt: AgentPromptRequest) -> AgentPromptRequest {
         var prompt = prompt
         prompt.fromSessionID = nil
+        prompt.reports = nil
         prompt.delivery = nil // Reader steering goes through agentQueue, not an untrusted prompt field.
         return prompt
     }
@@ -116,7 +131,7 @@ enum AgentConversationRules {
         _ taskID: TaskID,
         target: AgentSessionTable.Entry?,
         caller: AgentSessionTable.Entry,
-        reachable: Bool = false,
+        reachable: Bool = false
     ) throws {
         guard let target else {
             throw ApelinError(.denied, "task \(taskID) is not a conversation of this project")
@@ -135,7 +150,7 @@ enum AgentConversationRules {
         guard !caller.mode.asks || reachable else {
             throw ApelinError(
                 .denied,
-                "approval required: the user has not let this conversation reach the project \(project.name)",
+                "approval required: the user has not let this conversation reach the project \(project.name)"
             )
         }
     }
@@ -148,6 +163,18 @@ enum AgentConversationRules {
               let detail = asked["detail"]?[otherProjectDetail],
               detail["action"]?.stringValue == "create"
         else { return false }
+        // A brief, when the open carries one, must match the approved brief
+        // exactly. A plain child (no brief) needs no brief in the approval
+        // either — the project and prompt still bind the approval to this
+        // specific call.
+        if let brief = open.delegationBrief {
+            guard let approvedBrief = detail["brief"],
+                  let data = try? JSONEncoder().encode(approvedBrief),
+                  let decoded = try? JSONDecoder().decode(AgentDelegationBrief.self, from: data),
+                  decoded == brief else { return false }
+        } else {
+            guard detail["brief"] == nil else { return false }
+        }
         return detail["projectID"]?.stringValue == target.id && detail["text"]?.stringValue == open.prompt
     }
 
@@ -172,12 +199,12 @@ enum AgentConversationRules {
         task: TaskHandle,
         title: String?,
         prompt: String,
-        project: ResolvedProject? = nil,
+        project: ResolvedProject? = nil
     ) -> JSONValue {
         var payload: [String: JSONValue] = [
             "sessionID": .string(sessionID),
             "task": .object(["taskID": .string(task.taskID.rawValue), "kind": .string(task.kind.rawValue)]),
-            "prompt": .string(prompt),
+            "prompt": .string(prompt)
         ]
         if let title {
             payload["title"] = .string(title)
