@@ -236,6 +236,12 @@ final class ChatController: UIViewController {
         )
         NotificationCenter.default.addObserver(
             self,
+            selector: #selector(refreshBalancesWhenStale),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil,
+        )
+        NotificationCenter.default.addObserver(
+            self,
             selector: #selector(withdrawNotifications),
             name: UIApplication.didBecomeActiveNotification,
             object: nil,
@@ -859,6 +865,10 @@ final class ChatController: UIViewController {
             if summary.isWorking != chat.isWorking {
                 // the session stopped (or came back) with no event that redraws the request
                 showApproval(summary.isWorking ? messages.first { $0.role.needsApproval } : nil)
+                // 一轮刚结束：这次用掉的额度已经发生，等 5 分钟的自动间隔太慢。
+                if !summary.isWorking {
+                    refreshBalancesAfterRun()
+                }
             }
             let stoppable = summary.isWorking ? chat.id : nil
             if stoppable != stoppableChat {
@@ -1129,6 +1139,31 @@ final class ChatController: UIViewController {
             _ = await ProviderBalanceStore.shared.refresh()
             self?.updateBalanceRing()
         }
+    }
+
+    /// 一轮对话刚结束时余额立刻更新：这次消耗的额度已经发生，等 5 分钟的
+    /// 自动间隔太慢。`force` 绕开 worker 的短缓存；连续几轮之间至少隔 20 秒
+    /// 才查一次，免得把服务商的余额接口打满。
+    private var lastRunBalanceRefresh = Date.distantPast
+
+    private func refreshBalancesAfterRun() {
+        guard Date().timeIntervalSince(lastRunBalanceRefresh) >= 20 else { return }
+        lastRunBalanceRefresh = Date()
+        Task { [weak self] in
+            _ = await ProviderBalanceStore.shared.refresh(force: true)
+            self?.updateBalanceRing()
+        }
+    }
+
+    /// 回到前台时若上次查询已超过自动间隔，就再查一次：页面没有重新出现时
+    /// `viewDidAppear` 不会跑，数字会停在离开时那一刻。
+    @objc private func refreshBalancesWhenStale() {
+        let selection = chat.flatMap { ComposerModelSelection.selection(for: $0.id) }
+        guard let provider = selection?.provider,
+              ProviderBalanceStore.shared.current(for: provider) != nil,
+              ProviderBalanceStore.shared.stale()
+        else { return }
+        refreshBalances()
     }
 
     @objc private func balanceChanged() {
