@@ -55,6 +55,19 @@ final class ChatRuntime {
     /// 正文引用转出的附件，键是会话与路径；文件被改写后下次重开才更新。
     private var inlineCache: [String: ComposerAttachment] = [:]
     private var transcripts = ChatTranscriptCache()
+    /// Conversations whose events are not in memory. A launch reads each
+    /// record's head and how many events sit beside it, and the events
+    /// themselves are read when the conversation is opened or followed.
+    private var unloadedEvents: Set<UUID> = []
+    /// How many events each conversation has on disk. That is what a chat's
+    /// history is known by while its events are unread, so a chat that has
+    /// one is never taken for an empty one (`isUntouched`).
+    private var eventCounts: [UUID: Int] = [:]
+    /// The events that opened another conversation, as read from the file of a
+    /// chat whose history is not in memory. Restoring lineage needs them and
+    /// nothing else, so a launch scans the files instead of keeping every
+    /// history resident (`scanLineage`).
+    private var lineageOpened: [UUID: [TaskEvent]] = [:]
     /// Conversations whose latest state is in memory only.
     @objc dynamic private var unsaved: Set<UUID> = []
     /// Conversations being written, and those changed again meanwhile. A
@@ -90,9 +103,47 @@ final class ChatRuntime {
     }
 
     private func restoreLineage(sessions: [AgentSessionSummary] = []) {
-        for id in ChatAdoption.restoreLineage(in: &records, sessions: sessions) {
+        // The scan looks through a conversation's events for the ones that
+        // opened another, so it needs the events of the chats that could be a
+        // parent — not every chat the app has. With no session from the host
+        // to narrow that by, every chat is scanned, from what `scanLineage`
+        // read of its file while the chat's history stayed on disk.
+        let parents = Set(sessions.compactMap(\.parentSessionID))
+        let named = Set(records.values.compactMap(\.summary.parentChatID))
+        var opened: [UUID: [TaskEvent]] = [:]
+        for record in records.values {
+            guard sessions.isEmpty
+                || record.sessionID.map(parents.contains) == true
+                || named.contains(record.summary.id)
+            else { continue }
+            if unloadedEvents.contains(record.summary.id) {
+                opened[record.summary.id] = lineageOpened[record.summary.id] ?? []
+            }
+        }
+        for id in ChatAdoption.restoreLineage(in: &records, sessions: sessions, opened: opened) {
             persist(id, urgent: true)
         }
+    }
+
+    /// Reads from disk, off the main queue, the events that opened another
+    /// conversation in every chat whose history is not in memory. A launch
+    /// restores the edges between chats from these few events; the histories
+    /// themselves stay on disk until a chat is opened (`loadEvents`).
+    private func scanLineage() async {
+        let ids = unloadedEvents
+        guard !ids.isEmpty else { return }
+        let folder = DataFolder.app.root.appendingPathComponent("Chats")
+        let found = await Task.detached(priority: .utility) { () -> [UUID: [TaskEvent]] in
+            var opened: [UUID: [TaskEvent]] = [:]
+            for id in ids {
+                guard let events = try? ChatEventsFile.scan(AgentConversations.openedEventKind, for: id, in: folder),
+                      !events.isEmpty
+                else { continue }
+                opened[id] = events
+            }
+            return opened
+        }.value
+        lineageOpened.merge(found) { _, new in new }
     }
 
     /// The conversation the reader is looking at, nil while they look at
@@ -113,16 +164,25 @@ final class ChatRuntime {
     /// (issue #33).
     func load(keeping selected: UUID?) async {
         do {
-            let loaded = try await store.load()
+            // A launch reads each conversation's head and how many events sit
+            // beside it, never the events themselves: their megabytes are what
+            // this costs. A conversation's events are read when it is opened,
+            // followed or paged through (`loadEvents`).
+            let loaded = try await store.load(readingEvents: false)
             for (name, error) in loaded.unreadable {
                 ConversationJournal.unreadable(name, error)
             }
-            for var record in loaded.records {
-                let unsent = record.sending != nil
-                record.reclaimUnsent()
-                records[record.summary.id] = record
-                if unsent {
-                    persist(record.summary.id, urgent: true)
+            for record in loaded.records {
+                let id = record.summary.id
+                eventCounts[id] = loaded.eventCounts[id] ?? record.events.count
+                unloadedEvents.insert(id)
+                records[id] = record
+                if record.sending != nil {
+                    // Whether the host took a message is read from the events
+                    // that echo it, so this one conversation is read now.
+                    loadEvents(id)
+                    records[id]?.reclaimUnsent()
+                    persist(id, urgent: true)
                 }
             }
         } catch {
@@ -141,6 +201,14 @@ final class ChatRuntime {
         restoreLineage()
         isLoaded = true
         onChange?()
+        // The events that opened another conversation are read from the files
+        // on a background pass, not here: the list comes up from the heads
+        // alone, and an edge a record lost is restored a moment later.
+        Task { [weak self] in
+            guard let self else { return }
+            await self.scanLineage()
+            self.restoreLineage()
+        }
         // A host that does not answer yet is not an error, and runs
         // nothing this app could follow: every saved row stops working.
         //
@@ -257,7 +325,10 @@ final class ChatRuntime {
     /// Nothing sent, typed or attached, no session opening, not pinned and
     /// not named: a row that holds nothing but its place.
     private func isUntouched(_ record: ChatRecord) -> Bool {
-        record.events.isEmpty && record.sessionID == nil && record.task == nil && opening[record.summary.id] == nil
+        // A chat with a history is never untouched, whether that history is in
+        // memory or still on disk: the count knows before the events are read.
+        (eventCounts[record.summary.id] ?? record.events.count) == 0
+            && record.sessionID == nil && record.task == nil && opening[record.summary.id] == nil
             && record.sending == nil && record.draft.text.isEmpty && record.draft.attachments.isEmpty
             && !record.summary.isPinned && record.summary.isNamedByReader != true
     }
@@ -373,13 +444,32 @@ final class ChatRuntime {
         autoRecovered.remove(id)
     }
 
+    /// The conversation's events, read from disk the first time something needs
+    /// them: opening it, following it, or paging through its history. A chat
+    /// whose events cannot be read stays unloaded and keeps the count its head
+    /// gave, so nothing takes it for a chat with no history.
+    @discardableResult
+    func loadEvents(_ id: UUID) -> [TaskEvent] {
+        guard unloadedEvents.contains(id) else { return records[id]?.events ?? [] }
+        let folder = DataFolder.app.root.appendingPathComponent("Chats")
+        guard let events = try? ChatEventsFile.read(id, in: folder) else {
+            return records[id]?.events ?? []
+        }
+        records[id]?.events = events
+        eventCounts[id] = events.count
+        unloadedEvents.remove(id)
+        return events
+    }
+
     /// The conversation's rows, brought up to date only when its events, the
     /// messages it is sending, a sender's title or the turn's quiet changed
     /// (`ChatTranscriptCache`).
     func transcript(_ id: UUID) -> ChatTranscript {
-        guard let record = records[id] else {
+        guard records[id] != nil else {
             return ChatTranscript(events: []) { _ in nil }
         }
+        loadEvents(id)
+        let record = records[id]!
         return transcripts.transcript(
             of: record,
             from: historyStart(of: id),
@@ -425,8 +515,9 @@ final class ChatRuntime {
 
     /// The event a conversation's fold starts at.
     private func historyStart(of id: UUID) -> Int {
-        guard let record = records[id] else { return 0 }
-        return ChatHistory.start(of: record.events, keeping: historyTurns[id] ?? ChatHistory.turns)
+        guard records[id] != nil else { return 0 }
+        loadEvents(id)
+        return ChatHistory.start(of: records[id]?.events ?? [], keeping: historyTurns[id] ?? ChatHistory.turns)
     }
 
     /// Whether `id` holds events before the ones it is showing.
@@ -449,6 +540,7 @@ final class ChatRuntime {
     /// in. Only the events that arrived since are read again — a stream asks
     /// for this on every one of them.
     func promptRows(of id: UUID) -> [ChatMessageRuler.Entry] {
+        loadEvents(id)
         guard let record = records[id] else { return [] }
         let cached = promptCache[id].flatMap { $0.events <= record.events.count ? $0 : nil }
         let from = cached?.events ?? 0
@@ -472,6 +564,7 @@ final class ChatRuntime {
     /// outside what the page was showing — and answers whether it had to.
     @discardableResult
     func showHistory(_ conversationID: UUID, from rowID: UUID) -> Bool {
+        loadEvents(conversationID)
         guard let record = records[conversationID] else { return false }
         var prompts: [UUID] = []
         for (index, event) in record.events.enumerated() where event.kind == "prompt" {
@@ -920,7 +1013,12 @@ final class ChatRuntime {
         revision += 1
         let reservationRevision = revision
         do {
-            try await store.save(record, revision: reservationRevision)
+            try await store.save(
+                record,
+                revision: reservationRevision,
+                writesEvents: !unloadedEvents.contains(id),
+                eventCount: eventCounts[id],
+            )
             saved(id)
         } catch {
             unsaved.insert(id)
@@ -1055,6 +1153,9 @@ final class ChatRuntime {
 
     private func follow(_ id: UUID, task: TaskHandle) {
         guard readers[id] == nil else { return }
+        // Following appends the events it takes, so the conversation's history
+        // has to be in memory first.
+        loadEvents(id)
         readers[id] = Task { [weak self] in
             defer {
                 self?.readers[id] = nil
@@ -1071,6 +1172,7 @@ final class ChatRuntime {
                     let batch = try await ApelinService.app.attach(task, afterSeq: cursor)
                     guard !Task.isCancelled, records[id]?.task == task else { return }
                     let fresh = records[id]?.take(batch.events) ?? []
+                    if !fresh.isEmpty { eventCounts[id] = records[id]?.events.count ?? 0 }
                     let realtime = fresh.filter { !ChatFork.isHistorical($0) }
                     // 有事件到达就说明模型还在动：看门狗重新计时。
                     if !realtime.isEmpty {
@@ -1205,6 +1307,7 @@ final class ChatRuntime {
     /// What a stopped run never took goes back to the composer, ahead of
     /// what was typed since (`DroppedMessages`).
     @objc dynamic private func restoreDropped(_ messages: Set<UUID>, in id: UUID) {
+        loadEvents(id)
         guard let events = records[id]?.events, let draft = records[id]?.draft,
               let returned = DroppedMessages.returning(messages, from: events, to: draft, attachment: {
                   attachment($0, in: id)
@@ -1276,9 +1379,20 @@ final class ChatRuntime {
         saving.insert(id)
         revision += 1
         let revision = revision
+        // A conversation whose events were never read is saved as its head
+        // alone, with the count its file holds: writing an empty event list
+        // would be writing the history away.
+        let writesEvents = !unloadedEvents.contains(id)
+        if writesEvents { eventCounts[id] = record.events.count }
+        let eventCount = eventCounts[id]
         Task { [store, weak self] in
             do {
-                try await store.save(record, revision: revision)
+                try await store.save(
+                    record,
+                    revision: revision,
+                    writesEvents: writesEvents,
+                    eventCount: eventCount,
+                )
                 self?.saved(id)
             } catch {
                 self?.unsaved.insert(id)
