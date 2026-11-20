@@ -162,6 +162,10 @@ actor WeChatChannel {
         var contextToken: String?
         /// The phone it was sent to, which the file keeps too.
         var userID: String
+        /// The task that asked. A conversation outlives its tasks, and one of
+        /// them ending is not the end of the run that asked: only that run
+        /// takes the ask with it.
+        var taskID: TaskID?
     }
 
     /// A message as the conversation takes it: what was written, the notes
@@ -1434,7 +1438,7 @@ actor WeChatChannel {
 
     /// Sends one approval or question to the phone that talks in this
     /// conversation, and keeps it for the reply.
-    private func announce(_ payload: JSONValue, sessionID: String) async {
+    private func announce(_ payload: JSONValue, sessionID: String, taskID: TaskID) async {
         guard let peer = peers.items.first(where: { $0.sessionID == sessionID }),
               let approvalID = payload["approvalID"]?.stringValue
         else {
@@ -1465,7 +1469,7 @@ actor WeChatChannel {
             language: replyLanguage
         )
         let contextToken = lastContextTokens[peer.userID]
-        pendingAsks[sessionID] = PendingAsk(ask: ask, contextToken: contextToken, userID: peer.userID)
+        pendingAsks[sessionID] = PendingAsk(ask: ask, contextToken: contextToken, userID: peer.userID, taskID: taskID)
         saveAsks()
         trace("ask \(approvalID) for session \(sessionID) waits for a reply")
         await send(ask.text, to: peer.userID, contextToken: contextToken)
@@ -1504,9 +1508,14 @@ actor WeChatChannel {
         if cleared { saveAsks() }
     }
 
-    /// The run ended: the ask it was waiting on can no longer be answered.
-    private func clearAsks(session: String) {
-        if pendingAsks.removeValue(forKey: session) != nil { saveAsks() }
+    /// The run that asked ended: the ask it was waiting on can no longer be
+    /// answered. An ask kept before tasks were named is cleared too, since
+    /// nothing says which run it belongs to.
+    private func clearAsks(session: String, taskID: TaskID) {
+        guard let pending = pendingAsks[session] else { return }
+        guard pending.taskID == nil || pending.taskID == taskID else { return }
+        pendingAsks.removeValue(forKey: session)
+        saveAsks()
     }
 
     private func failed(_ error: any Error, to reply: Reply) {
@@ -1536,14 +1545,19 @@ actor WeChatChannel {
 
     /// One event of a conversation, as the host's feed sees it: the text a
     /// turn writes is collected, and the end of the turn sends it.
-    func relayed(sessionID: String?, kind: String, payload: JSONValue?) {
+    func relayed(sessionID: String?, taskID: TaskID, kind: String, payload: JSONValue?) {
         guard let sessionID else { return }
+        // A task replaying a conversation's history re-sends what it settled
+        // long ago, marked as such: none of it is happening now. Taking it
+        // for asks mailed stale cards to the phone, and taking its states for
+        // ends cleared the ask the phone was about to answer.
+        guard payload?["historical"]?.boolValue != true else { return }
         // A call that needs the reader: carried to the phone that talks in
         // this conversation. A decision taken in the app clears the ask the
         // phone was given, so a reply to it is not read as one.
         if kind == "approvalRequested", let payload {
             Task { [weak self] in
-                await self?.announce(payload, sessionID: sessionID)
+                await self?.announce(payload, sessionID: sessionID, taskID: taskID)
             }
             return
         }
@@ -1566,10 +1580,17 @@ actor WeChatChannel {
         guard var reply = replies[sessionID] else { return }
         // The end of a turn: the agent's `finished`, or the task's own final
         // `state` when the run ended another way (Stop, a crash, an abort).
-        if kind == "finished" || kind == TaskEvent.stateKind {
-            // The run ended: whatever it was waiting for is gone with it.
-            if kind == TaskEvent.stateKind {
-                clearAsks(session: sessionID)
+        // A task reports every move through `state`, and `waitingForApproval`
+        // arrives right after the ask the phone is about to answer: taking
+        // that for an end cleared the ask and dropped the turn's reply.
+        let endsTask = kind == TaskEvent.stateKind
+            && payload?["state"]?.stringValue.flatMap(TaskState.init(rawValue:))?.isTerminal == true
+        if kind == "finished" || endsTask {
+            // The run ended: whatever it was waiting for is gone with it. A
+            // conversation has more than one task in its life, so only the
+            // task that asked takes its ask.
+            if endsTask {
+                clearAsks(session: sessionID, taskID: taskID)
             }
             let final = Reply(userID: reply.userID, contextToken: reply.contextToken, text: reply.text, turns: 1)
             // A message that arrived during the run is answered next: the
@@ -1701,6 +1722,8 @@ actor WeChatChannel {
         var ask: ChannelAsk
         var contextToken: String?
         var savedAt: Date
+        /// The task that asked, when it was recorded.
+        var taskID: TaskID?
     }
 
     /// Writes the asks where the next host run finds them: an approval
@@ -1718,7 +1741,8 @@ actor WeChatChannel {
                     userID: $0.userID,
                     ask: $0.ask,
                     contextToken: $0.contextToken,
-                    savedAt: Date()
+                    savedAt: Date(),
+                    taskID: $0.taskID
                 )
             }
             .sorted { $0.ask.sessionID < $1.ask.sessionID }
@@ -1742,7 +1766,8 @@ actor WeChatChannel {
             asks[entry.ask.sessionID] = PendingAsk(
                 ask: entry.ask,
                 contextToken: entry.contextToken,
-                userID: entry.userID
+                userID: entry.userID,
+                taskID: entry.taskID
             )
         }
         return asks

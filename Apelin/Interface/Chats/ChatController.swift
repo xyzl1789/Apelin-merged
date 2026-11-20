@@ -48,6 +48,11 @@ final class ChatController: UIViewController {
     private weak var tracePage: TraceController?
     /// Builds the rows again once a running turn has gone quiet.
     private let quietWatch = ChatQuietWatch()
+    /// While the page is up, asks the host whether this conversation is running
+    /// again: a report delivered after the last run ended starts a new task the
+    /// app never attached to, so the row said finished while the agent worked
+    /// and the reply only arrived on the next open. Only while visible.
+    private var runReconcile: Task<Void, Never>?
 
     /// The shown conversation's rows as last applied.
     private var messages: [ChatMessage] = []
@@ -474,11 +479,18 @@ final class ChatController: UIViewController {
         sayUnsent()
         refreshBalances()
         startBalanceTimer()
+        watchRuns()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         stopBalanceTimer()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        runReconcile?.cancel()
+        runReconcile = nil
     }
 
     /// 支持查余额的供应商停留在当前对话时，按自动间隔轮询一次；离开页面
@@ -506,6 +518,20 @@ final class ChatController: UIViewController {
     private func stopBalanceTimer() {
         balanceTimer?.invalidate()
         balanceTimer = nil
+    }
+
+    /// One host question every few seconds while the page is up, so a run a
+    /// delivered report started becomes visible: the chat row stops saying it
+    /// finished and its events are read from the task the host names now.
+    private func watchRuns() {
+        guard runReconcile == nil else { return }
+        runReconcile = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !Task.isCancelled, let self else { return }
+                await runtime.reconcileRuns()
+            }
+        }
     }
 
     override func viewWillLayoutSubviews() {
