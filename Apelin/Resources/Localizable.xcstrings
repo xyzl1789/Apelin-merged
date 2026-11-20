@@ -2297,85 +2297,85 @@
         }
       }
     },
-    "没有匹配的配置\\n换个关键词试试": {
+    "没有匹配的配置\n换个关键词试试": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "No matching configuration\nTry another keyword"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "没有匹配的配置\n换个关键词试试"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "لا توجد إعدادات مطابقة\nجرّب كلمة أخرى"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "Keine passende Konfiguration\nVersuchen Sie ein anderes Stichwort"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "No hay configuraciones coincidentes\nPrueba otra palabra clave"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "Aucune configuration correspondante\nEssayez un autre mot-clé"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "Nessuna configurazione corrispondente\nProva un’altra parola chiave"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "一致する設定がありません\n別のキーワードを試してください"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "일치하는 구성이 없습니다\n다른 검색어를 입력해 보세요"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "Nenhuma configuração correspondente\nTente outra palavra-chave"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "Подходящих конфигураций нет\nПопробуйте другой запрос"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "Không có cấu hình phù hợp\nThử một từ khóa khác"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有匹配的配置\\n换个关键词试试"
+            "value": "沒有符合的設定\n換個關鍵字試試"
           }
         }
       }
@@ -2961,85 +2961,85 @@
         }
       }
     },
-    "还没有配置\\n点击右上角 + 创建": {
+    "还没有配置\n点击右上角 + 创建": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "No configurations yet\nTap + in the top-right to create one"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "还没有配置\n点击右上角 + 创建"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "لا توجد إعدادات بعد\nاضغط + في أعلى اليمين للإنشاء"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "Noch keine Konfigurationen\nTippen Sie oben rechts auf +, um eine zu erstellen"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "Aún no hay configuraciones\nToca + arriba a la derecha para crear una"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "Aucune configuration pour l’instant\nAppuyez sur + en haut à droite pour en créer une"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "Non ci sono ancora configurazioni\nTocca + in alto a destra per crearne una"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "設定がまだありません\n右上の + をタップして作成してください"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "아직 구성이 없습니다\n오른쪽 위 +를 눌러 만드세요"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "Ainda não há configurações\nToque em + no canto superior direito para criar uma"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "Конфигураций пока нет\nНажмите + в правом верхнем углу, чтобы создать"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "Chưa có cấu hình\nNhấn + ở góc trên bên phải để tạo"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有配置\\n点击右上角 + 创建"
+            "value": "尚未建立設定\n點選右上角 + 建立"
           }
         }
       }
@@ -150578,6 +150578,1154 @@
           "stringUnit": {
             "state": "translated",
             "value": "每 3 小時"
+          }
+        }
+      }
+    },
+    "%@ · %@\n生效 1 项 · 人设正文 %lld B": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n1 active · body %lld B"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n生效 1 项 · 人设正文 %lld B"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n生效 1 项 · 人设正文 %lld B"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\nنشط واحد · النص %lld بايت"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n1 aktiv · Text %lld B"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n1 activo · texto %lld B"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n1 actif · corps %lld B"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n1 attivo · testo %lld B"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n1 件適用中 · 本文 %lld B"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n1개 적용 중 · 본문 %lld B"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n1 ativo · texto %lld B"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n1 активен · текст %lld Б"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@\n1 đang áp dụng · nội dung %lld B"
+          }
+        }
+      }
+    },
+    "%lld 项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld items"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 项"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 项"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld عنصر"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Einträge"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld elementos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld éléments"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld elementi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 件"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld개"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld itens"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld элементов"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld mục"
+          }
+        }
+      }
+    },
+    "Keep Editing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep Editing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续编辑"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "繼續編輯"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "متابعة التحرير"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weiter bearbeiten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seguir editando"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continuer à modifier"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continua a modificare"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編集を続ける"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "편집 계속"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continuar editando"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Продолжить редактирование"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiếp tục chỉnh sửa"
+          }
+        }
+      }
+    },
+    "Matching Is Per Configuration": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Matching Is Per Configuration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配方式按配置单独设置"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "比對方式依設定個別設定"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "طريقة المطابقة لكل إعداد على حدة"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Übereinstimmung wird pro Konfiguration festgelegt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La coincidencia se configura por separado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La correspondance est définie par configuration"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La corrispondenza è impostata per configurazione"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一致ルールは設定ごとに個別指定です"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "일치 방식은 설정별로 지정합니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A correspondência é definida por configuração"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правило сопоставления задаётся для каждой конфигурации"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quy cách khớp được đặt riêng cho từng cấu hình"
+          }
+        }
+      }
+    },
+    "No model selected": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No model selected"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未选择模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未選擇模型"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لم يتم تحديد نموذج"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein Modell ausgewählt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ningún modelo seleccionado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun modèle sélectionné"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun modello selezionato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "モデル未選択"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모델이 선택되지 않았습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum modelo selecionado"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Модель не выбрана"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chưa chọn mô hình"
+          }
+        }
+      }
+    },
+    "Open a configuration and switch it between Manual and Automatic.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open a configuration and switch it between Manual and Automatic."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开某个配置，在「手动」和「自动」之间切换。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟某個設定，在「手動」與「自動」之間切換。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "افتح إعداداً وبدّل بين الوضعين اليدوي والتلقائي."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffnen Sie eine Konfiguration und wechseln Sie zwischen Manuell und Automatisch."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abra una configuración y cambie entre Manual y Automático."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrez une configuration et basculez entre Manuel et Automatique."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri una configurazione e passa tra Manuale e Automatico."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定を開き、「手動」と「自動」を切り替えてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설정을 열고 수동과 자동 사이에서 전환하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abra uma configuração e alterne entre Manual e Automático."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Откройте конфигурацию и переключите режим между «Вручную» и «Автоматически»."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mở một cấu hình và chuyển giữa Thủ công và Tự động."
+          }
+        }
+      }
+    },
+    "Selecting a configuration manually disables automatic matching.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selecting a configuration manually disables automatic matching."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动选择配置会关闭自动匹配。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手動選擇設定會關閉自動比對。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اختيار إعداد يدوياً يوقف المطابقة التلقائية."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die manuelle Auswahl einer Konfiguration deaktiviert die automatische Übereinstimmung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seleccionar una configuración manualmente desactiva la coincidencia automática."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sélectionner une configuration manuellement désactive la correspondance automatique."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selezionare una configurazione manualmente disattiva la corrispondenza automatica."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定を手動で選択すると自動一致が無効になります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "구성을 수동으로 선택하면 자동 일치가 꺼집니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selecionar uma configuração manualmente desativa a correspondência automática."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ручной выбор конфигурации отключает автоматическое сопоставление."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chọn cấu hình thủ công sẽ tắt tính năng khớp tự động."
+          }
+        }
+      }
+    },
+    "Switch to Manual?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch to Manual?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换为手动？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切換為手動？"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "التبديل إلى الوضع اليدوي؟"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zu Manuell wechseln?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Cambiar a Manual?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passer en mode Manuel ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passare a Manuale?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手動に切り替えますか？"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "수동으로 전환할까요?"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alternar para Manual?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переключить на «Вручную»?"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chuyển sang Thủ công?"
+          }
+        }
+      }
+    },
+    "This configuration has not been saved yet.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This configuration has not been saved yet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此配置尚未保存。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此設定尚未儲存。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لم يتم حفظ هذا الإعداد بعد."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Konfiguration wurde noch nicht gespeichert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta configuración aún no se ha guardado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette configuration n’a pas encore été enregistrée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questa configurazione non è stata ancora salvata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この設定はまだ保存されていません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 구성은 아직 저장되지 않았습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta configuração ainda não foi salva."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Эта конфигурация ещё не сохранена."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cấu hình này chưa được lưu."
+          }
+        }
+      }
+    },
+    "已有 %lld 项自动配置，命中时压过手动选择": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld automatic rules override manual selection when matched"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有 %lld 项自动配置，命中时压过手动选择"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有 %lld 項自動設定，命中時覆蓋手動選擇"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "توجد %lld إعدادات تلقائية تتجاوز الاختيار اليدوي عند التطابق"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld automatische Regeln setzen die manuelle Auswahl bei Treffern außer Kraft"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld reglas automáticas anulan la selección manual cuando coinciden"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld règles automatiques remplacent la sélection manuelle en cas de correspondance"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld regole automatiche sostituiscono la selezione manuale quando corrispondono"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動設定が %lld 件あり、一致した場合は手動選択より優先されます"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자동 설정이 %lld개 있으며, 일치할 때 수동 선택보다 우선합니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld regras automáticas substituem a seleção manual quando há correspondência"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld автоматических правил перекрывают ручной выбор при совпадении"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld quy tắc tự động ghi đè lựa chọn thủ công khi khớp"
+          }
+        }
+      }
+    },
+    "手动：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manual: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手動：%@"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يدوي: %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manuell: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manual: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manuel : %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manuale: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手動：%@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "수동: %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manual: %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вручную: %@"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thủ công: %@"
+          }
+        }
+      }
+    },
+    "未匹配配置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching configuration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配的設定"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا يوجد إعداد مطابق"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine passende Konfiguration"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna configuración coincidente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucune configuration correspondante"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessuna configurazione corrispondente"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一致する設定がありません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "일치하는 구성이 없습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma configuração correspondente"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подходящей конфигурации нет"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không có cấu hình phù hợp"
+          }
+        }
+      }
+    },
+    "正文 · %lld B（UTF-8）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Body · %lld B (UTF-8)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文 · %lld B（UTF-8）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本文 · %lld B（UTF-8）"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "النص · %lld بايت (UTF-8)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text · %lld B (UTF-8)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuerpo · %lld B (UTF-8)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Corps · %lld B (UTF-8)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testo · %lld B (UTF-8)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本文 · %lld B（UTF-8）"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "본문 · %lld B (UTF-8)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Corpo · %lld B (UTF-8)"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст · %lld Б (UTF-8)"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nội dung · %lld B (UTF-8)"
+          }
+        }
+      }
+    },
+    "自动：%@ → %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic: %@ → %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：%@ → %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動：%@ → %@"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تلقائي: %@ → %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisch: %@ → %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automático: %@ → %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatique : %@ → %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatico: %@ → %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動：%@ → %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자동: %@ → %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automático: %@ → %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Автоматически: %@ → %@"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tự động: %@ → %@"
           }
         }
       }
