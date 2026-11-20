@@ -15,6 +15,72 @@
             "state": "translated",
             "value": "自动匹配"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
         }
       }
     },
@@ -28,6 +94,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
@@ -49,6 +181,72 @@
             "state": "translated",
             "value": "配置库"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
         }
       }
     },
@@ -62,6 +260,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "配置管理"
@@ -83,6 +347,72 @@
             "state": "translated",
             "value": "复制全文"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
         }
       }
     },
@@ -96,6 +426,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "取消选择 "
@@ -117,6 +513,72 @@
             "state": "translated",
             "value": "启用注入"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
         }
       }
     },
@@ -130,6 +592,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "注入人设正文"
@@ -151,6 +679,72 @@
             "state": "translated",
             "value": "更多选项"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
         }
       }
     },
@@ -164,6 +758,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "未匹配配置"
@@ -185,6 +845,72 @@
             "state": "translated",
             "value": "置顶"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
         }
       }
     },
@@ -198,6 +924,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "预览注入"
@@ -219,6 +1011,72 @@
             "state": "translated",
             "value": "推荐当前模型"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
         }
       }
     },
@@ -232,6 +1090,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "选择 "
@@ -253,6 +1177,72 @@
             "state": "translated",
             "value": "自建"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
         }
       }
     },
@@ -266,6 +1256,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "点按编辑，右侧圆形按钮手动选择"
@@ -287,6 +1343,72 @@
             "state": "translated",
             "value": "关闭后不向对话注入任何配置正文"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
         }
       }
     },
@@ -300,6 +1422,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "匹配规则"
@@ -321,6 +1509,72 @@
             "state": "translated",
             "value": "已关闭，使用默认提示"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
         }
       }
     },
@@ -334,6 +1588,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "手动模式 · 尚未选择配置"
@@ -355,6 +1675,72 @@
             "state": "translated",
             "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
         }
       }
     },
@@ -368,6 +1754,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
@@ -389,6 +1841,72 @@
             "state": "translated",
             "value": "按当前模型自动匹配"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
         }
       }
     },
@@ -402,6 +1920,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
@@ -423,6 +2007,72 @@
             "state": "translated",
             "value": "没有匹配的配置\\n换个关键词试试"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
         }
       }
     },
@@ -436,6 +2086,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "注入人设正文"
@@ -457,6 +2173,72 @@
             "state": "translated",
             "value": "目前没有自动配置，在配置里切换为「自动」即可"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
         }
       }
     },
@@ -470,6 +2252,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "置顶与排序"
@@ -491,6 +2339,72 @@
             "state": "translated",
             "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
         }
       }
     },
@@ -504,6 +2418,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
@@ -525,6 +2505,72 @@
             "state": "translated",
             "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
         }
       }
     },
@@ -542,6 +2588,72 @@
             "state": "translated",
             "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
         }
       }
     },
@@ -555,6 +2667,72 @@
           }
         },
         "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "还没有配置\\n点击右上角 + 创建"
