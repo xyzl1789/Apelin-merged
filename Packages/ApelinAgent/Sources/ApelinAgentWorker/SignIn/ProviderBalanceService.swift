@@ -399,10 +399,10 @@ enum ProviderBalanceService {
             })
         case .openAIBilling:
             return Adapter(path: family.path, recognize: { data in
-                let o = Self.unwrapBilling(json(data))
+                guard let o = Self.unwrapBilling(json(data)) else { return false }
                 return o["hard_limit_usd"] != nil || o["balance"] != nil
             }, parse: { data in
-                let sub = Self.unwrapBilling(json(data))
+                guard let sub = Self.unwrapBilling(json(data)) else { return nil }
                 var total: Decimal?
                 var remaining: Decimal?
                 var unlimited = false
@@ -428,7 +428,7 @@ enum ProviderBalanceService {
     /// OpenAI 计费兼容的补查：`/usage` 里的 total_usage 单位是美分。
     private static func parseOpenAIUsage(_ data: Data, into figure: Figure) -> Figure {
         var result = figure
-        let object = Self.unwrapBilling(json(data))
+        guard let object = Self.unwrapBilling(json(data)) else { return result }
         let cents = Self.decimal(object["total_usage"]).map { $0 / 100 }
         let spent = cents ?? Self.decimal(object["used_usd"])
         if let spent, let total = Self.decimal(object["hard_limit_usd"]), total > 0 {
