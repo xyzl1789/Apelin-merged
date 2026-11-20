@@ -15,7 +15,7 @@ final class PersonaManagementController: UITableViewController {
         case pinning
     }
 
-    init(style: UITableView.Style) {
+    override init(style: UITableView.Style) {
         super.init(style: style)
     }
 

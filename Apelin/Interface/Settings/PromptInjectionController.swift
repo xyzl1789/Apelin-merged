@@ -539,8 +539,8 @@ final class PromptInjectionController: TableController, UISearchResultsUpdating 
 
 /// 配置库区头：左侧「配置库」，右侧当前条目数，和 Dylix 的分区头一致。
 private final class LibraryHeaderView: UITableViewHeaderFooterView {
-    private let titleLabel = Self.label(style: .footnote, color: .secondaryLabel)
-    private let countLabel = Self.label(style: .footnote, color: .secondaryLabel)
+    private let titleLabel = LibraryHeaderView.label(style: .footnote, color: .secondaryLabel)
+    private let countLabel = LibraryHeaderView.label(style: .footnote, color: .secondaryLabel)
 
     override init(reuseIdentifier: String?) {
         super.init(reuseIdentifier: reuseIdentifier)
