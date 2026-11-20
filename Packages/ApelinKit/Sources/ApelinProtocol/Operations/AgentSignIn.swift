@@ -120,10 +120,13 @@ public struct ProviderBalance: Codable, Sendable, Equatable {
     public var stale: Bool
     /// A short, redacted reason for the failure, never the server's text.
     public var problem: String?
+    /// 自定义中转站被探测出的类型（如「New API · /api/usage/token」）；官方
+    /// 服务商或没探明时为 nil。展示时照原样显示，不含密钥或完整 URL。
+    public var relayKind: String?
 
     public init(accountID: String, provider: AgentProvider, label: String,
                 amount: String, currency: String, fraction: Double?,
-                updatedAt: Date, stale: Bool, problem: String?) {
+                updatedAt: Date, stale: Bool, problem: String?, relayKind: String? = nil) {
         self.accountID = accountID
         self.provider = provider
         self.label = label
@@ -133,6 +136,7 @@ public struct ProviderBalance: Codable, Sendable, Equatable {
         self.updatedAt = updatedAt
         self.stale = stale
         self.problem = problem
+        self.relayKind = relayKind
     }
 }
 

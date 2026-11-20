@@ -16,21 +16,71 @@ enum ProviderBalanceService {
     private static let maximumUnitLength = 32
     private static let userAgent = "Apelin-Balance/1.0"
 
-    /// 一次查询的结果：金额文字、单位、圆环比例，以及（可选）总额度。
-    private struct Figure: Sendable {
+    /// 一次查询的结果：金额文字、单位、圆环比例、探测出的中转站类型，以及
+    /// （可选）总额度。
+    struct Figure: Sendable {
         var amount: String
         var unit: String
         var fraction: Double?
+        var relayKind: String?
     }
 
-    /// 一个连接的余额接口：只对 HTTPS、白名单域名发 GET，不跟随重定向。
-    private struct Adapter: Sendable {
+    /// 一个连接的余额接口：只对 HTTPS、已配置的域名发 GET，不跟随重定向。
+    /// `recognize` 只认响应结构，不读原始文本；认不出返回 nil，由调用方继续
+    /// 探测下一个候选。`fallbackPath` 是主地址认得出结构但取不到金额时补查的
+    /// 第二个地址（OpenRouter 的 credits）。
+    struct Adapter: Sendable {
         var path: String
         var header: (String, String)?
+        var recognize: @Sendable (Data) -> Bool
         var parse: @Sendable (Data) -> Figure?
-        /// limit_remaining 为空时补查的第二个地址。
         var fallbackPath: String?
+
+        init(path: String, header: (String, String)? = nil,
+             recognize: @escaping @Sendable (Data) -> Bool,
+             parse: @escaping @Sendable (Data) -> Figure?,
+             fallbackPath: String? = nil) {
+            self.path = path
+            self.header = header
+            self.recognize = recognize
+            self.parse = parse
+            self.fallbackPath = fallbackPath
+        }
     }
+
+    /// 自定义中转站的三种家族，按探测顺序排列。类型名只用于展示与记忆，
+    /// 端点路径是公开的固定字符串，绝不由用户输入的路径拼出。
+    enum RelayFamily: String, Sendable, CaseIterable {
+        case sub2api, newAPI, openAIBilling
+
+        var path: String {
+            switch self {
+            case .sub2api: "/v1/usage"
+            case .newAPI: "/api/usage/token"
+            case .openAIBilling: "/v1/dashboard/billing/subscription"
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .sub2api: "Sub2API"
+            case .newAPI: "New API"
+            case .openAIBilling: "OpenAI-compatible billing"
+            }
+        }
+
+        var display: String { "\(label) · \(path)" }
+
+        var memoryKey: String { rawValue }
+    }
+
+    /// 探测类型的记忆：24 小时内只访问已认出的家族；上次失败或过期则全探测。
+    private struct RelayMemory: Codable, Sendable {
+        var family: String
+        var probedAt: Date
+    }
+
+    private static let relayMemoryTTL: TimeInterval = 24 * 3600
 
     /// 网络错误只留下分类，绝不把服务器文本、URL query 或密钥带出去。
     private enum Problem: Error {
@@ -56,6 +106,7 @@ enum ProviderBalanceService {
         var unit: String
         var fraction: Double?
         var updatedAt: Date
+        var relayKind: String?
     }
 
     /// 并发查询同一个连接时合并；这里只按连接的缓存键去重，App 与详情页
@@ -75,30 +126,50 @@ enum ProviderBalanceService {
             guard ProviderModels.usesAPIKey(provider, credentials: credential),
                   Self.adapterOff(credential) == false,
                   let base = Self.baseURL(provider: provider, credentials: credential),
-                  let adapter = Self.adapter(host: base.host, provider: provider)
+                  Self.adapter(host: base.host, provider: provider) != nil
             else { continue }
             let key = Self.cacheKey(storeID: storeID, base: base, credential: credential)
             let file = directory.appendingPathComponent(key + ".json", isDirectory: false)
+            let memoryFile = directory.appendingPathComponent(key + ".relay.json", isDirectory: false)
             let cached = Self.read(file)
             let age = cached.map { Date().timeIntervalSince($0.updatedAt) } ?? .infinity
             if !force, let cached, age < cacheTTL {
                 lines.append(Self.line(storeID: storeID, provider: provider, host: base.host,
-                                       figure: Figure(amount: cached.amount, unit: cached.unit, fraction: cached.fraction),
+                                       figure: Figure(amount: cached.amount, unit: cached.unit,
+                                                      fraction: cached.fraction, relayKind: cached.relayKind),
                                        updatedAt: cached.updatedAt, stale: false, problem: nil))
                 continue
             }
+            // 自定义中转站：从记忆里取 24 小时内认出的家族，只查它一个端点。
+            let hint: RelayFamily? = if base.isRelay {
+                Self.relayHint(file: memoryFile, now: Date())
+            } else {
+                nil
+            }
             do {
-                let figure = try await Self.readFigure(base: base, credential: credential, adapter: adapter)
+                let result: Figure
+                if base.isRelay {
+                    let probed = try await Self.readRelay(base: base, credential: credential, hint: hint)
+                    result = probed.figure
+                    if probed.fresh {
+                        Self.saveRelayMemory(probed.family, file: memoryFile, now: Date())
+                    }
+                } else {
+                    guard let adapter = Self.adapter(host: base.host, provider: provider) else { throw Problem.refused }
+                    result = try await Self.readFigure(base: base, credential: credential, adapter: adapter)
+                }
                 let now = Date()
-                let item = Cached(amount: figure.amount, unit: figure.unit, fraction: figure.fraction, updatedAt: now)
+                let item = Cached(amount: result.amount, unit: result.unit, fraction: result.fraction,
+                                  updatedAt: now, relayKind: result.relayKind)
                 try? JSONCoding.encode(item).write(to: file, options: .atomic)
                 lines.append(Self.line(storeID: storeID, provider: provider, host: base.host,
-                                       figure: figure, updatedAt: now, stale: false, problem: nil))
+                                       figure: result, updatedAt: now, stale: false, problem: nil))
             } catch {
                 // 本来支持、只是这次没查到：保留圆环，显示上次缓存或失败说明。
                 let problem = (error as? Problem) ?? .unexpected
-                let fallback = cached.map { Figure(amount: $0.amount, unit: $0.unit, fraction: $0.fraction) }
-                    ?? Figure(amount: "--", unit: "", fraction: nil)
+                let fallback = cached.map {
+                    Figure(amount: $0.amount, unit: $0.unit, fraction: $0.fraction, relayKind: $0.relayKind)
+                } ?? Figure(amount: "--", unit: "", fraction: nil, relayKind: nil)
                 lines.append(Self.line(storeID: storeID, provider: provider, host: base.host,
                                        figure: fallback, updatedAt: cached?.updatedAt ?? Date(),
                                        stale: true, problem: problem.text))
@@ -120,8 +191,23 @@ enum ProviderBalanceService {
         return value.lowercased() == "off"
     }
 
+    /// 一个连接的根地址。官方域名保留原路径（它们的 adapter 用绝对路径，
+    /// URL 相对根解析时路径会被替换，因此保留与否都不影响官方查询）；自定义
+    /// 中转站剥掉末尾的 /v1 但保留 /gw/v1 这类路径前缀，再在其后拼家族端点。
+    struct Base: Sendable {
+        var host: String
+        var scheme: String
+        var root: URL
+        var isRelay: Bool
+    }
+
+    /// 官方余额域名：命中的走固定 adapter，其余自定义的走中转站探测。
+    private static let officialBalanceHosts: Set<String> = [
+        "api.deepseek.com", "api.moonshot.cn", "api.siliconflow.cn", "openrouter.ai",
+    ]
+
     /// 兼容模式手填的 baseURL 优先；没有则用该服务商表单的默认值。
-    private static func baseURL(provider: AgentProvider, credentials: OAuthCredentials) -> (host: String, scheme: String, root: URL)? {
+    static func baseURL(provider: AgentProvider, credentials: OAuthCredentials) -> Base? {
         let configured: String? = if case let .string(value)? = credentials.extras[AgentSignInField.baseURL.rawValue],
             !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
@@ -137,20 +223,27 @@ enum ProviderBalanceService {
               parts.scheme?.lowercased() == "https",
               let host = parts.host?.lowercased(), !host.isEmpty
         else { return nil }
-        parts.path = ""
         parts.query = nil
         parts.fragment = nil
         parts.user = nil
         parts.password = nil
+        let isRelay = !officialBalanceHosts.contains(host)
+        if isRelay {
+            var path = parts.path
+            while path.hasSuffix("/") { path.removeLast() }
+            if path.lowercased().hasSuffix("/v1") { path.removeLast(3) }
+            while path.hasSuffix("/") { path.removeLast() }
+            parts.path = path
+        }
         guard let url = parts.url else { return nil }
-        return (host, parts.scheme?.lowercased() ?? "https", url)
+        return Base(host: host, scheme: parts.scheme?.lowercased() ?? "https", root: url, isRelay: isRelay)
     }
 
     /// 按域名匹配，不区分「原生」与「兼容模式」。排除官方不提供余额的域名。
     private static func adapter(host: String, provider: AgentProvider) -> Adapter? {
         switch host {
         case "api.deepseek.com":
-            return Adapter(path: "/user/balance", header: nil, parse: { data in
+            return Adapter(path: "/user/balance", recognize: { _ in true }, parse: { data in
                 guard let object = json(data), case let .array(list)? = object["balance_infos"] else { return nil }
                 var total: Decimal = 0
                 var unit: String?
@@ -163,22 +256,28 @@ enum ProviderBalanceService {
                     found = true
                 }
                 guard found else { return nil }
-                return Figure(amount: Self.text(total), unit: Self.cleanUnit(unit ?? "CNY"), fraction: nil)
+                return Figure(amount: Self.text(total), unit: Self.cleanUnit(unit ?? "CNY"), fraction: nil, relayKind: nil)
             }, fallbackPath: nil)
         case "api.moonshot.cn":
-            return Adapter(path: "/v1/users/me/balance", header: nil, parse: { data in
+            return Adapter(path: "/v1/users/me/balance", recognize: { data in
+                json(data)?["data"]?["available_balance"] != nil
+            }, parse: { data in
                 guard let value = json(data)?["data"]?["available_balance"],
                       let amount = Self.decimal(value) else { return nil }
-                return Figure(amount: Self.text(amount), unit: "CNY", fraction: nil)
+                return Figure(amount: Self.text(amount), unit: "CNY", fraction: nil, relayKind: nil)
             }, fallbackPath: nil)
         case "api.siliconflow.cn":
-            return Adapter(path: "/v1/user/info", header: nil, parse: { data in
+            return Adapter(path: "/v1/user/info", recognize: { data in
+                json(data)?["data"]?["totalBalance"] != nil
+            }, parse: { data in
                 guard let value = json(data)?["data"]?["totalBalance"],
                       let amount = Self.decimal(value) else { return nil }
-                return Figure(amount: Self.text(amount), unit: "CNY", fraction: nil)
+                return Figure(amount: Self.text(amount), unit: "CNY", fraction: nil, relayKind: nil)
             }, fallbackPath: nil)
         case "openrouter.ai":
-            return Adapter(path: "/api/v1/key", header: nil, parse: { data in
+            return Adapter(path: "/api/v1/key", recognize: { data in
+                json(data)?["data"] != nil
+            }, parse: { data in
                 guard let object = json(data)?["data"] else { return nil }
                 let remaining = object["limit_remaining"]
                 if remaining == nil || remaining == .null {
@@ -187,24 +286,18 @@ enum ProviderBalanceService {
                 guard let amount = Self.decimal(remaining) else { return nil }
                 let limit = Self.decimal(object["limit"])
                 let fraction = limit.flatMap { $0 > 0 ? Self.ratio(amount / $0) : nil }
-                return Figure(amount: Self.text(amount), unit: "USD", fraction: fraction)
+                return Figure(amount: Self.text(amount), unit: "USD", fraction: fraction, relayKind: nil)
             }, fallbackPath: "/api/v1/credits")
         default:
-            // 中转站兜底：只接受有 /v1/usage 且明文声明余额的响应。
+            // 自定义中转站由 readRelay 顺序探测；这里只让兼容模式通过 lookup 的守卫。
             guard provider == .openAICompatible || provider.kind == .openAICompatible else { return nil }
-            return Adapter(path: "/v1/usage", header: nil, parse: { data in
-                guard let object = json(data)?["data"] else { return nil }
-                let value = object["balance"] ?? object["remaining"]
-                guard let amount = Self.decimal(value) else { return nil }
-                let unit = Self.cleanUnit(object["unit"]?.stringValue ?? "")
-                return Figure(amount: Self.text(amount), unit: unit, fraction: nil)
-            }, fallbackPath: nil)
+            return Adapter(path: "", recognize: { _ in false }, parse: { _ in nil }, fallbackPath: nil)
         }
     }
 
     /// 只发只读 GET：禁止重定向、响应体限长、独立 ephemeral session。
     private static func readFigure(
-        base: (host: String, scheme: String, root: URL),
+        base: Base,
         credential: OAuthCredentials,
         adapter: Adapter,
     ) async throws -> Figure {
@@ -218,19 +311,194 @@ enum ProviderBalanceService {
         throw Problem.refused
     }
 
+    /// 自定义中转站：按记忆的家族（没有就按 sub2api → newAPI → openAIBilling）
+    /// 顺序探测。结构认得出就用那个家族解析；全认不出才报 refused。所有家族
+    /// 都拒绝密钥时直接报 unauthorized，不当成「没有余额接口」。
+    private static func readRelay(
+        base: Base,
+        credential: OAuthCredentials,
+        hint: RelayFamily?,
+    ) async throws -> (figure: Figure, family: RelayFamily, fresh: Bool) {
+        var families = RelayFamily.allCases
+        if let hint, let index = families.firstIndex(of: hint) {
+            families = [hint] + families.enumerated().filter { $0.offset != index }.map(\.element)
+        }
+        var errors: [Problem] = []
+        for family in families {
+            do {
+                let adapter = relayAdapter(family)
+                guard let body = try await rawRequest(base: base, credential: credential, path: family.path),
+                      adapter.recognize(body),
+                      let parsed = adapter.parse(body)
+                else { throw Problem.refused }
+                var figure = parsed
+                if family == .openAIBilling,
+                   let usage = try? await rawRequest(base: base, credential: credential,
+                                                     path: "/v1/dashboard/billing/usage")
+                {
+                    figure = parseOpenAIUsage(usage, into: figure)
+                }
+                figure.relayKind = family.display
+                return (figure, family, hint != family)
+            } catch let problem as Problem {
+                errors.append(problem)
+                // 已认出的家族这次只是拒绝密钥：直接报，别再挨个试。
+                if hint == family, problem == .unauthorized { throw problem }
+            } catch {
+                errors.append(.unexpected)
+            }
+        }
+        if !errors.isEmpty, errors.allSatisfy({ $0 == .unauthorized }) { throw Problem.unauthorized }
+        throw Problem.refused
+    }
+
+    /// 每个家族的响应结构与金额解析。结构识别只认公开字段名，不读原始文本。
+    static func relayAdapter(_ family: RelayFamily) -> Adapter {
+        switch family {
+        case .sub2api:
+            return Adapter(path: family.path, recognize: { data in
+                json(data)?["isValid"]?.boolValue != nil
+            }, parse: { data in
+                guard let object = json(data) else { return nil }
+                var total: Decimal?
+                var remaining: Decimal?
+                var unlimited = false
+                if (object["mode"]?.stringValue) == "quota_limited",
+                   let quota = object["quota"]
+                {
+                    total = Self.decimal(quota["limit"])
+                    remaining = Self.decimal(quota["remaining"]).map { max(0, $0) }
+                } else if Self.decimal(object["balance"]) != nil {
+                    remaining = Self.decimal(object["balance"])
+                } else {
+                    let value = Self.decimal(object["remaining"])
+                    if let value, value < 0 {
+                        unlimited = true
+                    } else {
+                        remaining = value
+                    }
+                }
+                guard remaining != nil || total != nil || unlimited else { return nil }
+                let fraction = unlimited ? nil : total.flatMap { $0 > 0 ? Self.ratio((remaining ?? 0) / $0) : nil }
+                return Figure(amount: Self.text(remaining ?? total ?? 0), unit: "USD",
+                              fraction: fraction, relayKind: nil)
+            })
+        case .newAPI:
+            return Adapter(path: family.path, recognize: { data in
+                guard let d = json(data)?["data"] else { return false }
+                return d["total_granted"] != nil || d["total_available"] != nil
+            }, parse: { data in
+                guard let d = json(data)?["data"] else { return nil }
+                let granted = Self.decimal(d["total_granted"])
+                let available = Self.decimal(d["total_available"])
+                let unlimited = (d["unlimited_quota"]?.boolValue == true) || (granted.map { $0 < 0 } ?? false)
+                guard unlimited || available != nil || granted != nil else { return nil }
+                let fraction = unlimited ? nil : granted.flatMap { $0 > 0 ? Self.ratio((available ?? 0) / $0) : nil }
+                return Figure(amount: Self.text(available ?? granted ?? 0), unit: "quota",
+                              fraction: fraction, relayKind: nil)
+            })
+        case .openAIBilling:
+            return Adapter(path: family.path, recognize: { data in
+                let o = Self.unwrapBilling(json(data))
+                return o["hard_limit_usd"] != nil || o["balance"] != nil
+            }, parse: { data in
+                let sub = Self.unwrapBilling(json(data))
+                var total: Decimal?
+                var remaining: Decimal?
+                var unlimited = false
+                if let balance = Self.decimal(sub["balance"]) {
+                    remaining = balance
+                } else if let hard = Self.decimal(sub["hard_limit_usd"]) {
+                    if hard >= 100_000_000 {
+                        unlimited = true
+                    } else {
+                        total = hard
+                    }
+                } else {
+                    return nil
+                }
+                guard remaining != nil || total != nil || unlimited else { return nil }
+                let fraction = unlimited ? nil : total.flatMap { $0 > 0 ? Self.ratio((remaining ?? 0) / $0) : nil }
+                return Figure(amount: Self.text(remaining ?? total ?? 0), unit: "USD",
+                              fraction: fraction, relayKind: nil)
+            })
+        }
+    }
+
+    /// OpenAI 计费兼容的补查：`/usage` 里的 total_usage 单位是美分。
+    private static func parseOpenAIUsage(_ data: Data, into figure: Figure) -> Figure {
+        var result = figure
+        let object = Self.unwrapBilling(json(data))
+        let cents = Self.decimal(object["total_usage"]).map { $0 / 100 }
+        let spent = cents ?? Self.decimal(object["used_usd"])
+        if let spent, let total = Self.decimal(object["hard_limit_usd"]), total > 0 {
+            result.fraction = Self.ratio(max(0, (total - spent) / total))
+        }
+        return result
+    }
+
+    private static func unwrapBilling(_ object: ApelinCore.JSONValue?) -> ApelinCore.JSONValue? {
+        guard let object else { return nil }
+        if let inner = object["data"] { return inner }
+        return object
+    }
+
+    private static func relayHint(file: URL, now: Date) -> RelayFamily? {
+        guard let data = try? Data(contentsOf: file),
+              let memory = try? JSONCoding.decoder().decode(RelayMemory.self, from: data),
+              now.timeIntervalSince(memory.probedAt) < relayMemoryTTL,
+              let family = RelayFamily(rawValue: memory.family)
+        else { return nil }
+        return family
+    }
+
+    private static func saveRelayMemory(_ family: RelayFamily, file: URL, now: Date) {
+        let memory = RelayMemory(family: family.memoryKey, probedAt: now)
+        try? JSONCoding.encode(memory).write(to: file, options: .atomic)
+    }
+
     private static func request(
-        base: (host: String, scheme: String, root: URL),
+        base: Base,
         credential: OAuthCredentials,
         adapter: Adapter,
         path: String,
     ) async throws -> Figure? {
-        guard let url = URL(string: path, relativeTo: base.root)?.absoluteURL else { throw Problem.unexpected }
+        guard let body = try await rawRequest(base: base, credential: credential, path: path, header: adapter.header)
+        else { return nil }
+        return adapter.parse(body)
+    }
+
+    /// 发出一次只读 GET，2xx 返回响应体；404/405/501 视为「没有这个接口」
+    /// 返回 nil（继续探测），其他错误抛 Problem。
+    private static func rawRequest(
+        base: Base,
+        credential: OAuthCredentials,
+        path: String,
+        header: (String, String)? = nil,
+    ) async throws -> Data? {
+        let url: URL
+        if base.isRelay {
+            // 中转站：端点路径拼到 root 的路径后面，保留 /gw 这类前缀。
+            let rootPath = base.root.path.hasSuffix("/") ? String(base.root.path.dropLast()) : base.root.path
+            guard var components = URLComponents(url: base.root, resolvingAgainstBaseURL: false) else {
+                throw Problem.unexpected
+            }
+            components.path = rootPath + path
+            guard let resolved = components.url else { throw Problem.unexpected }
+            url = resolved
+        } else {
+            // 官方域名：adapter 用绝对路径，替换整个路径。
+            guard let resolved = URL(string: path, relativeTo: base.root)?.absoluteURL else {
+                throw Problem.unexpected
+            }
+            url = resolved
+        }
         var request = URLRequest(url: url, timeoutInterval: TimeInterval(timeoutSeconds))
         request.httpMethod = "GET"
         request.setValue("Bearer \(credential.access)", forHTTPHeaderField: "Authorization")
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let (name, value) = adapter.header {
+        if let (name, value) = header {
             request.setValue(value, forHTTPHeaderField: name)
         }
         let configuration = URLSessionConfiguration.ephemeral
@@ -251,13 +519,14 @@ enum ProviderBalanceService {
         }
         defer { bytes.task.cancel() }
         guard let http = response as? HTTPURLResponse else { throw Problem.unexpected }
+        if http.statusCode == 404 || http.statusCode == 405 || http.statusCode == 501 { return nil }
         guard (200 ... 299).contains(http.statusCode) else { throw Self.problem(status: http.statusCode) }
         var body = Data()
         for try await byte in bytes {
             guard body.count < maximumBodyBytes else { throw Problem.unexpected }
             body.append(byte)
         }
-        return adapter.parse(body)
+        return body
     }
 
     private static func problem(status: Int) -> Problem {
@@ -398,7 +667,7 @@ enum ProviderBalanceService {
         return index
     }
 
-    private static func cacheKey(storeID: String, base: (host: String, scheme: String, root: URL), credential: OAuthCredentials) -> String {
+    private static func cacheKey(storeID: String, base: Base, credential: OAuthCredentials) -> String {
         let material = [
             storeID, base.root.absoluteString, userAgent, base.host, credential.access,
         ].joined(separator: "\u{1f}")
@@ -424,6 +693,7 @@ enum ProviderBalanceService {
             updatedAt: updatedAt,
             stale: stale,
             problem: problem,
+            relayKind: figure.relayKind,
         )
     }
 }

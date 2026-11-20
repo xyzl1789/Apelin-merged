@@ -172,6 +172,7 @@ final class ProviderBalanceCardCell: UITableViewCell {
     private let currencyLabel = UILabel()
     private let timeLabel = UILabel()
     private let hostLabel = UILabel()
+    private let relayLabel = UILabel()
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -219,6 +220,14 @@ final class ProviderBalanceCardCell: UITableViewCell {
         hostLabel.numberOfLines = 1
         hostLabel.setContentHuggingPriority(.required, for: .horizontal)
         hostLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+
+        // 中转站类型：只在中转站余额上显示，如「New API · /api/usage/token」。
+        relayLabel.font = .preferredFont(forTextStyle: .caption2)
+        relayLabel.textColor = .secondaryLabel
+        relayLabel.numberOfLines = 1
+        relayLabel.lineBreakMode = .byTruncatingTail
+        relayLabel.isHidden = true
+
         // 中间的空白：先被拉伸到占满剩余宽度，也先被压缩到 0。
         let footerGap = UIView().then {
             $0.setContentHuggingPriority(.init(1), for: .horizontal)
@@ -230,7 +239,7 @@ final class ProviderBalanceCardCell: UITableViewCell {
             $0.spacing = 8
         }
 
-        let stack = UIStackView(arrangedSubviews: [providerLabel, amountRow, footerRow]).then {
+        let stack = UIStackView(arrangedSubviews: [providerLabel, amountRow, footerRow, relayLabel]).then {
             $0.axis = .vertical
             $0.alignment = .fill
             $0.spacing = 4
@@ -263,6 +272,8 @@ final class ProviderBalanceCardCell: UITableViewCell {
         amountLabel.textColor = balance.stale ? .systemOrange : .label
         currencyLabel.text = balance.currency
         hostLabel.text = balance.label
+        relayLabel.isHidden = balance.relayKind == nil
+        relayLabel.text = balance.relayKind
         if balance.stale {
             // 查不到时这一行写原因，站点照旧跟在后面。
             timeLabel.text = balance.problem ?? String(localized: "Balance unavailable")
