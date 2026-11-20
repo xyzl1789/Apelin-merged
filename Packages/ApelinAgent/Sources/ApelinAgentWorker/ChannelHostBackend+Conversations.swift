@@ -36,7 +36,6 @@ public extension ChannelHostBackend {
                 modelParameters: inherits ? choice.modelParameters : nil,
                 prompt: request.prompt,
                 title: request.title,
-                delegationBrief: request.brief,
             ))
         }
         return ConversationCreateToolResponse(
@@ -138,12 +137,6 @@ public extension ChannelHostBackend {
         }
         try await conversation("apelin_conversation_stop") { try await service.agentClose(sessionID: request.sessionID) }
         return ConversationActionToolResponse(sessionID: request.sessionID, done: "closed")
-    }
-
-    /// The host's delegation plan for a conversation it opened, and the moves
-    /// it admits. Forwarded as it is: the host decides who may do what.
-    func delegation(_ request: AgentDelegationRequest) async throws -> AgentDelegationResponse {
-        try await service.send(request)
     }
 
     /// One conversation request; a refusal comes back in words the model

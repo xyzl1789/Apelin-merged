@@ -321,7 +321,7 @@ enum ToolSymbol {
             "bubble.left.and.bubble.right"
         case .webSearch, .webFetch:
             "globe"
-        case .todoList, .todoWrite, .conversationPlan:
+        case .todoList, .todoWrite:
             "checklist"
         case .notificationSend:
             "bell"

@@ -320,7 +320,6 @@ extension ToolRunner {
             text: name == .conversationCreate ? arguments.argString("prompt")
                 : name == .conversationSend ? arguments.argString("text") : nil,
             delivery: name == .conversationSend ? arguments.argString("delivery") : nil,
-            brief: name == .conversationCreate ? try Self.delegationBriefArgument(arguments) : nil,
         )
     }
 

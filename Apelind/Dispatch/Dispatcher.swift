@@ -69,9 +69,6 @@ enum Dispatcher {
         guard CallerPolicy.allows(request.caller, request.operation) else {
             return request.fail(ApelinError(.denied, "\(request.operation.rawValue) is not available to this caller"))
         }
-        if let refusal = await AgentDelegationAdmission.refusal(request, host: host) {
-            return refusal
-        }
         var request = request
         if let refusal = await host.precheck(&request) {
             return refusal
