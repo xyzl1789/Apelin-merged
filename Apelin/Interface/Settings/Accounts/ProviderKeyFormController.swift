@@ -241,7 +241,7 @@ final class ProviderKeyFormController: TableController {
         }
     }
 
-    @objc private dynamic func advance(from field: AgentSignInField) {
+    private func advance(from field: AgentSignInField) {
         guard let index = keys.firstIndex(where: { $0.field == field }) else {
             submit()
             return

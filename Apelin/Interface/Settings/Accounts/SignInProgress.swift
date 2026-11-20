@@ -58,7 +58,7 @@ struct SignInProgress {
             step = .browser(page: page, acceptsCallbackURL: payload?["acceptsCallbackURL"] == .bool(true))
         case "input":
             guard case let .array(entries)? = payload?["fields"] else { return }
-            step = .keys(entries.compactMap { entry in
+            step = .keys(entries.compactMap { entry -> KeyField? in
                 guard let key = entry["key"]?.stringValue,
                       let field = AgentSignInField(rawValue: key)
                 else { return nil }
