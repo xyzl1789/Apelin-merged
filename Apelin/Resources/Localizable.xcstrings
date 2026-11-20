@@ -1,6 +1,567 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Automatic Matching": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic Matching"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动匹配"
+          }
+        }
+      }
+    },
+    "Automatic configurations are matched against the model at send time. Tap the round button on a card to select it manually.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic configurations are matched against the model at send time. Tap the round button on a card to select it manually."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置会在实际发送时按模型匹配。点卡片右侧的圆形按钮可手动选择。"
+          }
+        }
+      }
+    },
+    "Configuration Library": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration Library"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置库"
+          }
+        }
+      }
+    },
+    "Configuration Management": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration Management"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置管理"
+          }
+        }
+      }
+    },
+    "Copy All": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy All"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制全文"
+          }
+        }
+      }
+    },
+    "Deselect ": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deselect "
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择 "
+          }
+        }
+      }
+    },
+    "Enable Injection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable Injection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用注入"
+          }
+        }
+      }
+    },
+    "Inject Persona Body": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inject Persona Body"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        }
+      }
+    },
+    "More Options": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More Options"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多选项"
+          }
+        }
+      }
+    },
+    "No matching configuration": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching configuration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未匹配配置"
+          }
+        }
+      }
+    },
+    "Pin to top": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pin to top"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        }
+      }
+    },
+    "Preview Injection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview Injection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览注入"
+          }
+        }
+      }
+    },
+    "Recommended for current model": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recommended for current model"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐当前模型"
+          }
+        }
+      }
+    },
+    "Select ": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select "
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 "
+          }
+        }
+      }
+    },
+    "Self-created": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Self-created"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自建"
+          }
+        }
+      }
+    },
+    "Tap to edit; the round button selects manually": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap to edit; the round button selects manually"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按编辑，右侧圆形按钮手动选择"
+          }
+        }
+      }
+    },
+    "关闭后不向对话注入任何配置正文": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后不向对话注入任何配置正文"
+          }
+        }
+      }
+    },
+    "匹配规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配规则"
+          }
+        }
+      }
+    },
+    "已关闭，使用默认提示": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭，使用默认提示"
+          }
+        }
+      }
+    },
+    "手动模式 · 尚未选择配置": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动模式 · 尚未选择配置"
+          }
+        }
+      }
+    },
+    "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动：由配置库右侧的圆形按钮选定，没有自动配置命中时生效。"
+          }
+        }
+      }
+    },
+    "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按全局默认模型预览；项目单独选择模型时会在实际发送时重新匹配。修改从下一条消息起生效。"
+          }
+        }
+      }
+    },
+    "按当前模型自动匹配": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前模型自动匹配"
+          }
+        }
+      }
+    },
+    "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正文会在本配置生效时置于每次对话的系统提示最前；手动与自动的区别见下方说明，修改从下一条消息起生效。"
+          }
+        }
+      }
+    },
+    "没有匹配的配置\\n换个关键词试试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的配置\\n换个关键词试试"
+          }
+        }
+      }
+    },
+    "注入人设正文": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注入人设正文"
+          }
+        }
+      }
+    },
+    "目前没有自动配置，在配置里切换为「自动」即可": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有自动配置，在配置里切换为「自动」即可"
+          }
+        }
+      }
+    },
+    "置顶与排序": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶与排序"
+          }
+        }
+      }
+    },
+    "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶配置排在配置库最前，不影响注入效果。向左轻扫配置卡片可置顶或删除。"
+          }
+        }
+      }
+    },
+    "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动模式按实际请求的模型匹配配置；手动模式由配置库右侧的圆形按钮选定。置顶只影响列表顺序，不影响注入效果。"
+          }
+        }
+      }
+    },
+    "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动配置按模型匹配；多个命中取优先级最高的，再按名称、标识排序。手动配置在没有自动命中时生效。"
+          }
+        }
+      }
+    },
+    "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动：模型命中匹配规则时生效，压过手动；多个命中取优先级最高的。"
+          }
+        }
+      }
+    },
+    "还没有配置\\n点击右上角 + 创建": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有配置\\n点击右上角 + 创建"
+          }
+        }
+      }
+    },
     "Started Measuring Models in Background": {
       "extractionState": "manual",
       "localizations": {
