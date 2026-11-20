@@ -653,7 +653,13 @@ enum AgentHandler: DomainHandler {
     ) async -> HostReply {
         do {
             let id = try await reachable(request, R.self, host: host, sessionID: sessionID)
-            return await deliver(request, request.request, to: id, host: host)
+            // Closing a conversation ends a run it has, so the turn that ends
+            // there says who closed it: attributed the same way a stop is,
+            // and confirmed by the worker's reply alone.
+            let stopping: AgentTurnStoppedBy? = request.operation == .agentClose
+                ? (request.caller == .app ? .user : .opener)
+                : nil
+            return await deliver(request, request.request, to: id, host: host, stopping: stopping)
         } catch {
             return request.fail(error)
         }
