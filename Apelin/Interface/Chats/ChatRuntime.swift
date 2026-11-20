@@ -42,7 +42,16 @@ final class ChatRuntime {
     /// 一个会话只自动切换模型或重试一次：重发后再次失败、或同一批里多个
     /// error，都不会把它变成循环（用集合是为了只关心“本轮是否恢复过”）。
     private var autoRecovered: Set<UUID> = []
+    /// A message's attachment, read from its file once and kept while it is
+    /// among the most recently asked for. A conversation's pictures are what a
+    /// long history's memory was made of, and each is re-readable from its
+    /// file, so only so many stay read at once.
     private var attachmentCache: [String: ComposerAttachment] = [:]
+    /// The paths in `attachmentCache`, least recently asked for first.
+    private var attachmentOrder: [String] = []
+    private var attachmentBytes = 0
+    /// How many attachment bytes stay read at once.
+    private static let attachmentCacheBytes = 48 * 1024 * 1024
     /// 正文引用转出的附件，键是会话与路径；文件被改写后下次重开才更新。
     private var inlineCache: [String: ComposerAttachment] = [:]
     private var transcripts = ChatTranscriptCache()
@@ -491,6 +500,7 @@ final class ChatRuntime {
     private func attachment(_ item: AgentAttachment, in id: UUID) -> ComposerAttachment? {
         guard let path = attachmentPath(item, in: id) else { return nil }
         if let cached = attachmentCache[path] {
+            touchAttachment(path)
             return cached
         }
         guard let size = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.fileSizeKey]).fileSize,
@@ -504,8 +514,29 @@ final class ChatRuntime {
             text: isText ? String(decoding: data.prefix(8192), as: UTF8.self) : nil,
             isImage: item.mimeType.hasPrefix("image/"),
         )
-        attachmentCache[path] = file
+        return keepAttachment(file, at: path)
+    }
+
+    /// Keeps `file` as the attachment at `path`, the most recently asked for,
+    /// letting the oldest ones go once their bytes pass the cap. The one just
+    /// asked for stays even if it alone is over it.
+    private func keepAttachment(_ file: ComposerAttachment, at path: String) -> ComposerAttachment {
+        let previous = attachmentCache.updateValue(file, forKey: path)
+        attachmentBytes += file.data.count - (previous?.data.count ?? 0)
+        touchAttachment(path)
+        while attachmentBytes > Self.attachmentCacheBytes, attachmentOrder.count > 1 {
+            let oldest = attachmentOrder.removeFirst()
+            if let dropped = attachmentCache.removeValue(forKey: oldest) {
+                attachmentBytes -= dropped.data.count
+            }
+        }
         return file
+    }
+
+    private func touchAttachment(_ path: String) {
+        guard attachmentOrder.last != path else { return }
+        attachmentOrder.removeAll { $0 == path }
+        attachmentOrder.append(path)
     }
 
     /// Where a message's attachment is: by its canonical path, inside the
@@ -1162,7 +1193,7 @@ final class ChatRuntime {
             guard saved.count == draft.attachments.count else { continue }
             for (item, local) in zip(saved, draft.attachments) {
                 if let path = attachmentPath(item, in: id) {
-                    attachmentCache[path] = local
+                    _ = keepAttachment(local, at: path)
                 }
             }
         }
