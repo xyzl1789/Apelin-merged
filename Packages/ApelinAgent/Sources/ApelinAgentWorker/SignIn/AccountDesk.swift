@@ -479,6 +479,10 @@ public actor AccountDesk {
                 guard value.count <= 256, !value.unicodeScalars.contains(where: Self.isSpaceOrControl) else {
                     throw ApelinError(.badRequest, "请输入不含空格或换行的有效模型 ID。")
                 }
+            case .apiFormat:
+                guard AgentAPIFormat(rawValue: value) != nil else {
+                    throw ApelinError(.badRequest, "请选择有效的接口格式。")
+                }
             case .callbackURL:
                 throw ApelinError(.badRequest, "\(provider.rawValue) does not ask for \(field.field.rawValue)")
             }
@@ -493,6 +497,7 @@ public actor AccountDesk {
         case .apiKey: "请输入 API 密钥。"
         case .baseURL: "请输入端点地址。"
         case .defaultModel: "请输入模型 ID。"
+        case .apiFormat: "请选择接口格式。"
         case .callbackURL: "请粘贴浏览器打开的地址。"
         }
     }
@@ -505,7 +510,7 @@ public actor AccountDesk {
     /// `access`, no refresh token, never expiring, the rest as extras.
     static func apiKeyCredentials(_ values: [AgentSignInField: String]) -> OAuthCredentials {
         var credentials = OAuthCredentials(access: values[.apiKey] ?? "", refresh: "", expires: .max)
-        for field in [AgentSignInField.baseURL, .defaultModel] {
+        for field in [AgentSignInField.baseURL, .defaultModel, .apiFormat] {
             if let value = values[field] {
                 credentials.extras[field.rawValue] = .string(value)
             }
@@ -593,6 +598,11 @@ public actor AccountDesk {
                 }
                 if let value = field.placeholder {
                     entry["placeholder"] = .string(value)
+                }
+                if let options = field.options {
+                    entry["options"] = .array(options.map { option in
+                        .object(["value": .string(option.value), "title": .string(option.title)])
+                    })
                 }
                 return .object(entry)
             })]))

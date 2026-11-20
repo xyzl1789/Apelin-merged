@@ -89,12 +89,21 @@ public extension AgentProvider {
     }
 }
 
+struct KeyFieldOption: Sendable, Equatable {
+    /// The value sent to the worker and kept in the credential's extras.
+    var value: String
+    /// The title the app draws for it, in the app's own locale.
+    var title: String
+}
+
 struct KeyField: Sendable, Equatable {
     var field: AgentSignInField
     var required: Bool
     var defaultValue: String?
     /// What the empty field shows, as kwwk's form does: never a real key.
     var placeholder: String?
+    /// A field with options is a choice, not a typed string.
+    var options: [KeyFieldOption]?
 
     var secure: Bool {
         field == .apiKey
@@ -145,6 +154,14 @@ enum SignInKeyForms {
             KeyField(field: .apiKey, required: true),
             KeyField(field: .baseURL, required: true, placeholder: "https://…"),
             KeyField(field: .defaultModel, required: true),
+            KeyField(
+                field: .apiFormat,
+                required: false,
+                defaultValue: AgentAPIFormat.chatCompletions.rawValue,
+                options: AgentAPIFormat.allCases.map {
+                    KeyFieldOption(value: $0.rawValue, title: $0.displayTitle)
+                },
+            ),
         ]),
     ]
 

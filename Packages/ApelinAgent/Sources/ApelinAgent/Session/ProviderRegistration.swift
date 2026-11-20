@@ -47,11 +47,32 @@ public enum ProviderRegistration {
         // the catalogs: a relay's `cn:deepseek-v4.1-flash` is DeepSeek's model,
         // with its window, its ceiling and its images. An endpoint whose
         // figures are already the catalog's changes nothing here.
-        let model = ModelResolver.resolving(
+        var model = ModelResolver.resolving(
             DeepSeekProvider.isOfficial(credentials) ? DeepSeekProvider.applyingCatalog(to: resolved.model) : resolved.model,
             catalogKey: catalogKey(storeID: storeID),
             parameters: parameters,
         )
+        // An OpenAI-compatible endpoint may speak either request shape. The
+        // saved extra is kwwk's `Model.api` value, so the catalog read above
+        // cannot change which transport the session dispatches to. kwwk's
+        // Chat Completions login registers one provider under the shared
+        // `openai-compatible` scope; Responses needs its own API registered
+        // under that same scope, with SSE only so a relay without WebSockets
+        // still works.
+        var format = AgentAPIFormat.chatCompletions
+        if CredentialProviderID.isOpenAICompatible(storeID),
+           case let .string(value)? = credentials.extras[AgentSignInField.apiFormat.rawValue],
+           let chosen = AgentAPIFormat(rawValue: value)
+        {
+            format = chosen
+        }
+        if CredentialProviderID.isOpenAICompatible(storeID), format == .responses {
+            await APIRegistry.shared.register(
+                OpenAIResponsesProvider(webSocketClient: nil),
+                scope: model.provider,
+            )
+            model.api = format.rawValue
+        }
         guard CredentialProviderID.isOpenAICompatible(storeID) else {
             return ResolvedAuth(
                 model: model,

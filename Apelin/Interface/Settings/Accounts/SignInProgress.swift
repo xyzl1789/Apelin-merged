@@ -6,6 +6,11 @@ import Foundation
 /// (AGENTS.md ▸ Decisions ▸ Agent sign-in). Only the latest ask matters:
 /// a flow asks once, then waits for the user or ends.
 struct SignInProgress {
+    struct KeyOption: Equatable {
+        var value: String
+        var title: String
+    }
+
     struct KeyField: Equatable {
         var field: AgentSignInField
         var required: Bool
@@ -13,6 +18,8 @@ struct SignInProgress {
         var defaultValue: String?
         /// What the empty field shows, kwwk's own hint: never a real key.
         var placeholder: String?
+        /// Present when the worker asks for a choice instead of typed text.
+        var options: [KeyOption]?
     }
 
     enum Step: Equatable {
@@ -61,6 +68,10 @@ struct SignInProgress {
                     secure: entry["secure"] == .bool(true),
                     defaultValue: entry["defaultValue"]?.stringValue,
                     placeholder: entry["placeholder"]?.stringValue,
+                    options: (entry["options"]?.arrayValue?.compactMap { option in
+                        guard let value = option["value"]?.stringValue else { return nil }
+                        return KeyOption(value: value, title: option["title"]?.stringValue ?? value)
+                    }).flatMap { $0.isEmpty ? nil : $0 },
                 )
             })
         case TaskEvent.stateKind:

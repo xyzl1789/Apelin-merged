@@ -20,6 +20,8 @@ final class ProviderKeyFormController: TableController {
     private let initialValues: [String: String]
     private var fields: [AgentSignInField: UITextField] = [:]
     private var cells: [AgentSignInField: UITableViewCell] = [:]
+    /// The chosen value of a field whose worker entry carries `options`.
+    private var selections: [AgentSignInField: String] = [:]
     private enum Row: Hashable {
         case field(AgentSignInField)
         case method(AgentSignInMethod)
@@ -59,7 +61,8 @@ final class ProviderKeyFormController: TableController {
         tableView.keyboardDismissMode = .interactive
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 52
-        for (index, key) in keys.enumerated() {
+        let textKeys = keys.filter { $0.options == nil }
+        for (index, key) in textKeys.enumerated() {
             let field = UITextField()
             field.font = .preferredFont(forTextStyle: .body)
             field.adjustsFontForContentSizeCategory = true
@@ -72,15 +75,19 @@ final class ProviderKeyFormController: TableController {
             field.isSecureTextEntry = key.secure
             field.textContentType = key.field == .baseURL ? .URL : nil
             field.keyboardType = key.field == .baseURL ? .URL : .asciiCapable
-            field.returnKeyType = index == keys.count - 1 ? .go : .next
+            field.returnKeyType = index == textKeys.count - 1 ? .go : .next
             field.accessibilityLabel = key.field.title
             field.text = initialValues[key.field.rawValue] ?? key.defaultValue
             field.placeholder = key.placeholder
                 ?? (key.required ? key.field.title : String(localized: "\(key.field.title) (Optional)"))
             field.addAction(UIAction { [weak self] _ in self?.updateSubmit() }, for: .editingChanged)
-            field.addAction(UIAction { [weak self] _ in self?.advance(from: index) }, for: .editingDidEndOnExit)
+            field.addAction(UIAction { [weak self] _ in self?.advance(from: key.field) }, for: .editingDidEndOnExit)
             fields[key.field] = field
             cells[key.field] = cell(containing: field)
+        }
+        for key in keys where key.options != nil {
+            selections[key.field] = Self.initialSelection(key, initialValues: initialValues)
+            cells[key.field] = selectionCell(for: key)
         }
         submitItem.tintColor = .tintColor
         submitItem.accessibilityLabel = String(localized: "Fetch Models")
@@ -100,9 +107,21 @@ final class ProviderKeyFormController: TableController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        if !isSubmitting, let first = keys.first {
+        if !isSubmitting, let first = keys.first(where: { $0.options == nil }) {
             fields[first.field]?.becomeFirstResponder()
         }
+    }
+
+    private static func initialSelection(
+        _ key: SignInProgress.KeyField,
+        initialValues: [String: String],
+    ) -> String? {
+        let options = key.options ?? []
+        let saved = initialValues[key.field.rawValue] ?? key.defaultValue
+        if let saved, options.contains(where: { $0.value == saved }) {
+            return saved
+        }
+        return options.first?.value
     }
 
     @objc private dynamic func cell(containing input: UIView) -> UITableViewCell {
@@ -122,6 +141,75 @@ final class ProviderKeyFormController: TableController {
         return cell
     }
 
+    /// A choice row is a titled menu button: VoiceOver reads its name and its
+    /// current value, and the menu offers the exact values the worker accepts.
+    private func selectionCell(for key: SignInProgress.KeyField) -> UITableViewCell {
+        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        cell.selectionStyle = .none
+        cell.isAccessibilityElement = false
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.contentHorizontalAlignment = .leading
+        button.titleLabel?.font = .preferredFont(forTextStyle: .body)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.showsMenuAsPrimaryAction = true
+        button.accessibilityLabel = key.field.title
+        cell.contentView.addSubview(button)
+        button.menu = Self.menu(
+            for: key,
+            selected: selections[key.field],
+            target: self,
+            button: button,
+        )
+        let title = Self.title(for: key, selected: selections[key.field])
+        button.setTitle(title, for: .normal)
+        button.accessibilityValue = title
+        let margins = cell.contentView.layoutMarginsGuide
+        NSLayoutConstraint.activate([
+            button.leadingAnchor.constraint(equalTo: margins.leadingAnchor),
+            button.trailingAnchor.constraint(equalTo: margins.trailingAnchor),
+            button.topAnchor.constraint(equalTo: margins.topAnchor),
+            button.bottomAnchor.constraint(equalTo: margins.bottomAnchor),
+            cell.contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
+        ])
+        return cell
+    }
+
+    private static func menu(
+        for key: SignInProgress.KeyField,
+        selected: String?,
+        target: ProviderKeyFormController,
+        button: UIButton?,
+    ) -> UIMenu {
+        UIMenu(children: (key.options ?? []).map { option in
+            UIAction(title: title(for: option, field: key.field), state: selected == option.value ? .on : .off) { [weak target, weak button] _ in
+                guard let target else { return }
+                target.selections[key.field] = option.value
+                let title = title(for: option, field: key.field)
+                button?.setTitle(title, for: .normal)
+                button?.accessibilityValue = title
+                button?.menu = menu(for: key, selected: option.value, target: target, button: button)
+                target.updateSubmit()
+            }
+        })
+    }
+
+    private static func title(
+        for option: SignInProgress.KeyOption,
+        field: AgentSignInField,
+    ) -> String {
+        guard field == .apiFormat, let format = AgentAPIFormat(rawValue: option.value) else { return option.title }
+        return format.localizedTitle
+    }
+
+    private static func title(
+        for key: SignInProgress.KeyField,
+        selected: String?,
+    ) -> String {
+        guard let option = key.options?.first(where: { $0.value == selected }) else { return "" }
+        return title(for: option, field: key.field)
+    }
+
     private var values: [AgentSignInField: String] {
         // The model selector owns defaultModel; editing a key or endpoint
         // must preserve that saved field even though this form hides it.
@@ -129,23 +217,39 @@ final class ProviderKeyFormController: TableController {
         if let defaultModel = initialValues[AgentSignInField.defaultModel.rawValue] {
             result[.defaultModel] = defaultModel
         }
-        return result.merging(fields.mapValues { $0.text ?? "" }) { _, edited in edited }
+        return result
+            .merging(fields.mapValues { $0.text ?? "" }) { _, edited in edited }
+            .merging(selections) { _, chosen in chosen }
     }
 
-    @objc private dynamic var isReady: Bool {
-        keys.allSatisfy {
-            !$0.required || !(fields[$0.field]?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var isReady: Bool {
+        keys.allSatisfy { key in
+            if key.options != nil {
+                return !key.required || !(selections[key.field] ?? "").isEmpty
+            }
+            return !key.required || !(fields[key.field]?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 
     @objc private dynamic func updateSubmit() {
         submitItem.isEnabled = isReady && !isSubmitting
         fields.values.forEach { $0.isEnabled = !isSubmitting }
+        for cell in cells.values {
+            for view in cell.contentView.subviews {
+                (view as? UIButton)?.isEnabled = !isSubmitting
+            }
+        }
     }
 
-    @objc private dynamic func advance(from index: Int) {
-        if index + 1 < keys.count {
-            fields[keys[index + 1].field]?.becomeFirstResponder()
+    @objc private dynamic func advance(from field: AgentSignInField) {
+        guard let index = keys.firstIndex(where: { $0.field == field }) else {
+            submit()
+            return
+        }
+        if let next = keys.dropFirst(index + 1).first(where: { $0.options == nil }),
+           let input = fields[next.field]
+        {
+            input.becomeFirstResponder()
         } else {
             submit()
         }

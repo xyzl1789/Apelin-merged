@@ -51,6 +51,23 @@ public enum AgentSignInMethod: String, Codable, Sendable {
     case apiKey
 }
 
+/// The request shape an OpenAI-compatible endpoint speaks. These are kwwk's
+/// `Model.api` values, stored verbatim as the `apiFormat` extra so resolution
+/// can pick the matching transport.
+public enum AgentAPIFormat: String, Codable, Sendable, CaseIterable {
+    case chatCompletions = "openai-completions"
+    case responses = "openai-responses"
+
+    /// The fallback title a form sends with the option; the app draws its own
+    /// localized name for each known value.
+    public var displayTitle: String {
+        switch self {
+        case .chatCompletions: "Chat Completions"
+        case .responses: "Responses"
+        }
+    }
+}
+
 /// The values `agentSignInRespond` carries, by their wire names.
 public enum AgentSignInField: String, Codable, Sendable, CaseIterable {
     /// The key itself (kwwk's `access`).
@@ -60,6 +77,10 @@ public enum AgentSignInField: String, Codable, Sendable, CaseIterable {
     /// The model an OpenAI-compatible endpoint serves by default (kwwk's
     /// `defaultModel` extra).
     case defaultModel
+    /// Which request shape an OpenAI-compatible endpoint speaks: kwwk's
+    /// `openai-completions` or `openai-responses`, kept as an `apiFormat`
+    /// extra. Absent means Chat Completions, as before.
+    case apiFormat
     /// The address the browser was sent back to, pasted by the user when
     /// the loopback listener could not be reached.
     case callbackURL

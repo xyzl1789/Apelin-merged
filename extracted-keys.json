@@ -1,0 +1,18 @@
+[
+  "%@ · %@\n生效 1 项 · 人设正文 %lld B",
+  "No model selected",
+  "正文 · %lld B（UTF-8）",
+  "This configuration has not been saved yet.",
+  "Keep Editing",
+  "没有匹配的配置\n换个关键词试试",
+  "还没有配置\n点击右上角 + 创建",
+  "自动：%@ → %@",
+  "未匹配配置",
+  "手动：%@",
+  "Switch to Manual?",
+  "Selecting a configuration manually disables automatic matching.",
+  "%lld 项",
+  "已有 %lld 项自动配置，命中时压过手动选择",
+  "Matching Is Per Configuration",
+  "Open a configuration and switch it between Manual and Automatic."
+]

@@ -148,12 +148,22 @@ extension AgentSignInMethod {
     }
 }
 
+extension AgentAPIFormat {
+    var localizedTitle: String {
+        switch self {
+        case .chatCompletions: String(localized: "Chat Completions")
+        case .responses: String(localized: "Responses")
+        }
+    }
+}
+
 extension AgentSignInField {
     var title: String {
         switch self {
         case .apiKey: String(localized: "API Key")
         case .baseURL: String(localized: "Base URL")
         case .defaultModel: String(localized: "Model")
+        case .apiFormat: String(localized: "API Format")
         case .callbackURL: String(localized: "Redirect Address")
         }
     }

@@ -312,6 +312,14 @@ struct AccountDeskTests {
             .object(["key": .string("apiKey"), "required": .bool(true), "secure": .bool(true)]),
             .object(["key": .string("baseUrl"), "required": .bool(true), "secure": .bool(false), "placeholder": .string("https://…")]),
             .object(["key": .string("defaultModel"), "required": .bool(true), "secure": .bool(false)]),
+            .object([
+                "key": .string("apiFormat"), "required": .bool(false), "secure": .bool(false),
+                "defaultValue": .string("openai-completions"),
+                "options": .array([
+                    .object(["value": .string("openai-completions"), "title": .string("Chat Completions")]),
+                    .object(["value": .string("openai-responses"), "title": .string("Responses")]),
+                ]),
+            ]),
         ]))
 
         // Each refusal names the field and never what was typed.
@@ -653,6 +661,14 @@ struct AccountDeskTests {
             .object(["key": .string("apiKey"), "required": .bool(true), "secure": .bool(true)]),
             .object(["key": .string("baseUrl"), "required": .bool(true), "secure": .bool(false), "placeholder": .string("https://…")]),
             .object(["key": .string("defaultModel"), "required": .bool(true), "secure": .bool(false)]),
+            .object([
+                "key": .string("apiFormat"), "required": .bool(false), "secure": .bool(false),
+                "defaultValue": .string("openai-completions"),
+                "options": .array([
+                    .object(["value": .string("openai-completions"), "title": .string("Chat Completions")]),
+                    .object(["value": .string("openai-responses"), "title": .string("Responses")]),
+                ]),
+            ]),
         ]))
         try await desk.respond(AgentSignInRespondRequest(taskID: task, fields: [
             .apiKey: "sk-SECOND-SECRET", .baseURL: "https://two.example.invalid/v1", .defaultModel: "model-two",
@@ -705,6 +721,56 @@ struct AccountDeskTests {
         #expect(try await one.authResolver?(one.model, nil)?.token == "sk-one")
         // An endpoint nobody signed in to resolves to nothing.
         #expect(try await ProviderRegistration.resolve(storeID: "openai-compatible.3", manager: manager) == nil)
+        // An endpoint that speaks the Responses API resolves to kwwk's
+        // `openai-responses` transport; one saved before the field existed
+        // still speaks Chat Completions.
+        let responses = OAuthCredentials(access: "sk-r", refresh: "", expires: .max, extras: [
+            "baseUrl": .string("https://resp.example.invalid/v1"), "defaultModel": .string("r-model"),
+            "apiFormat": .string("openai-responses"),
+        ])
+        let responsesManager = OAuthManager(source: DeliveredCredentialSource([
+            "openai-compatible.3": responses,
+        ]))
+        let routed = try #require(try await ProviderRegistration.resolve(
+            storeID: "openai-compatible.3",
+            manager: responsesManager,
+        ))
+        #expect(routed.model.api == "openai-responses")
+        #expect(routed.model.provider == one.model.provider)
+        #expect(try await routed.authResolver?(routed.model, nil)?.token == "sk-r")
+    }
+
+    @Test
+    func `the interface format is validated, stored and restored for an OpenAI-compatible endpoint` async throws {
+        let store = DeliveredCredentialSource()
+        let desk = AccountDesk(store: store, login: Self.neverCalled, listener: Self.silent, verifyKey: { _, _, _ in })
+        let recorder = SignInRecorder()
+        let task = TaskID("api-format")
+        try await desk.start(AgentSignInRequest(provider: .openAICompatible), taskID: task, reporter: recorder.reporter)
+        try await recorder.waitFor { !$0.events.isEmpty }
+        await #expect(throws: ApelinError.self) {
+            try await desk.respond(AgentSignInRespondRequest(taskID: task, fields: [
+                .apiKey: "sk-SECRET", .baseURL: "https://llm.example.invalid/v1",
+                .defaultModel: "m", .apiFormat: "not-a-format",
+            ]))
+        }
+        #expect(recorder.state == nil)
+        try await desk.respond(AgentSignInRespondRequest(taskID: task, fields: [
+            .apiKey: "sk-SECRET", .baseURL: "https://llm.example.invalid/v1",
+            .defaultModel: "m", .apiFormat: "openai-responses",
+        ]))
+        try await recorder.waitFor { $0.state != nil }
+        #expect(recorder.state == .succeeded)
+        let saved = try #require(try await store.credentials(for: "openai-compatible"))
+        #expect(saved.extras["apiFormat"] == .string("openai-responses"))
+        let configuration = try await desk.apiConfiguration(for: .openAICompatible)
+        #expect(configuration.values["apiFormat"] == "openai-responses")
+        // A credential saved before the field existed reads as Chat Completions.
+        let old = OAuthCredentials(access: "sk-old", refresh: "", expires: .max, extras: [
+            "baseUrl": .string("https://old.example.invalid/v1"), "defaultModel": "m",
+        ])
+        let oldDesk = AccountDesk(store: DeliveredCredentialSource(["openai-compatible": old]))
+        #expect(try await oldDesk.apiConfiguration(for: .openAICompatible).values["apiFormat"] == "openai-completions")
     }
 
     @Test

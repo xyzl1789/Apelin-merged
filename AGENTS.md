@@ -2755,6 +2755,18 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   bound to the resolution, so two endpoints never share one. In Model
   Providers they are told apart by host, in the list, in the model menu's
   headings and in Sign Out's question, and Search finds one by its host.
+  An OpenAI-compatible endpoint also chooses its API format: Chat
+  Completions (`openai-completions`, the default, including credentials saved
+  before this existed) or the Responses API (`openai-responses`). The first
+  endpoint and every further one ask with an `apiFormat` choice field; the
+  worker stores the selected kwwk `Model.api` value as an extra and rejects
+  any other value by name alone. `ProviderRegistration.resolve` reads that
+  extra after the catalog read and, for Responses, registers kwwk's
+  `OpenAIResponsesProvider` with SSE only under the endpoint's provider scope
+  and swaps the model's api, so the session dispatches to the right transport
+  while keeping the endpoint's own key and address. Model discovery stays at
+  `/v1/models` whatever the format. Edit Configuration restores the saved
+  choice, so switching format needs no new sign-in.
   OpenRouter signs in both ways
   under one store id: `AgentAccount.alternativeMethods` names the key form
   beside its browser sign-in, and `agentSignIn{provider, method}` picks one
