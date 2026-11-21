@@ -1140,25 +1140,21 @@ final class ChatController: UIViewController {
         composer.modelBar.setEfforts(selection?.supportedEfforts ?? [], selected: selection?.effort)
         composer.modelBar.setTiers(selection?.supportedTiers ?? [], selected: selection?.tier)
         updateBalanceRing()
-        // 选中的供应商支持查余额时立即查一次：worker 侧有短缓存兜底，
-        // 不会打满服务商的余额接口。切到 DeepSeek 这类能报余额的服务商
-        // 时，数字应当是刚刚读的，而不是上一次会话留下的。
-        // 不能依赖内存里已有的余额行判断"是否可能支持"：App 重启后存储
-        // 是空的，支持余额的服务商从此再也不会被查，圆环整个消失。改用
-        // 存储自带的间隔判断——首启动或超过自动间隔就查，worker 的磁盘
-        // 缓存与失败保留保证它既便宜又不会把数字刷没。
+        // 切换到还没有余额行的连接，或距上次查询已超时，就查一次。worker
+        // 侧有短缓存兜底、且会跳过不支持查询的连接，不会打满服务商接口。
+        // 不能靠"当前有没有余额行"判断是否值得查：新登录的支持连接没有行，
+        // App 重启后存储也是空的，否则胶囊会一直停在「--」。查不到时保留
+        // 上次缓存或显示「--」，数字不会被刷没。
         if let provider = selection?.provider,
-           ProviderBalanceStore.shared.current(for: provider) != nil
-              || ProviderBalanceStore.shared.balances.contains(where: { $0.provider == provider })
+           !ProviderBalanceStore.shared.balances.contains(where: { $0.provider == provider })
               || ProviderBalanceStore.shared.stale()
         {
             refreshBalances()
         }
     }
 
-    /// The provider's balance, read through the credential worker. A failed
-    /// lookup keeps the last figure; a provider with no balance adapter names
-    /// no figure at all, and then the ring is hidden.
+    /// 当前连接的余额由凭据 worker 读出；查失败时保留上次数字，不支持查询
+    /// 的连接没有余额行，胶囊显示「--」。
     private func refreshBalances() {
         Task { [weak self] in
             _ = await ProviderBalanceStore.shared.refresh()

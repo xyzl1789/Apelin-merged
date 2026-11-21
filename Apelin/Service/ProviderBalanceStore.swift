@@ -6,12 +6,10 @@ extension Notification.Name {
     static let providerBalancesChanged = Notification.Name("wiki.qaq.apelin.providerBalancesChanged")
 }
 
-/// The app's last read of every provider balance. The worker owns the
-/// network and the short cache; this store is only the figure the composer's
-/// ring and the balance page both draw, so a manual refresh on the page is
-/// seen by the ring without a second request. The ring itself shows only
-/// while the selected provider publishes a balance; switching providers
-/// refreshes it when the last read is older than `autoInterval`.
+/// App 保存的每个连接最近一次余额。网络与短缓存归 worker；这个 store 只
+/// 保存胶囊与余额页共用的数字，所以余额页的手动刷新胶囊立刻可见，不必再
+/// 请求一次。胶囊只画当前选中连接自己的数字，不支持查询时显示「--」；
+/// 切换连接后若上次读取已超过 `autoInterval`，就为支持的连接刷新一次。
 @MainActor
 final class ProviderBalanceStore {
     static let shared = ProviderBalanceStore()
@@ -62,18 +60,11 @@ final class ProviderBalanceStore {
         return next
     }
 
-    /// The figure the composer draws: the selected provider's own balance.
-    /// The selected provider with no balance of its own still shows the one
-    /// figure that exists — an account the reader signed in to later, such as
-    /// DeepSeek's, is what the pill names, and the tap opens every provider's
-    /// page. Only when nothing reports a balance at all does it hide.
+    /// 胶囊只画当前选中连接自己的余额；这个连接不支持查询、还没查到或
+    /// 根本没选中时，返回 nil，胶囊显示「--」，绝不借别的连接的数字来充数。
+    /// 点开胶囊仍能看到所有能查到余额的连接。
     func current(for provider: AgentProvider?) -> ProviderBalance? {
-        if let provider, let own = balances.first(where: { $0.provider == provider }) {
-            return own
-        }
-        let fallback = balances.min { $0.updatedAt < $1.updatedAt }
-        Logger(subsystem: "wiki.qaq.apelin", category: "Balance")
-            .debug("胶囊取值：provider=\(provider?.rawValue ?? "nil", privacy: .public)，取到 \(fallback.map { "\($0.amount)\($0.currency)" } ?? "无", privacy: .public)")
-        return fallback
+        guard let provider else { return nil }
+        return balances.first { $0.provider == provider }
     }
 }

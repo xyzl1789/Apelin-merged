@@ -208,10 +208,10 @@ final class ComposerModelBar: ComposerSectionView {
         usageButton.setExpanded(expanded)
     }
 
-    /// The provider balance shown beside the context ring. A nil answer means
-    /// no supported account, so the ring stays out of the layout entirely.
+    /// 当前连接的余额；不支持查询或还没查到时传 nil，胶囊显示「--」。
+    /// 首次即便前后都是 nil，也要走一次 set 把初始隐藏的胶囊显示出来。
     func setBalance(_ balance: ProviderBalance?) {
-        guard balanceButton.balance != balance else { return }
+        guard balanceButton.balance != balance || balanceButton.isHidden else { return }
         updateControls { [self] in
             balanceButton.set(balance)
             heightPublisher.send(isUserInteractionEnabled ? preferredHeight : 0)
