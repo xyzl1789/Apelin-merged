@@ -2,6 +2,21 @@ import ApelinProtocol
 import Foundation
 
 func checkChatForkHistory() {
+    let suite = "chat-opening-test." + UUID().uuidString
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let first = UUID()
+    let second = UUID()
+    precondition(ChatOpeningRecovery.pending(in: defaults) == nil)
+    ChatOpeningRecovery.begin(first, in: defaults)
+    precondition(ChatOpeningRecovery.pending(in: defaults) == first, "异常退出保留未完成打开的 UUID")
+    ChatOpeningRecovery.begin(second, in: defaults)
+    ChatOpeningRecovery.finish(first, in: defaults)
+    precondition(ChatOpeningRecovery.pending(in: defaults) == second, "旧加载不得清除新会话标记")
+    ChatOpeningRecovery.finish(second, in: defaults)
+    ChatOpeningRecovery.finish(second, in: defaults)
+    precondition(ChatOpeningRecovery.pending(in: defaults) == nil, "成功打开可重复收尾")
+
     let historical = TaskEvent(
         seq: EventSeq(1),
         kind: "message",

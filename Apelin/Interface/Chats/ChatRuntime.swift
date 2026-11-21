@@ -184,7 +184,7 @@ final class ChatRuntime {
                 if record.sending != nil {
                     // Whether the host took a message is read from the events
                     // that echo it, so this one conversation is read now.
-                    loadEvents(id)
+                    try await prepareEvents(id)
                     records[id]?.reclaimUnsent()
                     persist(id, urgent: true)
                 }
@@ -492,6 +492,39 @@ final class ChatRuntime {
         autoRecovered.remove(id)
     }
 
+    /// 同一会话的显示与后台跟随共享一次磁盘读取。
+    private var eventLoads: [UUID: Task<[TaskEvent], Error>] = [:]
+
+    private func prepareEvents(_ id: UUID) async throws {
+        guard unloadedEvents.contains(id), records[id] != nil else { return }
+        let pending: Task<[TaskEvent], Error>
+        if let existing = eventLoads[id] {
+            pending = existing
+        } else {
+            let folder = DataFolder.app.root.appendingPathComponent("Chats")
+            pending = Task.detached(priority: .utility) {
+                try Task.checkCancellation()
+                return try ChatEventsFile.read(id, in: folder)
+            }
+            eventLoads[id] = pending
+        }
+        do {
+            let events = try await pending.value
+            if unloadedEvents.contains(id), records[id] != nil {
+                records[id]?.events = events
+                eventCounts[id] = events.count
+                unloadedEvents.remove(id)
+            }
+            eventLoads[id] = nil
+        } catch {
+            eventLoads[id] = nil
+            throw error
+        }
+    }
+
+    /// 尚未准备好的页面不在绘制回调里同步读取历史；加载由 loadHistory/follow 完成。
+    func historyIsReady(_ id: UUID) -> Bool { !unloadedEvents.contains(id) }
+
     /// The conversation's events, read from disk the first time something needs
     /// them: opening it, following it, or paging through its history. A chat
     /// whose events cannot be read stays unloaded and keeps the count its head
@@ -513,10 +546,9 @@ final class ChatRuntime {
     /// messages it is sending, a sender's title or the turn's quiet changed
     /// (`ChatTranscriptCache`).
     func transcript(_ id: UUID) -> ChatTranscript {
-        guard records[id] != nil else {
+        guard records[id] != nil, historyIsReady(id) else {
             return ChatTranscript(events: []) { _ in nil }
         }
-        loadEvents(id)
         let record = records[id]!
         return transcripts.transcript(
             of: record,
@@ -563,8 +595,7 @@ final class ChatRuntime {
 
     /// The event a conversation's fold starts at.
     private func historyStart(of id: UUID) -> Int {
-        guard records[id] != nil else { return 0 }
-        loadEvents(id)
+        guard records[id] != nil, historyIsReady(id) else { return 0 }
         return ChatHistory.start(of: records[id]?.events ?? [], keeping: historyTurns[id] ?? ChatHistory.turns)
     }
 
@@ -588,7 +619,7 @@ final class ChatRuntime {
     /// in. Only the events that arrived since are read again — a stream asks
     /// for this on every one of them.
     func promptRows(of id: UUID) -> [ChatMessageRuler.Entry] {
-        loadEvents(id)
+        guard historyIsReady(id) else { return [] }
         guard let record = records[id] else { return [] }
         let cached = promptCache[id].flatMap { $0.events <= record.events.count ? $0 : nil }
         let from = cached?.events ?? 0
@@ -1158,6 +1189,8 @@ final class ChatRuntime {
     /// Follow a saved session when the reader opens its page, without sending
     /// a prompt. In particular an empty fork must retry a failed first open.
     func loadHistory(_ id: UUID) async throws {
+        try await prepareEvents(id)
+        try Task.checkCancellation()
         guard let record = records[id],
               ChatFork.needsHistoryLoad(record, isFollowed: readers[id] != nil) else { return }
         _ = try await open(id)
@@ -1216,9 +1249,7 @@ final class ChatRuntime {
 
     private func follow(_ id: UUID, task: TaskHandle) {
         guard readers[id] == nil else { return }
-        // Following appends the events it takes, so the conversation's history
-        // has to be in memory first.
-        loadEvents(id)
+        // 先后台读取旧事件，再接收并追加新事件，避免覆盖或重复保存历史。
         readers[id] = Task { [weak self] in
             defer {
                 self?.readers[id] = nil
@@ -1226,6 +1257,12 @@ final class ChatRuntime {
                     .notFound,
                     String(localized: "This chat is no longer running."),
                 )))
+            }
+            do {
+                try await self?.prepareEvents(id)
+            } catch {
+                self?.onError?(error)
+                return
             }
             while !Task.isCancelled {
                 // Only the cursor: a copy of the record held over the wait

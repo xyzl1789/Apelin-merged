@@ -76,6 +76,10 @@ final class ChatController: UIViewController {
     /// Approve does not ask again.
     private var checkingOwner: UUID?
     private var stoppableChat: UUID?
+    private var historyLoadTask: Task<Void, Never>?
+    private var historyLoadGeneration = UUID()
+    private var pendingOpeningChat: UUID?
+    private var openingPresentationReady = false
     /// While `use(_:)` swaps another conversation in: nothing animates, and
     /// the list's opening scroll waits for its rows.
     private var isSwitchingChat = false
@@ -670,6 +674,13 @@ final class ChatController: UIViewController {
             height: min(view.bounds.height, view.safeAreaInsets.top + 20),
         )
         layoutMessageRuler()
+        // 首次历史显示并完成布局后才撤销标记，超时退出后的下次启动
+        // 才能避开同一个页面；这里只保存 UUID，不保存安装根目录。
+        if let id = pendingOpeningChat, chat?.id == id,
+           openingPresentationReady, runtime.historyIsReady(id), !isSwitchingChat, !needsInitialScroll {
+            pendingOpeningChat = nil
+            ChatOpeningRecovery.finish(id)
+        }
     }
 
     /// Shows `chat`. The same conversation again only takes its new name;
@@ -683,31 +694,37 @@ final class ChatController: UIViewController {
             modelSheet = nil
         }
         self.chat = chat
+        historyLoadTask?.cancel()
+        let generation = UUID()
+        historyLoadGeneration = generation
+        pendingOpeningChat = chat.id
+        openingPresentationReady = false
+        ChatOpeningRecovery.begin(chat.id)
         ConversationNotices.shared.withdraw(session: runtime.records[chat.id]?.sessionID)
-        Task { [weak self] in
+        historyLoadTask = Task { [weak self] in
             guard let self else { return }
             do {
                 try await runtime.loadHistory(chat.id)
-                guard self.chat?.id == chat.id else { return }
+                try Task.checkCancellation()
+                guard self.chat?.id == chat.id, self.historyLoadGeneration == generation else { return }
                 self.refreshRuntime()
+                self.openingPresentationReady = true
+                self.view.setNeedsLayout()
                 // loadHistory 是异步的：它可能在这页已经跳到底部之后才把
                 // 历史行插进来，把最新消息顶到屏幕下方。切换对话时读者总
                 // 是要在最新消息处的，所以插完再安稳地落一次底；用户在这
                 // 期间手动划走查看旧消息时则不打扰（holdsLatestMessage 已被清掉）。
                 if self.holdsLatestMessage, !self.isSwitchingChat, self.view.window != nil {
-                    if self.settleAtLatestMessage() {
-                        self.needsInitialScroll = false
-                    } else {
-                        // 还有异步高度没定下来：留给下一次真实布局继续安稳。
-                        self.needsInitialScroll = true
-                        self.view.setNeedsLayout()
-                    }
+                    self.needsInitialScroll = true
                     self.updateLatestMessageButton()
                 }
             } catch is CancellationError {
                 return
             } catch {
-                guard self.chat?.id == chat.id else { return }
+                guard !Task.isCancelled, self.chat?.id == chat.id,
+                      self.historyLoadGeneration == generation else { return }
+                self.pendingOpeningChat = nil
+                ChatOpeningRecovery.finish(chat.id)
                 self.refreshRuntime()
                 presentNotice(title: "Unable to Load Conversation", message: error.readableMessage)
             }

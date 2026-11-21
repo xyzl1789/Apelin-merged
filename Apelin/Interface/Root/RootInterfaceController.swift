@@ -22,6 +22,8 @@ final class RootInterfaceController: UIViewController {
     private let sidebar = SidebarController()
     private let chatRuntime = ChatRuntime()
     @objc private dynamic var restoredChat = false
+    /// 启动时锁存，后续手动打开设置的新标记不能改变本次恢复决策。
+    private let previousOpeningInterrupted = ChatOpeningRecovery.pending()
     @objc private dynamic var opensChatAfterWelcome = false
     /// An `apelin://` link that came before the conversations were read,
     /// or an import that came during the welcome.
@@ -138,6 +140,14 @@ final class RootInterfaceController: UIViewController {
             guard Self.isImport(link) else { return }
         }
         guard !restoredChat else { return }
+        if let interrupted = previousOpeningInterrupted {
+            guard sidebar.hasLoadedProjects else { return }
+            restoredChat = true
+            ChatOpeningRecovery.finish(interrupted)
+            // 留在原项目列表，让读者选择重试，不删除历史也不重建空会话。
+            if isDrawer { setDrawerOpen(true) }
+            return
+        }
         // What the reader chose in Settings ▸ Chat decides between the
         // conversation they were last in and a new one.
         if Preferences.launch == .newChat {

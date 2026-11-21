@@ -84,6 +84,10 @@ final class SidebarWorkspacesController: UIViewController {
     /// The three things the page draws, as the sidebar works them out.
     func update(projects: [ProjectSummary], current: ProjectSummary?, chats: [ChatSummary]) {
         let changedProjects = self.projects != projects
+        if isViewLoaded, !changedProjects, self.current == current, self.chats == chats,
+           !dataSource.snapshot().itemIdentifiers.isEmpty {
+            return
+        }
         self.projects = projects
         self.current = current
         self.chats = chats
