@@ -555,6 +555,22 @@ enum AgentSessionLineage {
     struct Record: Codable, Equatable {
         var parentSessionID: String
         var depth: Int
+        /// 该会话打开时是否带了结构化委派 brief。旧记录没有这个键，解码为
+        /// false：prompt 派生的普通子会话升级后仍按普通会话重开，不被锁住。
+        var hasDelegationBrief: Bool
+
+        init(parentSessionID: String, depth: Int, hasDelegationBrief: Bool = false) {
+            self.parentSessionID = parentSessionID
+            self.depth = depth
+            self.hasDelegationBrief = hasDelegationBrief
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            parentSessionID = try container.decode(String.self, forKey: .parentSessionID)
+            depth = try container.decode(Int.self, forKey: .depth)
+            hasDelegationBrief = try container.decodeIfPresent(Bool.self, forKey: .hasDelegationBrief) ?? false
+        }
     }
 
     static func save(_ record: Record, session sessionID: String, state: URL) {

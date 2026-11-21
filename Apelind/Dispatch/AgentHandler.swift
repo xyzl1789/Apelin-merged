@@ -371,7 +371,14 @@ enum AgentHandler: DomainHandler {
             if let authority, authority.projectID != project.id {
                 throw ApelinError(.conflict, "The saved assignment belongs to another project.")
             }
-            if opener == nil, (existing?.parentSessionID ?? saved?.parentSessionID) != nil, authority == nil {
+            // 只有「当初确实带过结构化 brief、如今记录又丢了」才拒绝重开。
+            // 仅用 prompt 派生的普通子会话从未受过约束，lineage 里虽然记着
+            // opener，仍应按普通会话重开。是否带过 brief 取自内存条目或磁盘
+            // lineage；旧记录没有该字段，解码为 false，因此升级前打开的普通
+            // 子会话不会被锁在外面。
+            let wasBriefed = existing?.hasDelegationBrief ?? saved?.hasDelegationBrief ?? false
+            if opener == nil, (existing?.parentSessionID ?? saved?.parentSessionID) != nil,
+               wasBriefed, authority == nil {
                 throw ApelinError(.denied, "This delegated chat has no saved brief. Start a new structured assignment; it cannot reopen unrestricted.")
             }
         } catch { return request.fail(error) }
@@ -437,7 +444,11 @@ enum AgentHandler: DomainHandler {
         // turn makes goes back along a line that already exists.
         if let opener {
             AgentSessionLineage.save(
-                AgentSessionLineage.Record(parentSessionID: opener.sessionID, depth: opener.depth + 1),
+                AgentSessionLineage.Record(
+                    parentSessionID: opener.sessionID,
+                    depth: opener.depth + 1,
+                    hasDelegationBrief: open.delegationBrief != nil
+                ),
                 session: sessionID,
                 state: host.stateDirectory
             )

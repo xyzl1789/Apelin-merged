@@ -5175,6 +5175,26 @@ do {
     let record = AgentSessionLineage.Record(parentSessionID: parent, depth: 2)
     AgentSessionLineage.save(record, session: session, state: state)
     check(AgentSessionLineage.load(session: session, state: state) == record, "a saved opener and depth read back")
+    // A record written before briefs were tracked has no such key. It still
+    // reads as an ordinary child, so upgrading cannot lock a plain prompt
+    // child out of its own conversation after a host restart.
+    let old = state.appendingPathComponent("agent-sessions/\(UUID().uuidString).json")
+    let oldJSON = """
+    {"parentSessionID":"\(parent)","depth":2}
+    """
+    try Data(oldJSON.utf8).write(to: old)
+    let oldRecord = try JSONCoding.decode(AgentSessionLineage.Record.self, from: Data(contentsOf: old))
+    check(
+        oldRecord.parentSessionID == parent && oldRecord.depth == 2 && !oldRecord.hasDelegationBrief,
+        "a lineage record saved before briefs were tracked decodes with no brief",
+    )
+    AgentSessionLineage.save(
+        AgentSessionLineage.Record(parentSessionID: parent, depth: 2, hasDelegationBrief: true),
+        session: session,
+        state: state,
+    )
+    let briefed = try JSONCoding.decode(AgentSessionLineage.Record.self, from: Data(contentsOf: state.appendingPathComponent("agent-sessions/\(session).json")))
+    check(briefed.hasDelegationBrief, "and one opened under a brief keeps that fact across a restart")
     let folder = state.appendingPathComponent("agent-sessions")
     check(
         FileManager.default.fileExists(atPath: folder.appendingPathComponent("\(session).json").path),
