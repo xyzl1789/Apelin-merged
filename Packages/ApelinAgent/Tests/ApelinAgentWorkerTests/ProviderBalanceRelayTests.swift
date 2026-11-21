@@ -98,6 +98,7 @@ import Testing
         #expect(figure.amount == "80852458")
         #expect(figure.unit == "tokens")
         #expect(abs((figure.fraction ?? -1) - 0.80852458) < 1e-9)
+        #expect(figure.relayKind == "今日 token 配额：100000000")
     }
 
     @Test func `token quota clamp and malformed headers`() {

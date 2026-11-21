@@ -152,7 +152,10 @@ enum ProviderBalanceService {
             let memoryFile = directory.appendingPathComponent(key + ".relay.json", isDirectory: false)
             let cached = Self.read(file)
             let age = cached.map { Date().timeIntervalSince($0.updatedAt) } ?? .infinity
-            if !force, let cached, age < cacheTTL {
+            // 旧版 token 配额缓存只存了家族名，没有总量；跳过一次，重新读取
+            // x-quota-limit 后再写入新标题，避免缓存期内详情页仍缺总量。
+            let hasLegacyQuotaLabel = cached?.relayKind == RelayFamily.tokenQuota.display
+            if !force, let cached, age < cacheTTL, !hasLegacyQuotaLabel {
                 lines.append(Self.line(storeID: storeID, provider: provider, host: base.host,
                                        figure: Figure(amount: cached.amount, unit: cached.unit,
                                                       fraction: cached.fraction, relayKind: cached.relayKind),
@@ -367,7 +370,7 @@ enum ProviderBalanceService {
                 {
                     result = parseOpenAIUsage(usage.body, into: result)
                 }
-                result.relayKind = family.display
+                result.relayKind = result.relayKind ?? family.display
                 return (result, family, hint != family)
             } catch let problem as Problem {
                 errors.append(problem)
@@ -469,7 +472,8 @@ enum ProviderBalanceService {
         let remaining = max(0, remainingRaw)
         let fraction = Self.ratio(remaining / limit)
         return Figure(amount: Self.text(remaining), unit: "tokens",
-                      fraction: fraction, relayKind: nil)
+                      fraction: fraction,
+                      relayKind: "\(RelayFamily.tokenQuota.label)：\(Self.text(limit))")
     }
 
     /// OpenAI 计费兼容的补查：`/usage` 里的 total_usage 单位是美分。
