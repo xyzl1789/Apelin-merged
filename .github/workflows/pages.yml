@@ -93,14 +93,32 @@ jobs:
           cp Documents/Site/icon.png "$repo/CydiaIcon.png"
           if ! command -v dpkg-scanpackages > /dev/null 2>&1; then
             sudo apt-get update -qq
-            sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
+            sudo apt-get install -y -qq dpkg-dev > /dev/null
           fi
           cd "$repo"
           dpkg-scanpackages -m debs /dev/null > Packages
           gzip -9c Packages > Packages.gz
-          # A flat repository: the Release file sits beside the index it sums,
-          # and the source is the address of this folder.
-          apt-ftparchive release . > Release
+          # 平铺源的 Release 必须声明两种引导架构，并校验同目录的索引。
+          {
+            printf '%s\n' 'Origin: Apelin' 'Label: Apelin' 'Suite: stable' 'Codename: ios' \
+              'Architectures: iphoneos-arm64 iphoneos-arm64e' 'Components: main'
+            date_value=$(date -Ru)
+            printf 'Date: %s\n' "$date_value"
+            for field in MD5Sum SHA1 SHA256 SHA512; do
+              case "$field" in
+                MD5Sum) digest_command=md5sum ;;
+                SHA1) digest_command=sha1sum ;;
+                SHA256) digest_command=sha256sum ;;
+                SHA512) digest_command=sha512sum ;;
+              esac
+              printf '%s:\n' "$field"
+              for file in Packages Packages.gz; do
+                digest=$("$digest_command" < "$file")
+                size=$(wc -c < "$file")
+                printf ' %s %d %s\n' "${digest%% *}" "$size" "$file"
+              done
+            done
+          } > Release
           ls -l Packages Packages.gz Release debs
       # A Pages site is made once, by hand: Settings ▸ Pages ▸ Source "GitHub
       # Actions". The workflow cannot make one — the API answers "Resource not
