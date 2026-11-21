@@ -3,6 +3,27 @@ import ApelinProtocol
 import Foundation
 import KWWKAI
 
+/// 站点对接口格式的要求，按响应正文认出来。
+///
+/// 一些中转站只开 Responses API，对 Chat Completions 回“本站已停用
+/// /v1/chat/completions，请改用 /v1/responses”。用户选了哪种格式都不该
+/// 决定成败：认出这一种情况后换格式重试，并把换过的格式保存下来。
+public enum ProviderEndpointRequirement: Error, Equatable {
+    /// 站点停用了 Chat Completions，要求改用 Responses API。
+    case responsesOnly
+
+    /// 正文里的说法，大小写与措辞各站不同，按关键词认。
+    static func isResponsesOnly(_ text: String) -> Bool {
+        let lowered = text.lowercased()
+        let mentionsResponses = lowered.contains("/v1/responses")
+            || lowered.contains("responses api")
+        let refusesCompletions = lowered.contains("chat/completions")
+            || lowered.contains("chat_completions")
+            || lowered.contains("chat completions")
+        return mentionsResponses && refusesCompletions
+    }
+}
+
 /// A candidate key stays in memory until its configured model answers.
 /// This runs in the account worker, never in the app or a user conversation.
 public enum ProviderKeyVerification {
@@ -52,6 +73,11 @@ public enum ProviderKeyVerification {
             }
         } catch is CancellationError {
             throw CancellationError()
+        } catch let failure as CompletionFailedError
+            where ProviderEndpointRequirement.isResponsesOnly(failure.message.errorMessage ?? "")
+        {
+            // 站点自己的说法，调用方据此换接口格式重试。
+            throw ProviderEndpointRequirement.responsesOnly
         } catch {
             // Provider error bodies may echo submitted values. No response
             // body, key, or request header crosses back to the app.
@@ -62,3 +88,4 @@ public enum ProviderKeyVerification {
         }
     }
 }
+

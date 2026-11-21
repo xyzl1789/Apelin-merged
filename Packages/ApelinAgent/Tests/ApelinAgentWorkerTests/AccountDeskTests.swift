@@ -560,6 +560,65 @@ struct AccountDeskTests {
     }
 
     @Test
+    func `站点停用 Chat Completions 时登录自动换用 Responses 并保存该格式`() async throws {
+        let store = DeliveredCredentialSource()
+        let desk = AccountDesk(store: store, verifyKey: { _, credentials, _ in
+            let saved: String? = if case let .string(value)? = credentials.extras[AgentSignInField.apiFormat.rawValue] {
+                value
+            } else {
+                nil
+            }
+            if saved != AgentAPIFormat.responses.rawValue {
+                throw ProviderEndpointRequirement.responsesOnly
+            }
+        })
+        let recorder = SignInRecorder()
+        let task = TaskID("switch-format-sign-in")
+        try await desk.start(AgentSignInRequest(provider: .openAICompatible), taskID: task, reporter: recorder.reporter)
+        try await recorder.waitFor { !$0.events.isEmpty }
+        try await desk.respond(AgentSignInRespondRequest(taskID: task, fields: [
+            .apiKey: "candidate",
+            .baseURL: "https://relay.example.com",
+            .defaultModel: "gpt-6.1-sol",
+        ]))
+        try await recorder.waitFor { $0.state != nil }
+        #expect(recorder.state == .succeeded)
+        let saved = try #require(try await store.credentials(for: CredentialProviderID.openAICompatible))
+        #expect(saved.extras[AgentSignInField.apiFormat.rawValue] == .string(AgentAPIFormat.responses.rawValue))
+        #expect(saved.extras[AgentSignInField.baseURL.rawValue] == .string("https://relay.example.com"))
+    }
+
+    @Test
+    func `站点停用 Chat Completions 时模型验证自动换用 Responses 并保存该格式`() async throws {
+        var credentials = OAuthCredentials(access: "SECRET", refresh: "", expires: .max)
+        credentials.extras[AgentSignInField.baseURL.rawValue] = .string("https://relay.example.com")
+        credentials.extras[AgentSignInField.defaultModel.rawValue] = .string("gpt-6.1-sol")
+        let store = DeliveredCredentialSource([CredentialProviderID.openAICompatible: credentials])
+        let desk = AccountDesk(store: store, verifyKey: { _, value, _ in
+            let saved: String? = if case let .string(format)? = value.extras[AgentSignInField.apiFormat.rawValue] {
+                format
+            } else {
+                nil
+            }
+            if saved != AgentAPIFormat.responses.rawValue {
+                throw ProviderEndpointRequirement.responsesOnly
+            }
+        })
+        let recorder = SignInRecorder()
+        try await desk.activateModels(
+            AgentModelActivateRequest(provider: .openAICompatible, models: ["gpt-6.1-sol"]),
+            taskID: TaskID("switch-format-models"),
+            reporter: recorder.reporter,
+        )
+        try await recorder.waitFor { $0.state != nil }
+        #expect(recorder.state == .succeeded)
+        #expect(recorder.events.map(\.kind) == ["modelVerified"])
+        let saved = try #require(try await store.credentials(for: CredentialProviderID.openAICompatible))
+        #expect(saved.extras[AgentSignInField.apiFormat.rawValue] == .string(AgentAPIFormat.responses.rawValue))
+        #expect(saved.access == "SECRET")
+    }
+
+    @Test
     func `API-key setup can defer probing until the selected models are saved`() async throws {
         let store = DeliveredCredentialSource()
         let desk = AccountDesk(store: store, verifyKey: { _, _, _ in Issue.record("setup probed an unselected default model") })

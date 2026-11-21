@@ -369,9 +369,25 @@ public actor AccountDesk {
                     keyVerification = nil
                 }
             }
-            try await work.value
+            do {
+                try await work.value
+            } catch ProviderEndpointRequirement.responsesOnly
+                where Self.canSwitchFormat(run.provider, accepted)
+            {
+                // 站点停用了 Chat Completions，只开 Responses API。用户选哪个
+                // 格式都不该决定成败：换成 Responses 再验一次，并把换过的
+                // 格式随登录一起存下来，之后真实会话也用它。
+                let switched = Self.switching(accepted, to: .responses)
+                let retry = Task { try await verifyKey(run.provider, Self.apiKeyCredentials(switched), nil) }
+                keyVerification = (run, retry)
+                try await retry.value
+                guard running === run, !run.isCancelled else { throw CancellationError() }
+                try run.deliver(switched)
+                return
+            }
             guard running === run, !run.isCancelled else { throw CancellationError() }
             try run.deliver(accepted)
+
         }
     }
 
@@ -403,13 +419,24 @@ public actor AccountDesk {
         run.work = Task { [weak self, verifyKey] in
             var currentModel = ""
             do {
+                var verified = credentials
                 for model in request.models {
                     currentModel = model
                     try Task.checkCancellation()
                     if usesAPIKey {
-                        try await verifyKey(request.provider, credentials, model)
+                        do {
+                            try await verifyKey(request.provider, verified, model)
+                        } catch ProviderEndpointRequirement.responsesOnly
+                            where Self.canSwitchFormat(request.provider, verified)
+                        {
+                            // 站点只开 Responses API。换成 Responses 存下来再验，
+                            // 之后真实会话也用这个格式，不必让用户手选。
+                            verified = Self.switching(verified, to: .responses)
+                            try await verifyKey(request.provider, verified, model)
+                            try await self?.store.store(verified, for: request.provider.storeID)
+                        }
                     } else {
-                        try await KWWKSignIn.enableCopilotModels(credentials, models: [model])
+                        try await KWWKSignIn.enableCopilotModels(verified, models: [model])
                     }
                     try Task.checkCancellation()
                     reporter.emit(taskID, "modelVerified", .object(["model": .string(model)]))
@@ -440,6 +467,44 @@ public actor AccountDesk {
             _ = await verification.task.result
         }
         await previous.work?.value
+    }
+
+    /// 只有 OpenAI 兼容端点能在两种接口格式之间切换：别的供应商的
+    /// 传输是固定的。
+    static func canSwitchFormat(_ provider: AgentProvider, _ values: [AgentSignInField: String]) -> Bool {
+        guard CredentialProviderID.isOpenAICompatible(provider.storeID) else { return false }
+        return values[.apiFormat] != AgentAPIFormat.responses.rawValue
+    }
+
+    /// 已保存的凭据同上：读出它的接口格式，看还能不能换。
+    static func canSwitchFormat(_ provider: AgentProvider, _ credentials: OAuthCredentials) -> Bool {
+        guard CredentialProviderID.isOpenAICompatible(provider.storeID) else { return false }
+        let saved: String? = if case let .string(value)? = credentials.extras[AgentSignInField.apiFormat.rawValue] {
+            value
+        } else {
+            nil
+        }
+        return saved != AgentAPIFormat.responses.rawValue
+    }
+
+    /// 同一个端点，接口格式换成 `format`：其余字段原样保留。
+    static func switching(
+        _ values: [AgentSignInField: String],
+        to format: AgentAPIFormat,
+    ) -> [AgentSignInField: String] {
+        var switched = values
+        switched[.apiFormat] = format.rawValue
+        return switched
+    }
+
+    /// 已保存的凭据只改接口格式这一项。
+    static func switching(
+        _ credentials: OAuthCredentials,
+        to format: AgentAPIFormat,
+    ) -> OAuthCredentials {
+        var switched = credentials
+        switched.extras[AgentSignInField.apiFormat.rawValue] = .string(format.rawValue)
+        return switched
     }
 
     /// The key and its extras, each checked on its own and refused by name

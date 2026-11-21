@@ -67,8 +67,13 @@ public enum ProviderRegistration {
             format = chosen
         }
         if CredentialProviderID.isOpenAICompatible(storeID), format == .responses {
+            // kwwk 的 Responses 传输只把 `StreamOptions.headers` 带进普通流式
+            // 请求，模型自身的头会被丢掉；中转站按 User-Agent 白名单放行，
+            // 所以这里包一层把模型头补进去，否则站点回“仅支持编程客户端”。
             await APIRegistry.shared.register(
-                OpenAIResponsesProvider(webSocketClient: nil),
+                ResponsesProviderWithModelHeaders(
+                    inner: OpenAIResponsesProvider(webSocketClient: nil),
+                ),
                 scope: model.provider,
             )
             model.api = format.rawValue

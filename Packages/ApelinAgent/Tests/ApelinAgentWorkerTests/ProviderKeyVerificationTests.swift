@@ -57,6 +57,21 @@ struct ProviderKeyVerificationTests {
         }
     }
 
+    @Test
+    func `站点要求 Responses 的文案按正文识别`() {
+        // xingchiapi 的真实拒绝文案，以及各站常见的英文说法。
+        #expect(ProviderEndpointRequirement.isResponsesOnly(
+            "本站已停用 /v1/chat/completions 接口，请改用 /v1/responses（Responses API），例如 Codex CLI。",
+        ))
+        #expect(ProviderEndpointRequirement.isResponsesOnly(
+            "chat_completions_disabled: use the Responses API at /v1/responses instead",
+        ))
+        // 一般的鉴权、限流错误不能被误判成换格式，否则会掩盖真正的问题。
+        #expect(!ProviderEndpointRequirement.isResponsesOnly("invalid api key"))
+        #expect(!ProviderEndpointRequirement.isResponsesOnly("rate limit exceeded for /v1/responses"))
+        #expect(!ProviderEndpointRequirement.isResponsesOnly("chat completions are unavailable"))
+    }
+
     private static func respond(_ connection: NWConnection, status: Int, body: String, received: Data = Data()) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, ended, error in
             let request = received + (data ?? Data())
