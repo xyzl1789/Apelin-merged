@@ -92,9 +92,27 @@ final class ProviderBalanceButton: UIControl {
         accessibilityValue = Self.spoken(balance)
     }
 
-    /// 只显示余额数字本身：不带币种、不带单位、不带百分号。
+    /// 徽章只显示数字本身：不带币种、不带单位、不带百分号。金额类照原样，
+    /// token 类压成短单位（如 80.9M），完整数字留给详情页。
     static func amountText(_ balance: ProviderBalance) -> String {
-        balance.amount
+        guard balance.currency == "tokens" else { return balance.amount }
+        return shortTokens(balance.amount)
+    }
+
+    /// 把 token 数压成紧凑显示：1034 → 1.0K，80852458 → 80.9M，
+    /// 12.3M → 12.3M，负值或非数字照原样返回，不让徽章画出假数字。
+    private static func shortTokens(_ text: String) -> String {
+        guard let value = Double(text), value.isFinite else { return text }
+        let sign = value < 0 ? "-" : ""
+        let magnitude = abs(value)
+        let units: [(Double, String)] = [(1e9, "B"), (1e6, "M"), (1e3, "K")]
+        for (scale, suffix) in units where magnitude >= scale {
+            let scaled = magnitude / scale
+            // 小于 100 留一位小数（80.9M、12.3M），再大就不拖小数（100M）。
+            let digits = scaled < 100 ? 1 : 0
+            return "\(sign)\(String(format: "%.\(digits)f", scaled))\(suffix)"
+        }
+        return "\(sign)\(Int(magnitude))"
     }
 
     private static func spoken(_ balance: ProviderBalance) -> String {
