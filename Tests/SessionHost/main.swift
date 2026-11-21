@@ -5178,7 +5178,8 @@ do {
     // A record written before briefs were tracked has no such key. It still
     // reads as an ordinary child, so upgrading cannot lock a plain prompt
     // child out of its own conversation after a host restart.
-    let old = state.appendingPathComponent("agent-sessions/\(UUID().uuidString).json")
+    let old = state.appendingPathComponent("agent-sessions", isDirectory: true)
+        .appendingPathComponent("\(UUID().uuidString).json")
     let oldJSON = """
     {"parentSessionID":"\(parent)","depth":2}
     """
