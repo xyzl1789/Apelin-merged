@@ -516,11 +516,17 @@ public final class BuildPipeline: @unchecked Sendable {
     ) throws -> [(String, JSONDocument)] {
         var members = commonKeyMembers(arch: arch)
         let closure = try moduleClosureKeys(of: product, arch: arch)
+        // 产品自身的 Swift 源码变更后，不能复用变更前的目标文件。
+        let digests: [JSONDocument] = try plan.swift.map { source in
+            let file = try ProjectFiles.resolve(source.path, in: inputs.projectRoot)
+            return .array([.string(source.path), .string(try BuildCache.fileDigest(file))])
+        }
         members += [
             ("product", .string(product.id)),
             ("name", .string(product.name)),
             ("type", .string(product.type.rawValue)),
             ("parseAsLibrary", .bool(plan.parsesSwiftAsLibrary(type: product.type))),
+            ("sources", .array(digests)),
             ("objc", .bool(plan.usesObjC)),
             ("bootstrap", .string(bootstrapDefine)),
             ("configuration", .string(configurationDefine)),

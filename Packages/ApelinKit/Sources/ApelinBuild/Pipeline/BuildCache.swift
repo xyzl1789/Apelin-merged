@@ -52,7 +52,8 @@ final class BuildCache {
 
     /// Bumped whenever the shape of a key or an entry changes: nothing older
     /// is read, and `prune` reaps it.
-    static let version = 1
+    /// 第 2 版将产品自身的 Swift 源码摘要纳入缓存键。
+    static let version = 2
     /// What the cache may take on disk before its least recently used entries go.
     static let budget = 1 << 30
     /// Entries kept per unit, the most recently used ones.

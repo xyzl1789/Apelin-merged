@@ -3616,7 +3616,9 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   `-target`, `optimization`, `debugInfo`, the flags and defines that compile
   passes, every source's SHA-256, every regular file under the declared
   `headerSearchPaths` and the `bridgingHeader`, and the keys of the modules
-  it imports. Never a modification time, never `APELIN_BUILD_ID` for Swift
+  it imports. 产品自身的 Swift 编译也将其源文件的相对路径和内容 SHA-256 纳入缓存键，
+  避免编辑后复用旧目标文件。
+  Never a modification time, never `APELIN_BUILD_ID` for Swift
   (it is not passed to it; a C-family object's key carries the whole define
   list, the build ID among it, so those compile every build — a documented
   macro, not a bug), never the work directory or a path under the project or
