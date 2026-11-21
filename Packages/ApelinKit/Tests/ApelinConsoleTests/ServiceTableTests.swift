@@ -135,6 +135,13 @@ final class ServiceTableTests: XCTestCase {
             return Row(reply: AgentDelegationResponse(plan: nil)) {
                 _ = try await $0.send(AgentDelegationRequest(sessionID: "s", action: .read))
             }
+        case .devicePasscodeState:
+            return Row(reply: DevicePasscodeState(saved: false, device: .noPasscode)) { _ = try await $0.devicePasscodeState() }
+        case .devicePasscodeSave:
+            let tested = DevicePasscodeSaveResponse(outcome: .noPasscode, state: DevicePasscodeState(saved: false, device: .noPasscode))
+            return Row(reply: tested) { _ = try await $0.devicePasscodeSave(DevicePasscodeSaveRequest(passcode: "1472")) }
+        case .devicePasscodeRemove:
+            return Row(reply: ack) { try await $0.devicePasscodeRemove() }
         case .agentOpen:
             return Row(reply: AgentOpenResponse(sessionID: "s", task: TaskHandle(taskID: id, kind: .agent))) {
                 _ = try await $0.agentOpen(AgentOpenRequest(projectName: "Hello"))

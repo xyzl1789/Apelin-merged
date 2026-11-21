@@ -554,6 +554,14 @@ do {
         .agentSignInRespond, .agentSignInCancel, .agentSignOut, .agentMCPTools,
         .agentCredentialImport, .transferExport, .transferInspect, .transferImport,
     ] {
+    // Accounts are the app's alone: a session's agent never starts, answers
+    // or reads a sign-in, and never lists or forgets an account.
+    for operation: AppOperation in [.protectedEditOpen, .protectedEditCommit, .ptyOpen, .ptyAttach, .agentApprove, .agentSteer, .agentCompact,
+                                    .toolchainRemove, .sdkRemove, .environmentCancel,
+                                    .agentAccountList, .agentAPIConfiguration, .agentModelList, .agentModelActivate, .agentSignIn, .agentSignInRespond, .agentSignInCancel, .agentSignOut,
+                                    .agentCredentialImport, .transferExport, .transferInspect, .transferImport,
+                                    .devicePasscodeState, .devicePasscodeSave, .devicePasscodeRemove]
+    {
         check(!CallerPolicy.allows(.worker(.agent, instance: "s"), operation), "the agent may not call \(operation.rawValue)")
     }
     // The device's toolchains and SDKs: listed, set up, imported, tested

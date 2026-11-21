@@ -25,6 +25,7 @@ final class ConsoleScriptsTests: XCTestCase {
         .channelVerifyCode: "The number WeChat shows goes in on the page that is signing in; it comes from the phone, not from a script.",
         .channelConfigure: "Where a channel's conversations run, and under which approval mode, is set on its page in Settings.",
         .channelSignOut: "Signing out of a channel is the reader's, on its page in Settings.",
+        .devicePasscodeSave: "The device passcode is typed by a person in Settings, and its test locks the device; the console refuses it before sending.",
     ]
 
     private static func consoleFolder(_ name: String) -> URL {

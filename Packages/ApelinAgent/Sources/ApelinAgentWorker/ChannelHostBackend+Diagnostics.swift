@@ -138,9 +138,13 @@ public extension ChannelHostBackend {
 
     func uiAction(_ request: ApelinAgent.UIActionRequest) async throws -> ApelinAgent.UIActionResponse {
         let response = try await service.uiAction(Self.action(request.action), targetID: request.targetID)
-        // A wake answers the lock state, a type what it read back; no
-        // action answers both.
-        let message = [Self.afterWake(response), Self.readBackMessage(response)].filter { !$0.isEmpty }
+        // A wake or an unlock answers the lock state, a type what it read
+        // back; no action answers both.
+        let unlocked = request.action == .pressButton(DevicePasscode.unlockButton)
+        let message = [
+            unlocked ? Self.afterUnlock(response) : Self.afterWake(response),
+            Self.readBackMessage(response),
+        ].filter { !$0.isEmpty }
         return ApelinAgent.UIActionResponse(
             performed: true,
             message: message.joined(separator: " "),
@@ -156,12 +160,23 @@ public extension ChannelHostBackend {
             return "屏幕仍处于关闭状态。请再按一次唤醒；如果仍未亮起，请让用户唤醒设备。"
         }
         if response.locked == true {
-            return "屏幕亮着，但设备仍锁定：带密码的设备唤醒后仍停留在锁屏。锁屏以外的操作请让用户解锁设备，绝不要索要或输入密码。"
+            return "屏幕亮着，但设备仍锁定：带密码的设备唤醒后仍停留在锁屏。用 apelin_screen_interact 按 unlock，它会使用用户在 Apelin 设置里保存并测试过的密码；若被拒绝或仍停留在锁屏，请让用户解锁设备。绝不要索要、猜或在对话里输入密码，也不要运行 icli device passcode。"
         }
         if response.locked == false {
             return "屏幕亮着，设备已解锁。"
         }
         return ""
+    }
+
+    /// What an unlock left. Its refusals come back as errors that say why.
+    internal static func afterUnlock(_ response: ApelinProtocol.UIActionResponse) -> String {
+        if response.screenOff == true {
+            return "The screen is still off. Press unlock once more; if it stays off, ask the user to wake the device."
+        }
+        if response.locked == true {
+            return "The device's keybag is unlocked, but its lock screen is still up. Ask the user to swipe up or unlock the device, and never ask for or type the passcode."
+        }
+        return "The device is unlocked and its screen is on."
     }
 
     /// What to do when the text read back is not the text typed.

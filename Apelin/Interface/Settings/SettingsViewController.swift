@@ -34,6 +34,8 @@ final class SettingsViewController: TableController {
         /// 设置 ▸ Agent ▸ 自动签到：每天第一次打开 App 时领取各平台的签到积分。
         case checkIn
 
+        /// 设置 ▸ 设备密码：保存并测试用于解锁锁屏的密码。
+        case devicePasscode
         case memories
         case skills
         case toolchain
@@ -149,7 +151,7 @@ final class SettingsViewController: TableController {
     private func rows(in section: Section) -> [Row] {
         switch section {
         case .chat: [.preferences]
-        case .agent: [.modelProviders, .defaultModels, .permissionMode, .promptInjection, .mcpServers, .autoAssistant, .usageStats, .checkIn, .memories, .skills]
+        case .agent: [.modelProviders, .defaultModels, .permissionMode, .promptInjection, .mcpServers, .autoAssistant, .usageStats, .checkIn, .devicePasscode, .memories, .skills]
         case .environment: [.toolchain, .sdks, .apps, .templates]
         case .storage: [.storage]
         case .git: [.git]
@@ -223,7 +225,8 @@ final class SettingsViewController: TableController {
             content.text = String(localized: "用量统计")
         case .checkIn:
             content.text = String(localized: "Check In")
-
+        case .devicePasscode:
+            content.text = String(localized: "Device Passcode")
         case .memories:
             content.text = String(localized: "Memories")
         case .skills:
@@ -280,7 +283,7 @@ final class SettingsViewController: TableController {
         case .autoAssistant: page = AutoAssistantController()
         case .usageStats: page = UsageStatsController()
         case .checkIn: page = CheckInController()
-
+        case .devicePasscode: page = DevicePasscodeController()
         case .memories: page = MemoriesController()
         case .skills: page = SkillsController()
         case .toolchain: page = ToolchainController()

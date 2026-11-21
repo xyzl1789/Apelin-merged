@@ -72,8 +72,8 @@ extension ToolRunner {
             )
         case "press_button":
             let button = try arguments.requireString("button")
-            guard ["wake", "home", "lock"].contains(button) else {
-                throw ToolArgumentError("未知按钮 \(button)；按钮有 wake、home 和 lock")
+            guard ["wake", "home", "lock", "unlock"].contains(button) else {
+                throw ToolArgumentError("未知按钮 \(button)；按钮有 wake、home、lock 和 unlock")
             }
             return .pressButton(button)
         case let other: throw ToolArgumentError("未知操作 \(other)")
