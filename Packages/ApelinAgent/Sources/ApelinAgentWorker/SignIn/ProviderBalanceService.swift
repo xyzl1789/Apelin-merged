@@ -25,6 +25,13 @@ enum ProviderBalanceService {
         var relayKind: String?
     }
 
+    /// 一次只读 GET 的回执。只有按 token 计量的站点需要响应头，其余家族
+    /// 仍只看响应体；headers 只放白名单里的额度字段，绝不带其它头。
+    struct Reply: Sendable {
+        var body: Data
+        var headers: [String: String]
+    }
+
     /// 一个连接的余额接口：只对 HTTPS、已配置的域名发 GET，不跟随重定向。
     /// `recognize` 只认响应结构，不读原始文本；认不出返回 nil，由调用方继续
     /// 探测下一个候选。`fallbackPath` 是主地址认得出结构但取不到金额时补查的
@@ -48,16 +55,18 @@ enum ProviderBalanceService {
         }
     }
 
-    /// 自定义中转站的三种家族，按探测顺序排列。类型名只用于展示与记忆，
+    /// 自定义中转站的探测家族，按探测顺序排列。类型名只用于展示与记忆，
     /// 端点路径是公开的固定字符串，绝不由用户输入的路径拼出。
+    /// tokenQuota 放最后：`/v1/models` 只要密钥就 200，不能抢在计费家族前面。
     enum RelayFamily: String, Sendable, CaseIterable {
-        case sub2api, newAPI, openAIBilling
+        case sub2api, newAPI, openAIBilling, tokenQuota
 
         var path: String {
             switch self {
             case .sub2api: "/v1/usage"
             case .newAPI: "/api/usage/token"
             case .openAIBilling: "/v1/dashboard/billing/subscription"
+            case .tokenQuota: "/v1/models"
             }
         }
 
@@ -66,13 +75,23 @@ enum ProviderBalanceService {
             case .sub2api: "Sub2API"
             case .newAPI: "New API"
             case .openAIBilling: "OpenAI-compatible billing"
+            case .tokenQuota: "今日 token 配额"
             }
         }
 
-        var display: String { "\(label) · \(path)" }
+        var display: String {
+            switch self {
+            case .tokenQuota: label
+            default: "\(label) · \(path)"
+            }
+        }
 
         var memoryKey: String { rawValue }
     }
+
+    /// 按 token 计量的站点用的响应头白名单：只把这些值交给解析，其它头
+    /// （含任何鉴权或 Cookie）都不离开 worker。
+    private static let quotaHeaders = ["x-quota-limit", "x-quota-used", "x-quota-remaining"]
 
     /// 探测类型的记忆：24 小时内只访问已认出的家族；上次失败或过期则全探测。
     private struct RelayMemory: Codable, Sendable {
@@ -326,20 +345,30 @@ enum ProviderBalanceService {
         var errors: [Problem] = []
         for family in families {
             do {
-                let adapter = relayAdapter(family)
-                guard let body = try await rawRequest(base: base, credential: credential, path: family.path),
-                      adapter.recognize(body),
-                      let parsed = adapter.parse(body)
-                else { throw Problem.refused }
-                var figure = parsed
+                let figure: Figure
+                if family == .tokenQuota {
+                    guard let reply = try await rawRequest(base: base, credential: credential,
+                                                           path: family.path, collectHeaders: Self.quotaHeaders),
+                          let parsed = Self.parseTokenQuota(reply.headers)
+                    else { throw Problem.refused }
+                    figure = parsed
+                } else {
+                    let adapter = relayAdapter(family)
+                    guard let reply = try await rawRequest(base: base, credential: credential, path: family.path),
+                          adapter.recognize(reply.body),
+                          let parsed = adapter.parse(reply.body)
+                    else { throw Problem.refused }
+                    figure = parsed
+                }
+                var result = figure
                 if family == .openAIBilling,
                    let usage = try? await rawRequest(base: base, credential: credential,
                                                      path: "/v1/dashboard/billing/usage")
                 {
-                    figure = parseOpenAIUsage(usage, into: figure)
+                    result = parseOpenAIUsage(usage.body, into: result)
                 }
-                figure.relayKind = family.display
-                return (figure, family, hint != family)
+                result.relayKind = family.display
+                return (result, family, hint != family)
             } catch let problem as Problem {
                 errors.append(problem)
                 // 已认出的家族这次只是拒绝密钥：直接报，别再挨个试。
@@ -422,7 +451,25 @@ enum ProviderBalanceService {
                 return Figure(amount: Self.text(remaining ?? total ?? 0), unit: "USD",
                               fraction: fraction, relayKind: nil)
             })
+        case .tokenQuota:
+            // 这个家族只认响应头，不认 body；readRelay 走 parseTokenQuota 分支。
+            return Adapter(path: family.path, recognize: { _ in false }, parse: { _ in nil })
         }
+    }
+
+    /// 从白名单响应头读今日 token 配额。limit 与 remaining 缺一不可，
+    /// 数字先按十进制文本校验，避免把畸形头画成一个假余额。
+    static func parseTokenQuota(_ headers: [String: String]) -> Figure? {
+        guard let limitText = headers["x-quota-limit"],
+              let remainingText = headers["x-quota-remaining"],
+              let limit = Decimal(string: limitText, locale: Locale(identifier: "en_US_POSIX")),
+              let remainingRaw = Decimal(string: remainingText, locale: Locale(identifier: "en_US_POSIX")),
+              limit > 0
+        else { return nil }
+        let remaining = max(0, remainingRaw)
+        let fraction = Self.ratio(remaining / limit)
+        return Figure(amount: Self.text(remaining), unit: "tokens",
+                      fraction: fraction, relayKind: nil)
     }
 
     /// OpenAI 计费兼容的补查：`/usage` 里的 total_usage 单位是美分。
@@ -463,19 +510,20 @@ enum ProviderBalanceService {
         adapter: Adapter,
         path: String,
     ) async throws -> Figure? {
-        guard let body = try await rawRequest(base: base, credential: credential, path: path, header: adapter.header)
+        guard let reply = try await rawRequest(base: base, credential: credential, path: path, header: adapter.header)
         else { return nil }
-        return adapter.parse(body)
+        return adapter.parse(reply.body)
     }
 
-    /// 发出一次只读 GET，2xx 返回响应体；404/405/501 视为「没有这个接口」
-    /// 返回 nil（继续探测），其他错误抛 Problem。
+    /// 发出一次只读 GET，2xx 返回回执（响应体 + 白名单响应头）；404/405/501
+    /// 视为「没有这个接口」返回 nil（继续探测），其他错误抛 Problem。
     private static func rawRequest(
         base: Base,
         credential: OAuthCredentials,
         path: String,
         header: (String, String)? = nil,
-    ) async throws -> Data? {
+        collectHeaders: [String]? = nil,
+    ) async throws -> Reply? {
         let url: URL
         if base.isRelay {
             // 中转站：端点路径拼到 root 的路径后面，保留 /gw 这类前缀。
@@ -526,7 +574,15 @@ enum ProviderBalanceService {
             guard body.count < maximumBodyBytes else { throw Problem.unexpected }
             body.append(byte)
         }
-        return body
+        var headers: [String: String] = [:]
+        if let collectHeaders {
+            for name in collectHeaders {
+                if let value = http.value(forHTTPHeaderField: name) {
+                    headers[name.lowercased()] = value
+                }
+            }
+        }
+        return Reply(body: body, headers: headers)
     }
 
     private static func problem(status: Int) -> Problem {

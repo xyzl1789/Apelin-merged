@@ -86,5 +86,39 @@ import Testing
         #expect(ProviderBalanceService.RelayFamily.sub2api.display.contains("/v1/usage"))
         #expect(ProviderBalanceService.RelayFamily.newAPI.display.contains("New API"))
         #expect(ProviderBalanceService.RelayFamily.openAIBilling.display.contains("billing"))
+        #expect(ProviderBalanceService.RelayFamily.tokenQuota.display == "今日 token 配额")
+    }
+
+    @Test func `token quota headers give remaining tokens and fraction`() {
+        let figure = try #require(ProviderBalanceService.parseTokenQuota([
+            "x-quota-limit": "100000000",
+            "x-quota-remaining": "80852458",
+            "x-quota-used": "19147542",
+        ]))
+        #expect(figure.amount == "80852458")
+        #expect(figure.unit == "tokens")
+        #expect(abs((figure.fraction ?? -1) - 0.80852458) < 1e-9)
+    }
+
+    @Test func `token quota clamp and malformed headers`() {
+        let clamped = try #require(ProviderBalanceService.parseTokenQuota([
+            "x-quota-limit": "100", "x-quota-remaining": "-5",
+        ]))
+        #expect(clamped.amount == "0")
+        #expect(clamped.fraction == 0)
+        #expect(ProviderBalanceService.parseTokenQuota([
+            "x-quota-limit": "100",
+        ]) == nil)
+        #expect(ProviderBalanceService.parseTokenQuota([
+            "x-quota-limit": "oops", "x-quota-remaining": "50",
+        ]) == nil)
+        #expect(ProviderBalanceService.parseTokenQuota([
+            "x-quota-limit": "0", "x-quota-remaining": "50",
+        ]) == nil)
+    }
+
+    @Test func `token quota family probes models and is last`() {
+        #expect(ProviderBalanceService.RelayFamily.tokenQuota.path == "/v1/models")
+        #expect(ProviderBalanceService.RelayFamily.allCases.last == .tokenQuota)
     }
 }
