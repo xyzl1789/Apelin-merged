@@ -1638,7 +1638,9 @@ extension ChatController {
         ComposerModelSelection(
             provider: account.provider,
             model: model,
-            supportedEfforts: (account.reasoningEfforts?[model] ?? []).filter { [.low, .high, .max].contains($0) },
+            supportedEfforts: AgentReasoningEffort.allCases.filter {
+                account.reasoningEfforts?[model]?.contains($0) == true
+            },
             supportedTiers: account.serviceTiers?[model] ?? [],
         )
     }

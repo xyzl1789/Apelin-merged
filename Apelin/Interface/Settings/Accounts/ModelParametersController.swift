@@ -7,9 +7,13 @@ import UIKit
 final class ModelParametersController: TableController {
     private let account: AgentAccount
     private var models: [String]
+    private var capabilities: [String: AgentModelCapabilities]
+    private var capabilitiesTask: Task<Void, Never>?
+    private weak var openForm: ModelParameterFormController?
 
     init(account: AgentAccount) {
         self.account = account
+        capabilities = account.capabilities ?? [:]
         let enabled = EnabledModels.ids(for: account.provider)
         let known = account.models ?? []
         models = Set(known)
@@ -25,6 +29,31 @@ final class ModelParametersController: TableController {
         fatalError("Use init(account:)")
     }
 
+    deinit {
+        capabilitiesTask?.cancel()
+    }
+
+    private func loadCapabilities() {
+        guard !models.isEmpty else { return }
+        let provider = account.provider
+        let requested = models
+        capabilitiesTask = Task { [weak self] in
+            let response = try? await ApelinService.app.agentAccountList(
+                extraModels: [provider.rawValue: requested],
+                onlyExtraModels: true,
+            )
+            guard !Task.isCancelled, let self,
+                  let found = response?.accounts.first(where: { $0.provider == provider })?.capabilities,
+                  !found.isEmpty
+            else { return }
+            capabilities.merge(found) { _, newer in newer }
+            dataSource.update([(0, models)], changedItems: Set(found.keys))
+            if let openForm, let catalog = found[openForm.model] {
+                openForm.updateCatalog(catalog)
+            }
+        }
+    }
+
     private lazy var dataSource = TableDataSource<Int, String, String>(
         tableView: tableView,
         identifier: { $0 },
@@ -33,10 +62,10 @@ final class ModelParametersController: TableController {
         var content = cell.defaultContentConfiguration()
         // The catalog's name where one knows the model; its id under it stays
         // one tap away, on the model's own page.
-        content.text = self?.account.displayName(for: model) ?? model
+        let catalog = self?.capabilities[model]
+        content.text = catalog?.displayName(for: model) ?? self?.account.displayName(for: model) ?? model
         content.textProperties.numberOfLines = 0
         let values = self.map { ModelParameters.values(for: $0.account.provider, model: model) }
-        let catalog = self?.account.capabilities?[model]
         // The figure a conversation is read against: the user's when set, and
         // the catalog entry's otherwise.
         let window = values?.contextWindow ?? catalog?.contextWindow
@@ -61,20 +90,20 @@ final class ModelParametersController: TableController {
             String(localized: "A figure set here is the one your conversations read this model against, in place of what the catalog and the provider report.")
         }
         dataSource.update([(0, models)])
+        loadCapabilities()
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         guard let model = dataSource.itemIdentifier(for: indexPath) else { return }
-        navigationController?.pushViewController(
-            ModelParameterFormController(
-                model: model,
-                provider: account.provider,
-                catalog: account.capabilities?[model],
-                onSave: { [weak self] in self?.dataSource.update([(0, self?.models ?? [])], reconfigure: true) },
-            ),
-            animated: true,
+        let form = ModelParameterFormController(
+            model: model,
+            provider: account.provider,
+            catalog: capabilities[model],
+            onSave: { [weak self] in self?.dataSource.update([(0, self?.models ?? [])], changedItems: [model]) },
         )
+        openForm = form
+        navigationController?.pushViewController(form, animated: true)
     }
 }
 
@@ -82,10 +111,10 @@ final class ModelParametersController: TableController {
 /// most a reply may be, and what the model itself takes — the catalog's answer
 /// for it shown first, and the user's where they set one.
 final class ModelParameterFormController: TableController {
-    private let model: String
+    fileprivate let model: String
     private let provider: AgentProvider
     /// What the catalogs read this model as, when either named it.
-    private let catalog: AgentModelCapabilities?
+    private var catalog: AgentModelCapabilities?
     private let onSave: () -> Void
     private var values: ModelParameters.Values
     private var window = UITextField()
@@ -250,12 +279,28 @@ final class ModelParameterFormController: TableController {
                 return String(localized: "A switch here overrides the catalog. A model read as text only is sent no images: theirs are dropped before the message goes.")
             }
         }
+        refreshRows()
+    }
+
+    fileprivate func updateCatalog(_ catalog: AgentModelCapabilities) {
+        self.catalog = catalog
+        guard isViewLoaded else { return }
+        let name = catalog.displayName(for: model)
+        title = name ?? model
+        navigationItem.prompt = name == nil ? nil : model
+        // 只更新目录默认值，不覆盖用户已经修改的选项或输入。
+        images.isOn = values.acceptsImages ?? catalog.acceptsImages ?? false
+        reasoning.isOn = values.reasoning ?? catalog.reasoning ?? false
+        refreshRows(changedItems: [.entry])
+    }
+
+    private func refreshRows(changedItems: Set<Row> = []) {
         dataSource.update([
             (.catalog, [.entry, .follow]),
             (.window, [.window]),
             (.output, [.output]),
             (.model, [.images, .reasoning]),
-        ])
+        ], changedItems: changedItems)
     }
 
     private func save() {
