@@ -483,6 +483,21 @@ public actor AccountDesk {
                 guard AgentAPIFormat(rawValue: value) != nil else {
                     throw ApelinError(.badRequest, "请选择有效的接口格式。")
                 }
+            case .appendV1, .azure:
+                guard value == "true" || value == "false" else {
+                    throw ApelinError(.badRequest, "请选择有效的开关值。")
+                }
+            case .customUserAgent:
+                // A real UA often carries spaces and parentheses
+                // (`claude-cli/1.0 (iOS)`); only control characters and an
+                // absurd length are refused. Nothing here is logged.
+                guard value.count <= 512, !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+                    throw ApelinError(.badRequest, "请输入不含换行或控制字符的有效 User-Agent。")
+                }
+            case .imageEndpointMode:
+                guard AgentImageEndpointMode(rawValue: value) != nil else {
+                    throw ApelinError(.badRequest, "请选择有效的图像生成端点。")
+                }
             case .callbackURL:
                 throw ApelinError(.badRequest, "\(provider.rawValue) does not ask for \(field.field.rawValue)")
             }
@@ -498,6 +513,10 @@ public actor AccountDesk {
         case .baseURL: "请输入端点地址。"
         case .defaultModel: "请输入模型 ID。"
         case .apiFormat: "请选择接口格式。"
+        case .appendV1: "请选择是否自动附加 /v1。"
+        case .customUserAgent: "请输入自定义 User-Agent。"
+        case .azure: "请选择是否使用 Azure OpenAI。"
+        case .imageEndpointMode: "请选择图像生成端点。"
         case .callbackURL: "请粘贴浏览器打开的地址。"
         }
     }
@@ -510,7 +529,10 @@ public actor AccountDesk {
     /// `access`, no refresh token, never expiring, the rest as extras.
     static func apiKeyCredentials(_ values: [AgentSignInField: String]) -> OAuthCredentials {
         var credentials = OAuthCredentials(access: values[.apiKey] ?? "", refresh: "", expires: .max)
-        for field in [AgentSignInField.baseURL, .defaultModel, .apiFormat] {
+        for field in [
+            AgentSignInField.baseURL, .defaultModel, .apiFormat,
+            .appendV1, .customUserAgent, .azure, .imageEndpointMode,
+        ] {
             if let value = values[field] {
                 credentials.extras[field.rawValue] = .string(value)
             }

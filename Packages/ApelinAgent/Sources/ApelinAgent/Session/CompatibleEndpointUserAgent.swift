@@ -28,12 +28,14 @@ public enum CompatibleEndpointUserAgent {
     }
 
     /// 给端点的模型带上标识；模型已有的 User-Agent（不论大小写）原样保留，
-    /// 这样调用方显式指定的 UA 仍然优先。
-    public static func applying(to model: Model) -> Model {
+    /// 这样调用方显式指定的 UA 仍然优先。`customUserAgent` 非空时用它替代
+    /// 默认的 Minis 标识（Minis 的 `customUserAgent` 设置），留空沿用默认。
+    public static func applying(to model: Model, customUserAgent: String? = nil) -> Model {
         var model = model
         var headers = model.headers ?? [:]
         if !headers.keys.contains(where: { $0.lowercased() == "user-agent" }) {
-            headers["User-Agent"] = `default`
+            let trimmed = customUserAgent?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            headers["User-Agent"] = trimmed.isEmpty ? `default` : trimmed
         }
         model.headers = headers
         return model

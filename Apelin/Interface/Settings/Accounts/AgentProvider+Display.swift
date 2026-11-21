@@ -158,13 +158,31 @@ extension AgentAPIFormat {
 }
 
 extension AgentSignInField {
+    /// Fields Minis draws as a switch rather than a text field.
+    var isBooleanToggle: Bool { self == .appendV1 || self == .azure }
+
     var title: String {
         switch self {
         case .apiKey: String(localized: "API Key")
         case .baseURL: String(localized: "Base URL")
         case .defaultModel: String(localized: "Model")
         case .apiFormat: String(localized: "API Format")
+        case .appendV1: String(localized: "Auto-Append /v1")
+        case .customUserAgent: String(localized: "Custom User-Agent")
+        case .azure: String(localized: "Azure OpenAI")
+        case .imageEndpointMode: String(localized: "Image Endpoint")
         case .callbackURL: String(localized: "Redirect Address")
+        }
+    }
+}
+
+extension AgentImageEndpointMode {
+    /// The row title of a mode, drawn by the sign-in form's menu.
+    var localizedTitle: String {
+        switch self {
+        case .auto: String(localized: "Auto")
+        case .imagesGenerations: String(localized: "Images Generations")
+        case .chatCompletions: String(localized: "Chat Completions")
         }
     }
 }

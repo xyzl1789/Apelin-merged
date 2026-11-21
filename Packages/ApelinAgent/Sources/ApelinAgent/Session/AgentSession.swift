@@ -1247,6 +1247,7 @@ public actor AgentSession {
         let provider: ProviderConfiguration
         let model: Model
         let authResolver: (@Sendable (Model, String?) async throws -> ResolvedProviderAuth?)?
+        let imageCredentials: OAuthCredentials?
         if let imageSelection = modelDefaults.imageGeneration {
             let resolved = try await ProviderResolver.resolve(
                 .auxiliary(provider: imageSelection.provider, model: imageSelection.model),
@@ -1255,10 +1256,12 @@ public actor AgentSession {
             provider = .auxiliary(provider: imageSelection.provider, model: imageSelection.model)
             model = resolved.model
             authResolver = resolved.authResolver
+            imageCredentials = resolved.credentials
         } else {
             provider = resolvedFrom.provider
             model = conversationModel
             authResolver = conversationAuthResolver
+            imageCredentials = resolvedFrom.credentials
         }
 
         if let backend = NativeImageGeneration.backend(for: provider, model: model) {
@@ -1268,6 +1271,7 @@ public actor AgentSession {
                 model: model,
                 auth: auth,
                 prompt: prompt,
+                options: .from(credentials: imageCredentials),
             )
             return AgentGenerateImageResponse(image: image)
         }

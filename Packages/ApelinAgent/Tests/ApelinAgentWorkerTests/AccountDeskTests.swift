@@ -774,6 +774,36 @@ struct AccountDeskTests {
     }
 
     @Test
+    func `interface options are validated, stored and restored for a compatible endpoint` async throws {
+        let store = DeliveredCredentialSource()
+        let desk = AccountDesk(store: store, login: Self.neverCalled, listener: Self.silent, verifyKey: { _, _, _ in })
+        let recorder = SignInRecorder()
+        let task = TaskID("endpoint-options")
+        try await desk.start(AgentSignInRequest(provider: .openAICompatible), taskID: task, reporter: recorder.reporter)
+        try await recorder.waitFor { !$0.events.isEmpty }
+        await #expect(throws: ApelinError.self) {
+            try await desk.respond(AgentSignInRespondRequest(taskID: task, fields: [
+                .apiKey: "sk-SECRET", .baseURL: "https://llm.example.invalid",
+                .defaultModel: "m", .imageEndpointMode: "bogus",
+            ]))
+        }
+        #expect(recorder.state == nil)
+        try await desk.respond(AgentSignInRespondRequest(taskID: task, fields: [
+            .apiKey: "sk-SECRET", .baseURL: "https://llm.example.invalid",
+            .defaultModel: "m", .appendV1: "false",
+            .customUserAgent: "claude-cli/1.0 (iOS)", .azure: "true",
+            .imageEndpointMode: "chat_completions",
+        ]))
+        try await recorder.waitFor { $0.state != nil }
+        #expect(recorder.state == .succeeded)
+        let saved = try #require(try await store.credentials(for: "openai-compatible"))
+        #expect(saved.extras[AgentSignInField.appendV1.rawValue] == .string("false"))
+        #expect(saved.extras[AgentSignInField.customUserAgent.rawValue] == .string("claude-cli/1.0 (iOS)"))
+        #expect(saved.extras[AgentSignInField.azure.rawValue] == .string("true"))
+        #expect(saved.extras[AgentSignInField.imageEndpointMode.rawValue] == .string("chat_completions"))
+    }
+
+    @Test
     func `every provider maps to the store id its session reads`() {
         #expect(Set(AgentProvider.allCases.map(\.storeID)) == CredentialInbox.knownProviders)
         #expect(Set(AgentProvider.allCases.map(\.storeID)).count == AgentProvider.allCases.count)

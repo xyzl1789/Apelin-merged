@@ -20,6 +20,9 @@ final class ProviderKeyFormController: TableController {
     private let initialValues: [String: String]
     private var fields: [AgentSignInField: UITextField] = [:]
     private var cells: [AgentSignInField: UITableViewCell] = [:]
+    /// Minis 的开关（`appendV1`、`azure`）用 UISwitch，值仍是 "true"/"false"，
+    /// 与 worker 的校验和凭据 extras 完全一致。
+    private var toggles: [AgentSignInField: UISwitch] = [:]
     /// The chosen value of a field whose worker entry carries `options`.
     private var selections: [AgentSignInField: String] = [:]
     private enum Row: Hashable {
@@ -61,7 +64,7 @@ final class ProviderKeyFormController: TableController {
         tableView.keyboardDismissMode = .interactive
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 52
-        let textKeys = keys.filter { $0.options == nil }
+        let textKeys = keys.filter { $0.options == nil && !$0.field.isBooleanToggle }
         for (index, key) in textKeys.enumerated() {
             let field = UITextField()
             field.font = .preferredFont(forTextStyle: .body)
@@ -85,9 +88,24 @@ final class ProviderKeyFormController: TableController {
             fields[key.field] = field
             cells[key.field] = cell(containing: field)
         }
+        // Options are drawn as a menu row: the row itself is the field.
         for key in keys where key.options != nil {
             selections[key.field] = Self.initialSelection(key, initialValues: initialValues)
             cells[key.field] = selectionCell(for: key)
+        }
+        // Minis 的 `appendV1`/`azure` 是开关，不是文本输入框。
+        for key in keys where key.field.isBooleanToggle {
+            let initial = initialValues[key.field.rawValue] ?? key.defaultValue ?? "false"
+            let toggle = UISwitch()
+            toggle.isOn = initial == "true"
+            toggle.accessibilityLabel = key.field.title
+            toggle.addAction(UIAction { [weak self, weak toggle] _ in
+                guard let toggle else { return }
+                self?.selections[key.field] = toggle.isOn ? "true" : "false"
+                self?.updateSubmit()
+            }, for: .valueChanged)
+            toggles[key.field] = toggle
+            cells[key.field] = toggleCell(for: key, toggle: toggle)
         }
         submitItem.tintColor = .tintColor
         submitItem.accessibilityLabel = String(localized: "Fetch Models")
@@ -107,7 +125,9 @@ final class ProviderKeyFormController: TableController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        if !isSubmitting, let first = keys.first(where: { $0.options == nil }) {
+        if !isSubmitting, let first = keys.first(where: {
+            $0.options == nil && !$0.field.isBooleanToggle && fields[$0.field] != nil
+        }) {
             fields[first.field]?.becomeFirstResponder()
         }
     }
@@ -175,6 +195,19 @@ final class ProviderKeyFormController: TableController {
         return cell
     }
 
+    /// A titled switch row for Minis' boolean toggles (`appendV1`, `azure`).
+    /// VoiceOver reads the label and UISwitch supplies its own on/off value.
+    private func toggleCell(for key: SignInProgress.KeyField, toggle: UISwitch) -> UITableViewCell {
+        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        cell.selectionStyle = .none
+        var content = cell.defaultContentConfiguration()
+        content.text = key.field.title
+        content.textProperties.color = .label
+        cell.contentConfiguration = content
+        cell.accessoryView = toggle
+        return cell
+    }
+
     private static func menu(
         for key: SignInProgress.KeyField,
         selected: String?,
@@ -198,7 +231,12 @@ final class ProviderKeyFormController: TableController {
         for option: SignInProgress.KeyOption,
         field: AgentSignInField,
     ) -> String {
-        guard field == .apiFormat, let format = AgentAPIFormat(rawValue: option.value) else { return option.title }
+        guard field == .apiFormat, let format = AgentAPIFormat(rawValue: option.value) else {
+            if field == .imageEndpointMode, let mode = AgentImageEndpointMode(rawValue: option.value) {
+                return mode.localizedTitle
+            }
+            return option.title
+        }
         return format.localizedTitle
     }
 
@@ -220,10 +258,14 @@ final class ProviderKeyFormController: TableController {
         return result
             .merging(fields.mapValues { $0.text ?? "" }) { _, edited in edited }
             .merging(selections) { _, chosen in chosen }
+            .merging(toggles.mapValues { $0.isOn ? "true" : "false" }) { _, chosen in chosen }
     }
 
     private var isReady: Bool {
         keys.allSatisfy { key in
+            if key.field.isBooleanToggle {
+                return true // A switch always carries a valid true/false value.
+            }
             if key.options != nil {
                 return !key.required || !(selections[key.field] ?? "").isEmpty
             }
@@ -234,6 +276,7 @@ final class ProviderKeyFormController: TableController {
     @objc private dynamic func updateSubmit() {
         submitItem.isEnabled = isReady && !isSubmitting
         fields.values.forEach { $0.isEnabled = !isSubmitting }
+        toggles.values.forEach { $0.isEnabled = !isSubmitting }
         for cell in cells.values {
             for view in cell.contentView.subviews {
                 (view as? UIButton)?.isEnabled = !isSubmitting
@@ -246,7 +289,8 @@ final class ProviderKeyFormController: TableController {
             submit()
             return
         }
-        if let next = keys.dropFirst(index + 1).first(where: { $0.options == nil }),
+        if let next = keys.dropFirst(index + 1)
+            .first(where: { $0.options == nil && !$0.field.isBooleanToggle }),
            let input = fields[next.field]
         {
             input.becomeFirstResponder()

@@ -232,6 +232,17 @@ enum ProviderModels {
         let defaultURL = provider.keyFields.first { $0.field == .baseURL }?.defaultValue
             ?? (provider == .openRouter ? "https://openrouter.ai/api/v1" : nil)
         guard let base = configured ?? defaultURL, var url = URLComponents(string: base) else { return nil }
+        // 自建/中转端点遵守 appendV1Suffix（默认开）：用户只填域名时也拼 /v1，
+        // 关掉则按填写的地址原样访问。与会话请求共用同一套规范逻辑。
+        if provider.kind == .openAICompatible,
+           let normalized = ProviderRegistration.appendingV1(
+               base,
+               enabled: ProviderRegistration.extra(AgentSignInField.appendV1.rawValue, in: credentials) != "false",
+           ),
+           let components = URLComponents(string: normalized)
+        {
+            url = components
+        }
         if url.host?.lowercased() == "api.deepseek.com" {
             url.path = "/models"
         } else if provider == .anthropic {
@@ -240,7 +251,13 @@ enum ProviderModels {
             url.path = url.path.replacingOccurrences(of: "//", with: "/")
         } else if [.openAI, .openAICompatible, .openRouter, .deepSeek].contains(provider.kind) {
             let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            url.path = "/" + (path.isEmpty ? "v1" : path) + "/models"
+            if provider.kind == .openAICompatible {
+                // appendV1 已把 /v1 规范进路径（或按用户关闭时的原样路径），
+                // 这里只追加 /models，不能再补一次 /v1。
+                url.path = path.isEmpty ? "/models" : "/" + path + "/models"
+            } else {
+                url.path = "/" + (path.isEmpty ? "v1" : path) + "/models"
+            }
         } else if provider == .google {
             url.path = "/v1beta/models"
         } else {
@@ -248,10 +265,17 @@ enum ProviderModels {
         }
         guard let endpoint = url.url else { return nil }
         var request = URLRequest(url: endpoint, timeoutInterval: 15)
-        // 模型发现不走 kwwk 的传输层，得单独带上同一个客户端标识，
-        // 否则中转站会在 /v1/models 这一步就以“仅支持编程客户端”拒绝。
+        // 模型发现不走 kwwk 的传输层，得单独带上客户端标识，否则中转站会在
+        // /v1/models 这一步就以“仅支持编程客户端”拒绝。自定义 UA 优先。
         if provider.kind == .openAICompatible {
-            request.setValue(CompatibleEndpointUserAgent.default, forHTTPHeaderField: "User-Agent")
+            let trimmed = ProviderRegistration.extra(AgentSignInField.customUserAgent.rawValue, in: credentials)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let ua = trimmed.isEmpty ? CompatibleEndpointUserAgent.default : trimmed
+            request.setValue(ua, forHTTPHeaderField: "User-Agent")
+            // Azure 用 api-key 头传密钥。
+            if ProviderRegistration.extra(AgentSignInField.azure.rawValue, in: credentials) == "true" {
+                request.setValue(credentials.access, forHTTPHeaderField: "api-key")
+            }
         }
         if provider == .anthropic, !isDeepSeek(credentials) {
             request.setValue(credentials.access, forHTTPHeaderField: "x-api-key")

@@ -68,6 +68,25 @@ public enum AgentAPIFormat: String, Codable, Sendable, CaseIterable {
     }
 }
 
+/// 图像生成走哪个端点，照抄 Minis 的 `ImageEndpointMode`：
+///   - `auto`：先试 `/v1/images/generations`，4xx 时回退 `/v1/chat/completions`；
+///   - `imagesGenerations`：只用 `/v1/images/generations`；
+///   - `chatCompletions`：只用 `/v1/chat/completions`（多模态输出）。
+public enum AgentImageEndpointMode: String, Codable, Sendable, CaseIterable {
+    case auto
+    case imagesGenerations = "images_generations"
+    case chatCompletions = "chat_completions"
+
+    /// 表单选项的兜底标题；界面按 known value 显示本地化名。
+    public var displayTitle: String {
+        switch self {
+        case .auto: "Auto"
+        case .imagesGenerations: "Images Generations"
+        case .chatCompletions: "Chat Completions"
+        }
+    }
+}
+
 /// The values `agentSignInRespond` carries, by their wire names.
 public enum AgentSignInField: String, Codable, Sendable, CaseIterable {
     /// The key itself (kwwk's `access`).
@@ -81,6 +100,14 @@ public enum AgentSignInField: String, Codable, Sendable, CaseIterable {
     /// `openai-completions` or `openai-responses`, kept as an `apiFormat`
     /// extra. Absent means Chat Completions, as before.
     case apiFormat
+    /// 是否自动在自定义端点地址后附加 `/v1`（Minis 的 `appendV1Suffix`，默认开）。
+    case appendV1
+    /// 自定义 User-Agent；留空时用默认的 Minis 客户端标识。
+    case customUserAgent
+    /// Azure OpenAI 模式：用 `api-key` 头与 deployments 路径（Minis 的 `azureMode`）。
+    case azure
+    /// 图像生成使用的端点（Minis 的 `imageEndpointMode`）。
+    case imageEndpointMode
     /// The address the browser was sent back to, pasted by the user when
     /// the loopback listener could not be reached.
     case callbackURL

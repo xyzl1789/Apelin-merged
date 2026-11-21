@@ -154,11 +154,28 @@ enum SignInKeyForms {
             KeyField(field: .apiKey, required: true),
             KeyField(field: .baseURL, required: true, placeholder: "https://…"),
             KeyField(field: .defaultModel, required: true),
+            // 照抄 Minis 的 OpenAI 兼容实例设置：地址后自动附加 /v1，
+            // 默认开；关掉时地址按原样使用（用户填到具体路径）。
+            KeyField(field: .appendV1, required: false, defaultValue: "true"),
+            // 自定义 User-Agent，留空用默认客户端标识。
+            KeyField(field: .customUserAgent, required: false, placeholder: "Default"),
             KeyField(
                 field: .apiFormat,
                 required: false,
                 defaultValue: AgentAPIFormat.chatCompletions.rawValue,
                 options: AgentAPIFormat.allCases.map {
+                    KeyFieldOption(value: $0.rawValue, title: $0.displayTitle)
+                },
+            ),
+            // Azure OpenAI：用 api-key 头与 deployments 路径，默认关。
+            KeyField(field: .azure, required: false, defaultValue: "false"),
+            // 图像生成端点，照抄 Minis 的 auto / imagesGenerations /
+            // chatCompletions 三档，默认 auto。
+            KeyField(
+                field: .imageEndpointMode,
+                required: false,
+                defaultValue: AgentImageEndpointMode.auto.rawValue,
+                options: AgentImageEndpointMode.allCases.map {
                     KeyFieldOption(value: $0.rawValue, title: $0.displayTitle)
                 },
             ),

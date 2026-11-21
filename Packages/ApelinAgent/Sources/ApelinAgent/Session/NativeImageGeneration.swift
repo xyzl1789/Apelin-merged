@@ -43,6 +43,30 @@ enum NativeImageGeneration {
         }
     }
 
+    /// 图像端点的额外设置，来自兼容端点的凭据 extras。
+    struct ImageOptions: Sendable, Equatable {
+        var mode: AgentImageEndpointMode = .auto
+        var customUserAgent: String? = nil
+        var azure: Bool = false
+        var appendV1: Bool = true
+
+        /// 从凭据 extras 读取；非兼容端点用默认值。
+        static func from(credentials: OAuthCredentials?) -> ImageOptions {
+            guard let credentials else { return .init() }
+            func extra(_ key: String) -> String? {
+                guard case let .string(value)? = credentials.extras[key], !value.isEmpty else { return nil }
+                return value
+            }
+            return ImageOptions(
+                mode: extra(AgentSignInField.imageEndpointMode.rawValue)
+                    .flatMap(AgentImageEndpointMode.init(rawValue:)) ?? .auto,
+                customUserAgent: extra(AgentSignInField.customUserAgent.rawValue),
+                azure: extra(AgentSignInField.azure.rawValue) == "true",
+                appendV1: extra(AgentSignInField.appendV1.rawValue) != "false",
+            )
+        }
+    }
+
     private struct OpenAIRequest: Encodable {
         let model: String
         let prompt: String
@@ -92,12 +116,13 @@ enum NativeImageGeneration {
         backend: Backend,
         model: Model,
         auth: ResolvedProviderAuth?,
-        prompt: String
+        prompt: String,
+        options: ImageOptions = .init(),
     ) async throws -> AgentGeneratedImage {
         guard let auth else { throw Failure.missingAuthentication }
         switch backend {
         case .openAI:
-            return try await generateOpenAI(model: model, auth: auth, prompt: prompt)
+            return try await generateOpenAI(model: model, auth: auth, prompt: prompt, options: options)
         case .gemini:
             return try await generateGemini(model: model, auth: auth, prompt: prompt)
         }
@@ -106,9 +131,64 @@ enum NativeImageGeneration {
     private static func generateOpenAI(
         model: Model,
         auth: ResolvedProviderAuth,
-        prompt: String
+        prompt: String,
+        options: ImageOptions,
     ) async throws -> AgentGeneratedImage {
-        let endpoint = try endpoint(baseURL: model.baseURL, suffix: ["images", "generations"], prefix: "v1")
+        // 照抄 Minis 的三档：imagesGenerations 只走 images API；
+        // chatCompletions 只走 chat/completions；auto 先试 images API，
+        // 4xx 时回退 chat/completions。
+        switch options.mode {
+        case .imagesGenerations:
+            return try await generateViaImagesAPI(model: model, auth: auth, prompt: prompt, options: options)
+        case .chatCompletions:
+            return try await generateViaChatCompletions(model: model, auth: auth, prompt: prompt, options: options)
+        case .auto:
+            do {
+                return try await generateViaImagesAPI(model: model, auth: auth, prompt: prompt, options: options)
+            } catch Failure.requestFailed(status: let status, message: _) where (400 ..< 500).contains(status) {
+                return try await generateViaChatCompletions(model: model, auth: auth, prompt: prompt, options: options)
+            } catch Failure.malformedResponse {
+                // 部分中转站对 /images/generations 返回 200 但正文是
+                // chat/completions 结构，解析失败时同样回退。
+                return try await generateViaChatCompletions(model: model, auth: auth, prompt: prompt, options: options)
+            }
+        }
+    }
+
+    /// 根据 appendV1/Azure 设置解析 images / chat 请求的路径前缀。
+    private static func apiPrefix(options: ImageOptions) -> String? {
+        options.appendV1 ? "v1" : nil
+    }
+
+    private static func applyHeaders(
+        _ request: inout URLRequest,
+        auth: ResolvedProviderAuth,
+        options: ImageOptions,
+    ) {
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if options.azure {
+            request.setValue(auth.token, forHTTPHeaderField: "api-key")
+        } else {
+            request.setValue("Bearer \(auth.token)", forHTTPHeaderField: "Authorization")
+        }
+        let trimmed = options.customUserAgent?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        request.setValue(
+            trimmed.isEmpty ? CompatibleEndpointUserAgent.default : trimmed,
+            forHTTPHeaderField: "User-Agent",
+        )
+    }
+
+    private static func generateViaImagesAPI(
+        model: Model,
+        auth: ResolvedProviderAuth,
+        prompt: String,
+        options: ImageOptions,
+    ) async throws -> AgentGeneratedImage {
+        let endpoint = try endpoint(
+            baseURL: model.baseURL,
+            suffix: ["images", "generations"],
+            prefix: apiPrefix(options: options),
+        )
         let isGPTImage = model.id.lowercased().hasPrefix("gpt-image")
         let requestBody = OpenAIRequest(
             model: model.id,
@@ -121,8 +201,7 @@ enum NativeImageGeneration {
         let body = try JSONEncoder().encode(requestBody)
         var request = URLRequest(url: endpoint, timeoutInterval: 120)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(auth.token)", forHTTPHeaderField: "Authorization")
+        applyHeaders(&request, auth: auth, options: options)
         request.httpBody = body
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -139,6 +218,65 @@ enum NativeImageGeneration {
         }
         guard let imageURL = item.url else { throw Failure.malformedResponse }
         return try await downloadImage(from: imageURL)
+    }
+
+    /// chat/completions 多模态图像输出：模型把图片以 data URL 放进回复的
+    /// content 里，与 Minis 的 chat-completions 图像模式一致。
+    private static func generateViaChatCompletions(
+        model: Model,
+        auth: ResolvedProviderAuth,
+        prompt: String,
+        options: ImageOptions,
+    ) async throws -> AgentGeneratedImage {
+        let endpoint = try endpoint(
+            baseURL: model.baseURL,
+            suffix: ["chat", "completions"],
+            prefix: apiPrefix(options: options),
+        )
+        let bodyObject: [String: Any] = [
+            "model": model.id,
+            "messages": [["role": "user", "content": prompt]],
+            "n": 1,
+        ]
+        let body = try JSONSerialization.data(withJSONObject: bodyObject)
+        var request = URLRequest(url: endpoint, timeoutInterval: 120)
+        request.httpMethod = "POST"
+        applyHeaders(&request, auth: auth, options: options)
+        request.httpBody = body
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, body: data)
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = root["choices"] as? [[String: Any]],
+              let first = choices.first,
+              let message = first["message"] as? [String: Any]
+        else { throw Failure.malformedResponse }
+        if let encoded = firstBase64Image(in: message) {
+            return try image(fromBase64: encoded, preferredMIMEType: "image/png")
+        }
+        throw Failure.malformedResponse
+    }
+
+    /// 从 chat/completions 的 message.content 里找第一张图片：既认字符串
+    /// content 中的 data URL，也认数组 content 里的 image_url 块。
+    private static func firstBase64Image(in message: [String: Any]) -> String? {
+        func encoded(from string: String) -> String? {
+            guard string.lowercased().hasPrefix("data:image/"),
+                  let comma = string.firstIndex(of: ",") else { return nil }
+            return String(string[string.index(after: comma)...])
+        }
+        if let content = message["content"] as? String, let found = encoded(from: content) {
+            return found
+        }
+        if let parts = message["content"] as? [[String: Any]] {
+            for part in parts {
+                if let url = part["image_url"] as? String, let found = encoded(from: url) { return found }
+                if let object = part["image_url"] as? [String: Any],
+                   let url = object["url"] as? String, let found = encoded(from: url) { return found }
+                if let data = part["b64_json"] as? String, !data.isEmpty { return data }
+            }
+        }
+        return nil
     }
 
     private static func generateGemini(

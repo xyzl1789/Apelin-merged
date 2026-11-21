@@ -77,8 +77,26 @@ public enum ProviderRegistration {
         // model：加上标识后，账户验证和真实会话的 Chat Completions/Responses
         // 请求（kwwk 都读取 model.headers）都会被中转站接受。只对这些端点
         // 注入，OAuth/CLI 登录自带的强制 UA 不动。
+        // 自定义 User-Agent（Minis 的 `customUserAgent`）非空时替代默认标识。
         if CredentialProviderID.isOpenAICompatible(storeID) {
-            model = CompatibleEndpointUserAgent.applying(to: model)
+            let customUA = ProviderRegistration.extra(AgentSignInField.customUserAgent.rawValue, in: credentials)
+            model = CompatibleEndpointUserAgent.applying(to: model, customUserAgent: customUA)
+            // Azure OpenAI 用 `api-key` 头传密钥；kwwk 传输层原样应用
+            // model.headers，因此直接设置真实值，Authorization 头由传输层
+            // 按 Bearer 追加，Azure 会忽略它。
+            if ProviderRegistration.extra(AgentSignInField.azure.rawValue, in: credentials) == "true" {
+                var headers = model.headers ?? [:]
+                headers["api-key"] = credentials.access
+                model.headers = headers
+            }
+            // 默认自动附加 /v1（Minis 的 appendV1Suffix）：用户只填域名时
+            // 也拼出 .../v1。关掉时按用户填写的地址原样使用。kwwk 的
+            // Chat Completions/Responses 传输从 model.baseURL 拼请求路径。
+            if let base = ProviderRegistration.extra(AgentSignInField.baseURL.rawValue, in: credentials),
+               let normalized = ProviderRegistration.appendingV1(base, enabled: ProviderRegistration.extra(AgentSignInField.appendV1.rawValue, in: credentials) != "false")
+            {
+                model.baseURL = normalized
+            }
         }
         guard CredentialProviderID.isOpenAICompatible(storeID) else {
             return ResolvedAuth(
@@ -98,6 +116,30 @@ public enum ProviderRegistration {
             providerSlots: resolved.providerSlots,
             authResolvers: resolved.authResolvers,
         )
+    }
+
+    /// Reads a non-empty string extra, the same rule DeepSeek uses.
+    public static func extra(_ key: String, in credentials: OAuthCredentials) -> String? {
+        guard case let .string(value)? = credentials.extras[key], !value.isEmpty else { return nil }
+        return value
+    }
+
+    /// 依 Minis 的 `appendV1Suffix` 规范端点地址：开启时先去掉地址尾部的
+    /// `/v1` 再统一加回，避免用户填了 `/v1` 后重复；关闭时原样返回。只处理
+    /// 路径，查询串（Azure 的 api-version）保留。
+    public static func appendingV1(_ base: String, enabled: Bool) -> String? {
+        guard var components = URLComponents(string: base),
+              let scheme = components.scheme?.lowercased(),
+              ["http", "https"].contains(scheme)
+        else { return nil }
+        var path = components.path
+        while path.hasSuffix("/") { path = String(path.dropLast()) }
+        if enabled {
+            if path.hasSuffix("/v1") { path = String(path.dropLast(3)) }
+            path += "/v1"
+        }
+        components.path = path
+        return components.string
     }
 
     /// The catalog a store id's models are filed under, when the two names
