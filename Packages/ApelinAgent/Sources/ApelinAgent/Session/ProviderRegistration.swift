@@ -73,6 +73,13 @@ public enum ProviderRegistration {
             )
             model.api = format.rawValue
         }
+        // 自建/中转端点按 User-Agent 白名单放行客户端，与验证共用这一份
+        // model：加上标识后，账户验证和真实会话的 Chat Completions/Responses
+        // 请求（kwwk 都读取 model.headers）都会被中转站接受。只对这些端点
+        // 注入，OAuth/CLI 登录自带的强制 UA 不动。
+        if CredentialProviderID.isOpenAICompatible(storeID) {
+            model = CompatibleEndpointUserAgent.applying(to: model)
+        }
         guard CredentialProviderID.isOpenAICompatible(storeID) else {
             return ResolvedAuth(
                 model: model,

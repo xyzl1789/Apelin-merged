@@ -248,6 +248,11 @@ enum ProviderModels {
         }
         guard let endpoint = url.url else { return nil }
         var request = URLRequest(url: endpoint, timeoutInterval: 15)
+        // 模型发现不走 kwwk 的传输层，得单独带上同一个客户端标识，
+        // 否则中转站会在 /v1/models 这一步就以“仅支持编程客户端”拒绝。
+        if provider.kind == .openAICompatible {
+            request.setValue(CompatibleEndpointUserAgent.default, forHTTPHeaderField: "User-Agent")
+        }
         if provider == .anthropic, !isDeepSeek(credentials) {
             request.setValue(credentials.access, forHTTPHeaderField: "x-api-key")
             request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")

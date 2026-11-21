@@ -104,6 +104,18 @@ struct ProviderModelsTests {
     }
 
     @Test
+    func `自建/中转端点的模型列表也带客户端标识，官方端点不带`() throws {
+        let relay = OAuthCredentials(access: "secret", refresh: "", expires: .max, extras: [
+            "baseUrl": .string("https://relay.example.invalid/v1"),
+        ])
+        let request = try #require(ProviderModels.modelRequest(.openAICompatible, credentials: relay))
+        #expect(request.value(forHTTPHeaderField: "User-Agent")?.hasPrefix("Minis/") == true)
+        let deepseek = OAuthCredentials(access: "key", refresh: "", expires: .max)
+        let official = try #require(ProviderModels.modelRequest(.deepSeek, credentials: deepseek))
+        #expect(official.value(forHTTPHeaderField: "User-Agent") == nil)
+    }
+
+    @Test
     func `OAuth accounts remain outside API-key configuration`() {
         let credentials = OAuthCredentials(access: "session", refresh: "refresh", expires: 123_456)
         #expect(!ProviderModels.usesAPIKey(.githubCopilot, credentials: credentials))

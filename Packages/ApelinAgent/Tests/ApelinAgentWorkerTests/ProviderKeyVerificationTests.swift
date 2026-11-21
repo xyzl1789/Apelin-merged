@@ -11,6 +11,7 @@ struct ProviderKeyVerificationTests {
     func `verification sends an authenticated model request and rejects HTTP errors and empty answers`(provider: AgentProvider) async throws {
         let answer = "data: {\"id\":\"test\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
         let empty = "data: {\"id\":\"test\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+        let expectCompatibleUA = provider != .deepSeek
         for (status, body, succeeds) in [(200, answer, true), (200, empty, false), (401, "{\"error\":{\"message\":\"candidate-secret\"}}", false)] {
             let parameters = NWParameters.tcp
             parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
@@ -79,6 +80,9 @@ struct ProviderKeyVerificationTests {
             }
             #expect(header.hasPrefix("POST /v1/chat/completions HTTP/1.1"))
             #expect(header.lowercased().contains("authorization: bearer candidate-secret"))
+            // xingchiapi 这类中转站按 User-Agent 白名单放行客户端；验证请求
+            // 必须和真实会话一样带标识，否则会回“仅支持编程客户端”。
+            #expect(header.lowercased().contains("user-agent: minis/") == expectCompatibleUA)
             let payload = try? JSONSerialization.jsonObject(with: Data(request[separator.upperBound...])) as? [String: Any]
             #expect(payload?["model"] as? String == "verification-model")
             #expect(payload?["stream"] as? Bool == true)
