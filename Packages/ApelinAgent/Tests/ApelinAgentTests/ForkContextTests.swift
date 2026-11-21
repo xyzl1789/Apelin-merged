@@ -458,6 +458,65 @@ struct ForkContextTests {
         await reopened.close()
     }
 
+    @Test(arguments: [false, true])
+    func `中断重开清除中间缺失结果并保留后续消息且可重复重开`(_ implicitStop: Bool) async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let sessionID = UUID().uuidString
+        let log = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: sessionID)
+        let id = UUID()
+        let user = UserMessage(text: "读取文件")
+        let complete: [Message] = [.user(user), .assistant(fauxAssistantMessage("此前完整回复"))]
+        try await log.append(.userMessage(id: id, text: "读取文件", attachments: []))
+        try await log.append(.finished(reason: .completed))
+        try await log.writeHistorySnapshot(complete, anchors: [id.uuidString.lowercased(): anchor(user)])
+        let before = try #require(try await log.readForkContext(id))
+        let later = Message.user(UserMessage(text: "继续处理"))
+        let hole = complete + pendingBatch() + [later]
+        try await log.append(.userMessage(id: UUID(), text: "继续处理", attachments: []))
+        try await log.snapshotConversation(hole)
+        if !implicitStop { try await log.append(.finished(reason: .aborted)) }
+        await log.close()
+
+        let reopened = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: sessionID)
+        // 与 AgentSession 初始化相同：异常退出没有结束事件时先补中断事件。
+        if implicitStop {
+            for event in reopened.opened.interruptionEvents { try await reopened.append(event) }
+        }
+        let expected = try ForkContext.droppingUnansweredCalls(hole)
+        let repaired = try await reopened.readResumableTranscript()
+        #expect(repaired == expected)
+        #expect(repaired.last == later)
+        #expect(try ForkContext.completePrefix(of: repaired) == repaired)
+        #expect(try await reopened.readConversation() == repaired)
+        #expect(try await reopened.readTranscript() == repaired)
+        let after = try #require(try await reopened.readForkContext(id))
+        #expect(after.messages == before.messages)
+        #expect(after.records == before.records)
+        #expect(after.anchors == before.anchors)
+        await reopened.close()
+
+        let again = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: sessionID)
+        #expect(try await again.readResumableTranscript() == repaired)
+        await again.close()
+    }
+
+    @Test
+    func `中断恢复拒绝孤立工具结果且保留原始记录`() async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let log = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: UUID().uuidString)
+        let messages: [Message] = [.user(UserMessage(text: "保留历史"))] + pendingBatch() + [
+            .user(UserMessage(text: "后续消息")),
+            .toolResult(ToolResultMessage(toolCallId: "orphan", toolName: "file_read", content: [])),
+        ]
+        try await log.writeTranscript(messages)
+        try await log.append(.finished(reason: .aborted))
+        await #expect(throws: (any Error).self) { try await log.readResumableTranscript() }
+        #expect(try await log.readTranscript() == messages)
+        await log.close()
+    }
+
     @Test(arguments: [FinishReason.completed, .failed])
     func `a call nothing answered is dropped rather than the chat refused`(_ reason: FinishReason) async throws {
         let home = try TemporaryHome()

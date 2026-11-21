@@ -292,8 +292,16 @@ extension SessionEventLog {
     /// Validate every unsealed snapshot before changing any of them, and let
     /// damaged objects, manifests and IO errors reach the caller unchanged.
     func recoverInterruptedHistory(_ messages: [Message]) throws -> [Message] {
-        let prefix = try ForkContext.completePrefix(of: messages)
-        guard prefix.count < messages.count else { return messages }
+        // 末尾未完成批次仍按原有规则整体截断。只有中间缺口令严格
+        // 边界检查失败时，才清除没有结果的调用并重新检查；孤立结果、
+        // 重复调用与快照损坏仍会报错，不把缺失结果编造成成功。
+        let prefix: [Message]
+        do {
+            prefix = try ForkContext.completePrefix(of: messages)
+        } catch {
+            prefix = try ForkContext.completePrefix(of: ForkContext.droppingUnansweredCalls(messages))
+        }
+        guard prefix != messages else { return messages }
         guard !prefix.isEmpty else {
             throw SessionStoreError.corrupt("no complete conversation boundary before interrupted calls")
         }

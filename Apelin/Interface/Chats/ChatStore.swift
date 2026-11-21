@@ -204,6 +204,16 @@ extension ChatRecord {
         return true
     }
 
+    /// 没有 host 会话的记录结束过期运行态；调用者须先排除正在打开的请求。
+    /// 有 sessionID 时必须向 host 核实，不能仅凭本地记录结束实际任务。
+    @discardableResult
+    mutating func endRunWithoutSession() -> Bool {
+        guard sessionID == nil else { return false }
+        summary.isWorking = false
+        run = .ended
+        return true
+    }
+
     /// The session is now `task`. One that is not the task `events` came
     /// from belongs to a reopened session, and starts by replaying the whole
     /// history under its own numbering; `events` already hold it, so `take`

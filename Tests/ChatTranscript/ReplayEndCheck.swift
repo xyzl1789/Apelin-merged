@@ -9,6 +9,21 @@ import Foundation
 /// moved its cursor past it, takes it again once an attach says the task
 /// has finished, and only once.
 func checkReplayEnd() {
+    // 加载失败或旧记录遗留忙碌态时，没有会话的停止请求应结束显示，
+    // 但不得擅自把有 host 会话的记录标为结束。
+    var orphan = ChatRecord(summary: ChatSummary(title: "旧会话", lastInteraction: Date(), isWorking: true))
+    orphan.run = .running
+    orphan.draft = ComposerDraft(text: "保留草稿")
+    precondition(orphan.endRunWithoutSession())
+    precondition(!orphan.summary.isWorking && orphan.run == .ended)
+    precondition(orphan.draft.text == "保留草稿")
+    precondition(orphan.endRunWithoutSession(), "重复收尾保持一致")
+    orphan.sessionID = UUID().uuidString
+    orphan.run = .running
+    orphan.summary.isWorking = true
+    precondition(!orphan.endRunWithoutSession())
+    precondition(orphan.summary.isWorking && orphan.run == .running, "有会话时须等待 host 校准")
+
     let askedID = UUID()
     // A turn the conversation saw start and not end: its task stopped while
     // the app was away. The new task replays it, numbered as it was.

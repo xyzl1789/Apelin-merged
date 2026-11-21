@@ -708,6 +708,7 @@ final class ChatController: UIViewController {
                 return
             } catch {
                 guard self.chat?.id == chat.id else { return }
+                self.refreshRuntime()
                 presentNotice(title: "Unable to Load Conversation", message: error.readableMessage)
             }
         }

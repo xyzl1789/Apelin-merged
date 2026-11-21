@@ -931,7 +931,14 @@ final class ChatRuntime {
         // 都以此判断这一轮还有没有恢复资格。
         autoRecovered.insert(id)
         autoSwitchAttempts[id] = Self.maxAutoSwitches
-        guard let sessionID = records[id]?.sessionID else { return }
+        guard let sessionID = records[id]?.sessionID else {
+            // 没有会话且也没有正在提交的打开请求，旧的忙碌标记没有
+            // 对应任务。打开仍在进行时则保留状态，等待其确定结果。
+            if opening[id] == nil, records[id]?.endRunWithoutSession() == true {
+                changed(id, urgent: true)
+            }
+            return
+        }
         let continuation = UUID()
         stopContinuations[id] = continuation
         defer {
@@ -1187,7 +1194,15 @@ final class ChatRuntime {
         let pending = Task { try await ApelinService.app.agentOpen(request) }
         opening[id] = pending
         defer { opening[id] = nil }
-        let result = try await pending.value
+        let result: AgentOpenResponse
+        do {
+            result = try await pending.value
+        } catch {
+            // 加载失败不等于有任务在运行；以 host 的回答校准旧状态。
+            // host 暂时失联时保留原状态，避免把仍在执行的任务误标成结束。
+            await reconcileRuns()
+            throw error
+        }
         guard records[id] != nil else {
             try? await ApelinService.app.agentClose(sessionID: result.sessionID, deleted: true)
             throw CancellationError()
