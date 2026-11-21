@@ -198,22 +198,6 @@ console now goes on after a restart only past a successful respring.
 
 ## Still to run on the owner's devices
 
-- [ ] The terminal session list and the file browser's breadcrumb (2026-11-14,
-      AGENTS.md ▸ Open Terminal and Browse Files; only model and unit checks
-      have run — `Tests/TerminalUI` and `Tests/FileBrowser`, and the
-      catalog's format and stale-key checks — no screen of either has been
-      seen). On the iPhone and on an iPad or vphone: Terminal opens its
-      sessions as a sheet or a popover; a long press or a left swipe on an
-      ended row deletes it and removes only the record, its folder and saved
-      output still there; deleting the row on screen selects its neighbour,
-      and deleting the last shows "No Terminal Open" with New Terminal and
-      starts no shell. In Browse Files, each crumb opens its folder, the
-      strip scrolls sideways, reloading the same folder keeps the breadcrumb
-      strip's horizontal position, and neither changes the project the agent
-      works in. In either page's terminal, the prompt is the folder and a
-      `$` (the shell's login profile puts the whole path there), while a
-      shell opened from anywhere else keeps the prompt it had; a user's own
-      `PS1` still wins.
 - [ ] Token limits and compaction (2026-11-21, issue #68, AGENTS.md ▸ Agent
       sign-in ▸ Model limits and Agent sessions ▸ Compaction; only the Mac's
       `ContextLimitsTests`, `AgentModelLimitsTests`, the session host's
