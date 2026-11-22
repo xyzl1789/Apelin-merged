@@ -223,3 +223,12 @@ extension FeedbackRules {
         return (matched, note)
     }
 }
+
+public extension FeedbackRules {
+    /// Nil when `text` holds none of the private data a public issue must not
+    /// carry, else its kind, never quoting it: for other public text, such as
+    /// a release's notes, which says it in its own words.
+    static func privateData(in text: String, paths: [String] = [], names: [String] = []) -> String? {
+        privateMatches(in: text, titleLength: nil, paths: paths, names: names).first?.kind.reason
+    }
+}

@@ -512,16 +512,16 @@ actor ToolRunner {
     /// command as root, nor for an issue filed or edited in public as
     /// feedback, nor for a repository made on GitHub or an issue opened on
     /// one, nor for a project's deletion, which cannot be undone, nor for
-    /// packages published to the user's package repository, nor for a use
-    /// of the screen while Ask Before Using the Screen is on, nor for a
-    /// forced push, which takes commits off the remote's branch, nor for a
-    /// squash, which replaces the project's own, nor for a reset to a
-    /// remote, which discards work.
+    /// packages published to the user's package repository or as a GitHub
+    /// Release, nor for a use of the screen while Ask Before Using the
+    /// Screen is on, nor for a forced push, which takes commits off the
+    /// remote's branch, nor for a squash, which replaces the project's own,
+    /// nor for a reset to a remote, which discards work.
     static func allowsSessionScope(_ tool: InvocationFacts.Tool, detail: ApprovalDetail) -> Bool {
         switch tool {
         case .local(.packageRemove), .local(.gitPush), .local(.toolchainSetup), .local(.sdkImport),
              .local(.skillSave), .local(.skillRemove), .local(.feedbackSend), .local(.gitCreateRepository),
-             .local(.projectDelete), .local(.packagePublish), .local(.feedbackEdit), .local(.gitCreateIssue),
+             .local(.projectDelete), .local(.packageRelease), .local(.packagePublish), .local(.feedbackEdit), .local(.gitCreateIssue),
              .local(.gitSquash), .local(.gitResetToRemote), .local(.gitBranchDelete),
              .local(.gitTag), .local(.gitRestore), .local(.gitClean),
              .local(.gitBranchCreate), .local(.gitBranchCheckout), .local(.gitBranchRename),
@@ -533,7 +533,7 @@ actor ToolRunner {
         switch detail {
         case .gitSettings, .descriptionChanged, .toolchainSetup, .sdkImport, .otherProject, .externalBuild, .skillChange,
              .projectRename, .rootCommand, .feedback, .feedbackEdit, .repositoryCreate, .issueCreate, .projectDelete,
-             .packagePublish, .screenControl, .forcePush, .squash, .resetToRemote, .question, .runMode:
+             .packageRelease, .packagePublish, .screenControl, .forcePush, .squash, .resetToRemote, .question, .runMode:
             return false
         case .none, .command, .packageRemoval, .gitPush:
             return true
@@ -795,6 +795,13 @@ actor ToolRunner {
                 throw ToolDeniedError(message: "无法读取要发布的包")
             }
             return try await json(backend.publishPackages(PackagePublishToolRequest(context: context, publication: publication)))
+
+        case .packageRelease:
+            // The repository, tag, commit and packages the card named.
+            guard let release = facts.packageRelease else {
+                throw ToolDeniedError(message: "the packages to release could not be read")
+            }
+            return try await json(backend.releasePackages(PackageReleaseToolRequest(context: context, release: release)))
 
         case .packageList:
             var projectID: String?

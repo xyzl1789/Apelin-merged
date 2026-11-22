@@ -186,6 +186,13 @@ public protocol AgentHostBackend: Sendable {
     /// whether it was saved: not for a project without a repository, nor
     /// for a work tree too large to save.
     func gitCheckpointSave(messageID: UUID) async throws -> Bool
+    /// The project's commit and its remotes on github.com, the GitHub
+    /// sign-in and each build's package record, read before
+    /// apelin_package_release asks.
+    func packageReleaseFacts(_ request: PackageReleaseFactsRequest) async throws -> PackageReleaseFacts
+    /// Builds' packages published as a GitHub Release as they were built,
+    /// read to the end; the host checks they were approved.
+    func releasePackages(_ request: PackageReleaseToolRequest) async throws -> PackageReleaseToolResponse
 }
 
 /// A backend with no repository behind it saves no checkpoint.
@@ -290,6 +297,14 @@ public extension AgentHostBackend {
 
     func publishPackages(_: PackagePublishToolRequest) async throws -> PackagePublishToolResponse {
         throw ToolDeniedError(message: "此处无法发布包")
+    }
+
+    func packageReleaseFacts(_: PackageReleaseFactsRequest) async throws -> PackageReleaseFacts {
+        throw ToolDeniedError(message: "releasing packages is not available here")
+    }
+
+    func releasePackages(_: PackageReleaseToolRequest) async throws -> PackageReleaseToolResponse {
+        throw ToolDeniedError(message: "releasing packages is not available here")
     }
 }
 
