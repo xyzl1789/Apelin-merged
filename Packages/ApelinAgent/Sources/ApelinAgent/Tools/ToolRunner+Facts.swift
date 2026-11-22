@@ -231,8 +231,8 @@ extension ToolRunner {
             guard request.repository.lowercased() != FeedbackRules.repository.lowercased() else {
                 throw ToolArgumentError("未发布：关于 Apelin 本身的反馈请用 apelin_feedback_send 发到 \(FeedbackRules.repository)。")
             }
-            if let problem = FeedbackRules.problem(title: request.title, body: request.body) {
-                throw ToolArgumentError("未发布：\(problem).")
+            if let refusal = FeedbackRules.refusal(title: request.title, body: request.body) {
+                throw ToolArgumentError("未发布：\(refusal.explanation).")
             }
             facts.issueCreate = IssueCreateApproval(repository: request.repository, title: request.title, body: request.body)
         case .packageConfirmLoaded where arguments.argBool("respring") == true:
@@ -257,8 +257,8 @@ extension ToolRunner {
             // is sent, which apelin-environment checks again.
             let title = try arguments.requireString("title").trimmingCharacters(in: .whitespaces)
             let body = try arguments.requireString("body")
-            if let problem = FeedbackRules.problem(title: title, body: body) {
-                throw ToolArgumentError("未发送：\(problem)。")
+            if let refusal = FeedbackRules.refusal(title: title, body: body) {
+                throw ToolArgumentError("未发送：\(refusal.explanation)。")
             }
             facts.feedback = FeedbackApproval(repository: FeedbackRules.repository, title: title, body: body)
         case .feedbackEdit:
