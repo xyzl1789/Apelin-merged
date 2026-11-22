@@ -316,7 +316,7 @@ enum ToolSymbol {
             "arrow.triangle.branch"
         case .projectBuild, .toolchainSelfTest:
             "hammer"
-        case .packageInstall, .packageRemove, .packageList, .packagePublish, .packageConfirmLoaded:
+        case .packageInstall, .packageRemove, .packageList, .packagePublish, .packageRelease, .packageConfirmLoaded:
             "shippingbox"
         case .screenCapture, .screenReadTree, .screenInteract, .deviceRespring:
             "iphone"
