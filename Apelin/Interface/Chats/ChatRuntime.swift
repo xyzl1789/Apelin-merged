@@ -941,6 +941,14 @@ final class ChatRuntime {
         changed(id)
     }
 
+    /// 这段对话下一段运行采用的模式，告诉一个已经打开的会话：一轮正在运行时，
+    /// 排在它后面的那条消息由它触及。没有打开会话的对话不需要它——下一条提示
+    /// 自带模式。
+    func setRunMode(_ mode: ComposerMode, in id: UUID) async {
+        guard let sessionID = records[id]?.sessionID else { return }
+        try? await ApelinService.app.agentSetRunMode(sessionID: sessionID, mode: mode.runMode)
+    }
+
     func manageQueue(in id: UUID, action: AgentQueueAction, messageID: UUID? = nil,
                      text: String? = nil, order: [UUID]? = nil) async throws {
         let opened = try await open(id)

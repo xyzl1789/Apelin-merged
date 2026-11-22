@@ -26,6 +26,8 @@ struct ChatTranscript {
     /// (`apelin_run_mode`): the page writes it where the pill reads it, so a
     /// change made while the app was away is not lost.
     var runMode: ComposerMode?
+    /// 该改动记录的时刻：之后读者亲手点选的模式不会被这条更早的事件覆盖。
+    var runModeChangedAt: Date?
     var approvalIDs: [UUID: String] = [:]
     /// While the turn runs and its last row is a reply with nothing after
     /// it: when, with no event before then, a running summary stands in
@@ -400,6 +402,7 @@ struct ChatTranscript {
                 // The last one wins: the mode the conversation is in now.
                 if let raw = payload?["mode"]?.stringValue, let mode = ComposerMode(rawValue: raw) {
                     runMode = mode
+                    runModeChangedAt = event.time
                 }
             case "finished":
                 finishThinking(at: event.time)

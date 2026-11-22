@@ -73,6 +73,9 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
     /// The model the next message will use, applied to a session that is
     /// already open, so the total the ring draws is the new model's at once.
     case agentConfigure
+    /// 下一段运行采用的模式，告诉一个已经打开的会话：运行中改药丸不该打断
+    /// 当前这轮，但排在它后面的消息要以读者选的模式开始。
+    case agentSetRunMode
     case agentQueue
     case agentApprove
     case agentAttach
@@ -202,7 +205,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .ptyOpen, .ptyAttach, .ptyResize, .ptyClose: .terminal
         case .logStream, .crashList, .crashOpen, .crashSymbolicate: .logs
         case .confirmLoaded, .confirmLoadedAttach, .captureScreen, .readUITree, .uiAction: .diagnostics
-        case .agentDelegation, .agentOpen, .agentPrompt, .agentGenerateImage, .agentSteer, .agentAbort, .agentCompact, .agentConfigure, .agentQueue, .agentApprove, .agentAttach, .agentList,
+        case .agentDelegation, .agentOpen, .agentPrompt, .agentGenerateImage, .agentSteer, .agentAbort, .agentCompact, .agentConfigure, .agentSetRunMode, .agentQueue, .agentApprove, .agentAttach, .agentList,
              .agentClose, .agentRunCode, .agentCredentialImport, .agentAccountList, .agentSkillList,
              .agentRewritePrompt, .agentModelTest, .agentProviderBalances, .agentMCPTools,
              .agentAPIConfiguration, .agentModelList,
@@ -286,6 +289,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .agentCompact: AgentCompactRequest.self
         case .agentQueue: AgentQueueRequest.self
         case .agentConfigure: AgentConfigureRequest.self
+        case .agentSetRunMode: AgentSetRunModeRequest.self
         case .agentApprove: AgentApproveRequest.self
         case .agentAttach: AgentAttachRequest.self
         case .agentList: AgentListRequest.self

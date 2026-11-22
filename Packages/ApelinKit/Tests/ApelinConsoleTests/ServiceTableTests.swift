@@ -157,6 +157,8 @@ final class ServiceTableTests: XCTestCase {
                     model: "test",
                 ))
             }
+        case .agentSetRunMode:
+            return Row(reply: ack) { _ = try await $0.agentSetRunMode(sessionID: "s", mode: .plan) }
         case .agentApprove:
             return Row(reply: ack) { try await $0.agentApprove(sessionID: "s", approvalID: "a", decision: .deny) }
         case .agentAttach:

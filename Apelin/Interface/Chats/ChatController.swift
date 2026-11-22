@@ -229,6 +229,11 @@ final class ChatController: UIViewController {
             // that leaves from this page will find it.
             guard let self else { return }
             ComposerModeStore.set(mode, for: self.chat?.id)
+            // 正在运行的一轮不受打扰，但排在它后面的消息以这个模式开始：
+            // 队列的下一轮没有提示可携带模式，所以现在告知会话。
+            guard let id = self.chat?.id else { return }
+            let runtime = self.runtime
+            Task { await runtime?.setRunMode(mode, in: id) }
         }
         composer.onCompactContext = { [weak self] in
             guard let self, let chat else { return }
@@ -909,13 +914,16 @@ final class ChatController: UIViewController {
             // temporary chat has no files of its own to name.
             composer.projectRoot = summary.projectName.flatMap { DataFolder.app.project(named: $0) }
             composer.modelBar.setContextUsage(transcript.contextUsage, compactable: runtime.canCompact(chat.id))
-            // The agent may have changed the run mode itself
-            // (`apelin_run_mode`): the log's last word is what the pill shows
-            // and what the next prompt goes out with, whether the change came
-            // while this page was open or while the app was away.
-            if let mode = transcript.runMode, ComposerModeStore.mode(for: chat.id) != mode {
-                ComposerModeStore.set(mode, for: chat.id)
-                composer.modelBar.modePill.set(mode: mode)
+            // 智能体可能自己改过运行模式（`apelin_run_mode`）：日志里最后的话
+            // 就是药丸显示、下一条提示发出的模式，无论改动发生在页面打开时还是
+            // 应用离开时。只有比存储里已有的改动更新的才作数——读者亲手点的药丸
+            // 不能被更早 recorded 的事件撤销，那正是流式运行时每次更新发生的事。
+            if let mode = transcript.runMode, let changed = transcript.runModeChangedAt {
+                let held = ComposerModeStore.changedAt(for: chat.id)
+                if held == nil || changed > held! {
+                    ComposerModeStore.adopt(mode, at: changed, for: chat.id)
+                    composer.modelBar.modePill.set(mode: mode)
+                }
             }
             composer.setContextUsage(
                 usedTokens: transcript.contextUsage?.tokens ?? 0,

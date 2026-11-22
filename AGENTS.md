@@ -423,7 +423,7 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   `distributionPublish`, `feedbackSend`, `feedbackRead`, `feedbackEdit`,
   `feedbackStarState`, `feedbackStar`; `channelStatus`, `channelSignIn`,
   `channelVerifyCode`, `channelConfigure`, `channelSignOut`;
-  `transferExport`, `transferInspect`, `transferImport`. Every one is
+  `transferExport`, `transferInspect`, `transferImport`, `agentSetRunMode`. Every one is
   in the list today; most answer `unimplemented` until their domain lands.
   The envelope (protocol version 2) carries `op`, `protocolVersion`,
   `requestID` and a JSON `payload`, with descriptors beside it by index

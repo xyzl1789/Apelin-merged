@@ -467,6 +467,15 @@ public actor AgentSession {
     /// between messages, and the system prompt is the session's snapshot.
     /// The runner hears it too: a plan run's reads-only wall is the runner's,
     /// and an automatic run's "stop asking" is the approval gate's.
+    /// 本轮结束后下一轮采用的模式：在一轮运行中被告知，到该轮结束时才生效，
+    /// 这样排在后面的消息以它开始，而当前这轮不会被中途限制。提示自带模式，
+    /// 优先于这里。
+    public func setNextRunMode(_ mode: ApelinProtocol.AgentRunMode?) async {
+        nextRunMode = mode
+    }
+
+    private var nextRunMode: ApelinProtocol.AgentRunMode?
+
     public func setRunMode(_ mode: ApelinProtocol.AgentRunMode?) async {
         await runner.setRunMode(mode)
         // An automatic run is a build run that stops asking; the other two
@@ -880,6 +889,8 @@ public actor AgentSession {
         reports: [AgentTurnReport]? = nil,
     ) async throws {
         let id = messageID ?? UUID()
+        // 提示带着应用此刻的模式到达：这条消息用它，之前说的就算用过了。
+        nextRunMode = nil
         guard !submitted.contains(id), !pending.state.seen.contains(id) else {
             // A retry also repairs a missed acceptance event after an I/O failure.
             try await publishPending().value
@@ -2070,6 +2081,12 @@ public actor AgentSession {
         await recordContextUsage()
         do { try await log.append(.finished(reason: reason)) }
         catch { await pausePending(error: error) }
+        // 本轮运行期间读者选定的模式现在生效，供 `next` 启动的排队消息使用；
+        // 这一轮已经结束了。
+        if let planned = nextRunMode {
+            nextRunMode = nil
+            await setRunMode(planned)
+        }
         // a stop or a failed durable write meanwhile blocks continuation
         runTask = next.isEmpty || aborted || pendingBlocked ? nil : carryOver(next)
         runEnding = false

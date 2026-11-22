@@ -91,8 +91,29 @@ enum ComposerModeStore {
         return seed
     }
 
+    /// 读者刚刚亲手选了这个模式：比这更早 recorded 的智能体改动不再代表这段对话。
     static func set(_ mode: ComposerMode, for id: UUID?) {
         guard let id else { return }
-        UserDefaults.standard.set(mode.rawValue, forKey: key(for: id))
+        adopt(mode, at: Date(), for: id)
+    }
+
+    /// 本存储持有的模式是何时选定的——读者点选，或采纳了智能体自己的改动。
+    static func changedAt(for id: UUID?) -> Date? {
+        guard let id else { return nil }
+        let seconds = UserDefaults.standard.double(forKey: changedAtKey(for: id))
+        return seconds > 0 ? Date(timeIntervalSince1970: seconds) : nil
+    }
+
+    /// 智能体在 `time` 改了模式（`runModeChanged`）：连同时刻一起写入，这样
+    /// 同一个事件不会被采纳两次，更早的事件也不会推翻之后选定的模式。
+    static func adopt(_ mode: ComposerMode, at time: Date, for id: UUID?) {
+        guard let id else { return }
+        let defaults = UserDefaults.standard
+        defaults.set(mode.rawValue, forKey: key(for: id))
+        defaults.set(time.timeIntervalSince1970, forKey: changedAtKey(for: id))
+    }
+
+    private static func changedAtKey(for id: UUID) -> String {
+        "composer.mode.changedAt." + id.uuidString
     }
 }

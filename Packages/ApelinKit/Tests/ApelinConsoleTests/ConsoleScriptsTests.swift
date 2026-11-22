@@ -17,6 +17,7 @@ final class ConsoleScriptsTests: XCTestCase {
         .agentDelegation: "Delegation authority belongs to an authenticated opener, not to a console script.",
         .agentQueue: "Pending input is managed in the conversation, never by a console script.",
         .agentConfigure: "A conversation's model is picked in the composer's row, where the total it must fit is shown beside it; the console leaves that choice to the reader.",
+        .agentSetRunMode: "A conversation's mode is the composer's pill, which records the reader's choice and tells the open session; a console script has no page to show it on.",
         .gitCredentialSet: "A git credential comes only from Sign In with GitHub in Settings ▸ Git; the console refuses it before sending.",
         .feedbackStar: "A star is given on the reader's GitHub account only by their tap in the app; the console refuses it before sending.",
         .channelStatus: "A channel is read on its Settings page, where the code it is waiting for is drawn; the console has nothing to show for it.",
