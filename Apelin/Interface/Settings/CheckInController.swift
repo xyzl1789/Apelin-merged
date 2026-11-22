@@ -1,4 +1,5 @@
 import ApelinProtocol
+import SPIndicator
 import Then
 import UIKit
 
@@ -161,7 +162,7 @@ final class CheckInController: TableController {
             content.secondaryText = parts.isEmpty ? nil : parts.joined(separator: " · ")
             content.secondaryTextProperties.color = .secondaryLabel
             cell.contentConfiguration = content
-            cell.accessoryType = .disclosureIndicator
+            cell.accessoryType = .none
             cell.selectionStyle = .default
             return cell
         case let .detail(platform, index):
@@ -308,6 +309,9 @@ final class CheckInController: TableController {
         case .automatic:
             break
         case .runAll:
+            let notice = "开始自动签到"
+            SPIndicator.present(title: notice, preset: .done, haptic: .success)
+            UIAccessibility.post(notification: .announcement, argument: notice)
             refresh(platforms: [], force: true)
         case let .platform(platform):
             refresh(platforms: [platform], force: true)
