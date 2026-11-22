@@ -172,8 +172,9 @@ public enum CheckInService {
         }
         if flag(data["today_checked_in"]) {
             logger.info("\(platform.rawValue, privacy: .public)：今天已签到")
+            let details = await runGrowthIfNeeded(platform: platform, baseURL: baseURL, headers: headers)
             return CheckInResult(platform: platform, outcome: .alreadyClaimed,
-                                 total: total, streak: streak)
+                                 total: total, streak: streak, details: details)
         }
 
         let claim = try await reply(
@@ -191,8 +192,27 @@ public enum CheckInService {
         let claimed = claimJSON["data"] as? [String: Any]
         let credit = numberText(claimed?["credit"]) ?? numberText(claimJSON["credit"])
         logger.info("\(platform.rawValue, privacy: .public)：签到成功")
+
+        // 签到之后再跑一遍成长中心：能自动领的都领，做不了的写清原因进明细。
+        let details = await runGrowthIfNeeded(platform: platform, baseURL: baseURL, headers: headers)
         return CheckInResult(platform: platform, outcome: .claimed,
-                             credit: credit, total: total, streak: streak)
+                             credit: credit, total: total, streak: streak, details: details)
+    }
+
+    /// 只有国内 WorkBuddy 有成长中心；国际版没有这套活动接口。
+    private static func runGrowthIfNeeded(platform: CheckInPlatform, baseURL: URL,
+                                          headers: [String: String]) async -> [CheckInDetail]? {
+        guard platform == .workBuddy else { return nil }
+        let growth = await GrowthCenter.run(baseURL: baseURL, headers: headers) { method, path, requestHeaders, body in
+            guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
+                return Reply(status: 0, json: nil)
+            }
+            return try await reply(method: method, url: url, headers: requestHeaders, body: body)
+        }
+        for item in growth.details where !item.succeeded {
+            logger.info("成长中心待办：\(item.title, privacy: .public) — \(item.note, privacy: .public)")
+        }
+        return growth.details
     }
 
     // MARK: - Trae CN
@@ -327,7 +347,8 @@ public enum CheckInService {
 
     // MARK: - 网络请求
 
-    private struct Reply {
+    /// 成长中心只关心 HTTP 状态和 JSON；这里是 worker 内部的应答形状。
+    struct Reply {
         var status: Int
         var json: [String: Any]?
     }

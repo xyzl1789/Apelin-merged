@@ -1,6 +1,160 @@
 {
   "sourceLanguage": "en",
   "strings": {
+      "Growth tasks that need real use on the desktop stay red until they are done; the reason is listed below." : {
+        "extractionState" : "manual",
+        "localizations" : {
+          "ar" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "تظل مهام النمو التي تتطلب استخدامًا فعليًا على سطح المكتب باللون الأحمر حتى تكتمل؛ والسبب مذكور أدناه."
+            }
+          },
+          "de" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Wachstumsaufgaben, die echte Nutzung auf dem Desktop erfordern, bleiben rot, bis sie erledigt sind; der Grund steht unten."
+            }
+          },
+          "es" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Las tareas de crecimiento que requieren uso real en el escritorio siguen en rojo hasta completarse; el motivo aparece abajo."
+            }
+          },
+          "fr" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Les tâches de croissance qui nécessitent une utilisation réelle sur ordinateur restent rouges jusqu’à leur achèvement ; la raison figure ci-dessous."
+            }
+          },
+          "it" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Le attività di crescita che richiedono un uso reale sul desktop restano rosse finché non sono completate; il motivo è indicato sotto."
+            }
+          },
+          "ja" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "デスクトップでの実際の利用が必要な成長タスクは、完了するまで赤色のままです。理由は下に記載されています。"
+            }
+          },
+          "ko" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "데스크톱에서 실제 사용이 필요한 성장 작업은 완료될 때까지 빨간색으로 표시되며, 이유는 아래에 나열됩니다."
+            }
+          },
+          "pt-BR" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "As tarefas de crescimento que exigem uso real no computador permanecem em vermelho até serem concluídas; o motivo está listado abaixo."
+            }
+          },
+          "ru" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Задания роста, требующие реального использования на компьютере, остаются красными до выполнения; причина указана ниже."
+            }
+          },
+          "vi" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Các nhiệm vụ tăng trưởng cần sử dụng thực tế trên máy tính vẫn có màu đỏ cho đến khi hoàn thành; lý do được liệt kê bên dưới."
+            }
+          },
+          "zh-Hans" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "需要在桌面端实际使用才能完成的任务会一直显示红灯，完成前请到对应平台操作；原因见下方。"
+            }
+          },
+          "zh-Hant" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "需要在桌面端實際使用才能完成的任務會一直顯示紅燈，完成前請到對應平台操作；原因見下方。"
+            }
+          }
+        }
+      },
+      "Red means the action could not be finished automatically. A light means it was done or is harmless to skip." : {
+        "extractionState" : "manual",
+        "localizations" : {
+          "ar" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "الأحمر يعني تعذّر إكمال الإجراء تلقائيًا. والضوء الآخر يعني أنه اكتمل أو يمكن تخطيه بأمان."
+            }
+          },
+          "de" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Rot bedeutet, dass die Aktion nicht automatisch abgeschlossen werden konnte. Ein helles Licht bedeutet, dass sie erledigt wurde oder bedenkenlos übersprungen werden kann."
+            }
+          },
+          "es" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Rojo significa que la acción no se pudo completar automáticamente. Una luz clara significa que se hizo o que omitirla es inofensivo."
+            }
+          },
+          "fr" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Le rouge signifie que l’action n’a pas pu être terminée automatiquement. Une autre couleur signifie qu’elle a été effectuée ou qu’il est sans conséquence de la passer."
+            }
+          },
+          "it" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Il rosso significa che l’azione non è stata completata automaticamente. Un’altra luce significa che è stata eseguita o che può essere ignorata senza problemi."
+            }
+          },
+          "ja" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "赤色はその操作を自動で完了できなかったことを示します。それ以外は完了済み、またはスキップしても問題ないことを示します。"
+            }
+          },
+          "ko" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "빨간색은 해당 작업을 자동으로 완료하지 못했음을 뜻합니다. 다른 색은 완료되었거나 건너뛰어도 무방함을 뜻합니다."
+            }
+          },
+          "pt-BR" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Vermelho significa que a ação não pôde ser concluída automaticamente. Outra cor significa que foi feita ou que pode ser ignorada sem problema."
+            }
+          },
+          "ru" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Красный означает, что действие не удалось выполнить автоматически. Другой цвет означает, что оно выполнено или его можно пропустить без последствий."
+            }
+          },
+          "vi" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Màu đỏ nghĩa là không thể hoàn tất hành động tự động. Màu khác nghĩa là đã hoàn tất hoặc có thể bỏ qua an toàn."
+            }
+          },
+          "zh-Hans" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "红灯表示该动作没能自动完成；绿灯表示已完成，或跳过它不影响签到。"
+            }
+          },
+          "zh-Hant" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "紅燈表示該動作沒辦法自動完成；綠燈表示已完成，或略過不影響簽到。"
+            }
+          }
+        }
+      },
       "%@, %@" : {
       "extractionState" : "manual",
       "localizations" : {

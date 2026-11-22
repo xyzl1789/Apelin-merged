@@ -21,6 +21,21 @@ public enum CheckInPlatform: String, Codable, Sendable, CaseIterable {
     }
 }
 
+/// 成长中心里一项动作的结果。只带标题、成败和一句已经翻好的原因，
+/// 服务端正文与 token 都不进这里，穿过协议线也就到不了界面。
+public struct CheckInDetail: Codable, Sendable, Equatable {
+    public var title: String
+    public var succeeded: Bool
+    /// 一句中文说明（成功写拿到什么，失败写为什么没做成），最多 120 字符。
+    public var note: String
+
+    public init(title: String, succeeded: Bool, note: String) {
+        self.title = String(title.prefix(80))
+        self.succeeded = succeeded
+        self.note = String(note.prefix(120))
+    }
+}
+
 /// 一个平台今天的结果。`claimed` 与 `alreadyClaimed` 是「今天签到了」，
 /// 服务端不会给第二次；`nothingToDo` 是没有活动可领，明天再问。
 public enum CheckInOutcome: String, Codable, Sendable {
@@ -57,18 +72,21 @@ public struct CheckInResult: Codable, Sendable, Equatable {
     public var streak: Int?
     /// 失败或「没有活动」时的原因，页面据此本地化。
     public var reason: CheckInReason?
+    /// 成长中心里各动作的结果：没做完的写清原因，红点据此亮起。
+    public var details: [CheckInDetail]?
     /// 这次结果是谁给的、什么时候，缓存按本地日历日判断是否还新鲜。
     public var updatedAt: Date
 
     public init(platform: CheckInPlatform, outcome: CheckInOutcome, credit: String? = nil,
                 total: String? = nil, streak: Int? = nil, reason: CheckInReason? = nil,
-                updatedAt: Date = Date()) {
+                details: [CheckInDetail]? = nil, updatedAt: Date = Date()) {
         self.platform = platform
         self.outcome = outcome
         self.credit = credit
         self.total = total
         self.streak = streak
         self.reason = reason
+        self.details = details
         self.updatedAt = updatedAt
     }
 

@@ -12,12 +12,14 @@ final class CheckInController: TableController {
         case automatic
         case actions
         case platforms
+        case growth
     }
 
     private enum Row: Hashable {
         case automatic
         case runAll
         case platform(CheckInPlatform)
+        case detail(platform: CheckInPlatform, index: Int)
     }
 
     private lazy var dataSource = TableDataSource<Section, Row, Row>(
@@ -59,11 +61,21 @@ final class CheckInController: TableController {
     }
 
     @objc private dynamic func updateRows() {
-        dataSource.update([
+        var sections: [(Section, [Row])] = [
             (.automatic, [.automatic]),
             (.actions, [.runAll]),
             (.platforms, CheckInPlatform.allCases.map { .platform($0) }),
-        ], reconfigure: true)
+        ]
+        // 成长中心逐项明细：失败项有红灯，点开这一页就能看见为什么没做成。
+        var detailRows: [Row] = []
+        for platform in CheckInPlatform.allCases {
+            guard let details = CheckInStore.shared.result(for: platform)?.details else { continue }
+            for index in details.indices {
+                detailRows.append(.detail(platform: platform, index: index))
+            }
+        }
+        if !detailRows.isEmpty { sections.append((.growth, detailRows)) }
+        dataSource.update(sections, reconfigure: true)
     }
 
     /// 进页面先把今天的缓存读一遍；worker 对同一天不会再打服务端。
@@ -88,7 +100,9 @@ final class CheckInController: TableController {
         case .actions:
             String(localized: "Each row shows today's result. Check In All asks the server again right away.")
         case .platforms:
-            nil
+            String(localized: "Growth tasks that need real use on the desktop stay red until they are done; the reason is listed below.")
+        case .growth:
+            String(localized: "Red means the action could not be finished automatically. A light means it was done or is harmless to skip.")
         }
     }
 
@@ -129,11 +143,32 @@ final class CheckInController: TableController {
                 ?? UITableViewCell(style: .subtitle, reuseIdentifier: "platform")
             var content = UIListContentConfiguration.subtitleCell()
             content.text = platform.brand
-            content.secondaryText = summary(for: platform)
+            var parts: [String] = []
+            if let summary = summary(for: platform) { parts.append(summary) }
+            let red = CheckInStore.shared.result(for: platform)?.details?.filter { !$0.succeeded }.count ?? 0
+            if red > 0 { parts.append("🔴 \(red)") }
+            content.secondaryText = parts.isEmpty ? nil : parts.joined(separator: " · ")
             content.secondaryTextProperties.color = .secondaryLabel
             cell.contentConfiguration = content
             cell.accessoryType = .disclosureIndicator
             cell.selectionStyle = .default
+            return cell
+        case let .detail(platform, index):
+            let cell = tableView.dequeueReusableCell(withIdentifier: "detail")
+                ?? UITableViewCell(style: .subtitle, reuseIdentifier: "detail")
+            guard let details = CheckInStore.shared.result(for: platform)?.details,
+                  details.indices.contains(index) else { return cell }
+            let item = details[index]
+            var content = UIListContentConfiguration.subtitleCell()
+            content.text = "\(item.succeeded ? "🟢" : "🔴") \(item.title)"
+            content.secondaryText = item.note
+            content.secondaryTextProperties.color = item.succeeded ? .secondaryLabel : .systemRed
+            cell.contentConfiguration = content
+            cell.accessoryType = .none
+            cell.selectionStyle = .none
+            cell.isAccessibilityElement = true
+            cell.accessibilityLabel = item.title
+            cell.accessibilityValue = item.note
             return cell
         }
     }
@@ -209,6 +244,7 @@ final class CheckInController: TableController {
         case .automatic: return false
         case .runAll: return !CheckInStore.shared.isRunning
         case .platform: return !CheckInStore.shared.isRunning
+        case .detail: return false
         }
     }
 
@@ -222,6 +258,8 @@ final class CheckInController: TableController {
             refresh(platforms: [], force: true)
         case let .platform(platform):
             refresh(platforms: [platform], force: true)
+        case .detail:
+            break
         }
     }
 }
