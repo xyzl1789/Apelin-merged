@@ -4,15 +4,19 @@ import Foundation
 /// 因此这里只认登录过的账号，不另存 token。
 public enum CheckInPlatform: String, Codable, Sendable, CaseIterable {
     case workBuddy = "workbuddy"
+    case workBuddyAI = "workbuddy-ai"
     case traeCN = "trae-cn"
     case qoderCN = "qoder-cn"
+    case qoder = "qoder"
 
     /// 平台自己的名字，品牌名不翻译。
     public var brand: String {
         switch self {
         case .workBuddy: "WorkBuddy"
+        case .workBuddyAI: "WorkBuddy AI"
         case .traeCN: "Trae CN"
         case .qoderCN: "Qoder CN"
+        case .qoder: "Qoder"
         }
     }
 }
@@ -74,7 +78,7 @@ public struct CheckInResult: Codable, Sendable, Equatable {
     }
 }
 
-/// 签到请求：`platforms` 为空表示三个平台都问一遍；`force` 为 false 时
+/// 签到请求：`platforms` 为空表示所有平台都问一遍；`force` 为 false 时
 /// worker 复用当天缓存，因此设置页打开一次不会重复请求服务端。
 public struct AgentCheckInRequest: OperationRequest {
     public typealias Response = AgentCheckInResponse

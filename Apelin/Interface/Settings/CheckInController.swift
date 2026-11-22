@@ -2,8 +2,8 @@ import ApelinProtocol
 import Then
 import UIKit
 
-/// 设置 ▸ 自动签到：每天第一次打开 App 时为已登录的 WorkBuddy、Trae CN、
-/// Qoder CN 账号领取当天积分。页面本身随时可以手动点「全部签到」再看一遍。
+/// 设置 ▸ 自动签到：每天第一次打开 App 时为已登录的 WorkBuddy / WorkBuddy AI、
+/// Trae CN、Qoder / Qoder CN 账号领取当天积分。页面本身随时可以手动点「全部签到」再看一遍。
 ///
 /// 结果行只说今天怎样（已领、领过了、没有活动、未登录、失败原因），不展示
 /// 服务端正文；换行显示领取到的积分数与连签天数，都是服务端给的数字。

@@ -4,8 +4,8 @@ import Foundation
 import KWWKAI
 import os
 
-/// 每日签到的实现：从「模型服务商」已登录的 WorkBuddy / Trae CN / Qoder CN
-/// 账号领取当天积分。「自动」指的是 App 每天第一次进入前台时问一次，worker
+/// 每日签到的实现：从「模型服务商」已登录的 WorkBuddy / WorkBuddy AI /
+/// Trae CN / Qoder / Qoder CN 账号领取当天积分。「自动」指的是 App 每天第一次进入前台时问一次，worker
 /// 复用当天的缓存，所以同一天再打开不会重复打服务端。
 ///
 /// 接口是逆向得来的私有接口，随时可能变；凭据与响应正文都不进缓存、不进
@@ -24,8 +24,10 @@ public enum CheckInService {
     static func storeID(_ platform: CheckInPlatform) -> String {
         switch platform {
         case .workBuddy: "workbuddy"
+        case .workBuddyAI: "workbuddy-ai"
         case .traeCN: "trae"
         case .qoderCN: "qoder-cn"
+        case .qoder: "qoder"
         }
     }
 
@@ -103,9 +105,11 @@ public enum CheckInService {
         }
         do {
             switch platform {
-            case .workBuddy: return try await workBuddy(credentials)
+            case .workBuddy: return try await workBuddy(credentials, platform: .workBuddy)
+            case .workBuddyAI: return try await workBuddy(credentials, platform: .workBuddyAI)
             case .traeCN: return try await traeCN(credentials)
-            case .qoderCN: return try await qoderCN(credentials)
+            case .qoderCN: return try await qoderCN(credentials, platform: .qoderCN)
+            case .qoder: return try await qoderCN(credentials, platform: .qoder)
             }
         } catch let problem as CheckInProblem {
             logger.error("\(platform.rawValue, privacy: .public) 签到失败：\(problem.reason.rawValue, privacy: .public) \(problem.detail, privacy: .public)")
@@ -116,9 +120,9 @@ public enum CheckInService {
         }
     }
 
-    // MARK: - WorkBuddy
+    // MARK: - WorkBuddy（国内版与国际版同一套接口）
 
-    private static func workBuddy(_ credentials: OAuthCredentials) async throws -> CheckInResult {
+    private static func workBuddy(_ credentials: OAuthCredentials, platform: CheckInPlatform) async throws -> CheckInResult {
         let token = credentials.access
         guard token.count >= 8 else { throw CheckInProblem(.signedOut, "凭据不完整") }
         var headers = [
@@ -127,8 +131,19 @@ public enum CheckInService {
         ]
         if let uid = extra(credentials, "uid") { headers["X-User-Id"] = uid }
         if let domain = extra(credentials, "domain") { headers["X-Domain"] = domain }
-        let base = extra(credentials, "baseUrl") ?? "https://copilot.tencent.com"
-        guard let baseURL = URL(string: base) else { throw CheckInProblem(.server, "baseUrl 无效") }
+        // 国内版优先用凭据里的 baseUrl（没有则是默认域名）；国际版用凭据里的
+        // domain 拼 https:// ，例如 www.workbuddy.ai。
+        let base: String
+        if platform == .workBuddyAI {
+            if let domain = extra(credentials, "domain"), !domain.isEmpty {
+                base = "https://\(domain)"
+            } else {
+                base = "https://www.workbuddy.ai"
+            }
+        } else {
+            base = extra(credentials, "baseUrl") ?? "https://copilot.tencent.com"
+        }
+        guard let baseURL = URL(string: base) else { throw CheckInProblem(.server, "base 地址无效") }
         let emptyObject = Data("{}".utf8)
 
         let status = try await reply(
@@ -138,6 +153,10 @@ public enum CheckInService {
             body: emptyObject,
         )
         guard status.status == 200, let statusJSON = status.json else {
+            // 401/403 是登录态失效，提示用户重新登录。
+            if status.status == 401 || status.status == 403 {
+                throw CheckInProblem(.signedOut, "状态查询 HTTP \(status.status)")
+            }
             throw CheckInProblem(.server, "状态查询 HTTP \(status.status)")
         }
         if let code = number(statusJSON["code"]), code != 0 {
@@ -146,9 +165,14 @@ public enum CheckInService {
         let data = statusJSON["data"] as? [String: Any] ?? [:]
         let streak = number(data["streak_days"])
         let total = numberText(data["total_credits"])
+        // active 为 false 表示当前没有签到活动（国际版常见），不是失败。
+        if let active = data["active"] as? Bool, !active {
+            logger.info("\(platform.rawValue, privacy: .public)：当前没有签到活动")
+            return CheckInResult(platform: platform, outcome: .nothingToDo, total: total, streak: streak)
+        }
         if flag(data["today_checked_in"]) {
-            logger.info("workbuddy：今天已签到")
-            return CheckInResult(platform: .workBuddy, outcome: .alreadyClaimed,
+            logger.info("\(platform.rawValue, privacy: .public)：今天已签到")
+            return CheckInResult(platform: platform, outcome: .alreadyClaimed,
                                  total: total, streak: streak)
         }
 
@@ -166,8 +190,8 @@ public enum CheckInService {
         }
         let claimed = claimJSON["data"] as? [String: Any]
         let credit = numberText(claimed?["credit"]) ?? numberText(claimJSON["credit"])
-        logger.info("workbuddy：签到成功")
-        return CheckInResult(platform: .workBuddy, outcome: .claimed,
+        logger.info("\(platform.rawValue, privacy: .public)：签到成功")
+        return CheckInResult(platform: platform, outcome: .claimed,
                              credit: credit, total: total, streak: streak)
     }
 
@@ -239,9 +263,9 @@ public enum CheckInService {
         throw CheckInProblem(.rateLimited, "连续被限流")
     }
 
-    // MARK: - Qoder CN
+    // MARK: - Qoder（国内版与国际版同一套接口）
 
-    private static func qoderCN(_ credentials: OAuthCredentials) async throws -> CheckInResult {
+    private static func qoderCN(_ credentials: OAuthCredentials, platform: CheckInPlatform) async throws -> CheckInResult {
         let token = credentials.access
         guard token.count >= 8 else { throw CheckInProblem(.signedOut, "凭据不完整") }
         var headers = [
@@ -253,9 +277,9 @@ public enum CheckInService {
             "Cosy-MachineHostname": "iPhone",
         ]
         if let machine = extra(credentials, "machineId") { headers["Cosy-MachineId"] = machine }
-        guard let base = URL(string: "https://openapi.qoder.com.cn") else {
-            throw CheckInProblem(.server, "地址无效")
-        }
+        // 国际版走 openapi.qoder.sh，国内版走 openapi.qoder.com.cn。
+        let baseString = platform == .qoder ? "https://openapi.qoder.sh" : "https://openapi.qoder.com.cn"
+        guard let base = URL(string: baseString) else { throw CheckInProblem(.server, "地址无效") }
 
         let listing = try await reply(
             method: "GET",
@@ -263,8 +287,15 @@ public enum CheckInService {
             headers: headers,
             body: nil,
         )
+        if listing.status == 401 || listing.status == 403 {
+            throw CheckInProblem(.signedOut, "活动列表 HTTP \(listing.status)")
+        }
         guard listing.status == 200, let listingJSON = listing.json else {
             throw CheckInProblem(.server, "活动列表 HTTP \(listing.status)")
+        }
+        if let code = listingJSON["code"] as? String,
+           code == "TOKEN_EXPIRE" || code == "UNAUTHORIZED" {
+            throw CheckInProblem(.signedOut, "登录态失效")
         }
         let campaigns = (listingJSON["campaigns"] as? [[String: Any]]) ?? []
         var claimable: [String] = []
@@ -279,8 +310,8 @@ public enum CheckInService {
             }
         }
         if claimable.isEmpty {
-            logger.info("qoder-cn：没有可领取的活动")
-            return CheckInResult(platform: .qoderCN, outcome: claimedBefore ? .alreadyClaimed : .nothingToDo)
+            logger.info("\(platform.rawValue, privacy: .public)：没有可领取的活动")
+            return CheckInResult(platform: platform, outcome: claimedBefore ? .alreadyClaimed : .nothingToDo)
         }
         var claimed = 0
         for id in claimable {
@@ -290,8 +321,8 @@ public enum CheckInService {
             if claim.status == 200 { claimed += 1 }
         }
         guard claimed > 0 else { throw CheckInProblem(.rejected, "活动领取全部失败") }
-        logger.info("qoder-cn：领取到 \(claimed, privacy: .public) 个活动")
-        return CheckInResult(platform: .qoderCN, outcome: .claimed)
+        logger.info("\(platform.rawValue, privacy: .public)：领取到 \(claimed, privacy: .public) 个活动")
+        return CheckInResult(platform: platform, outcome: .claimed)
     }
 
     // MARK: - 网络请求

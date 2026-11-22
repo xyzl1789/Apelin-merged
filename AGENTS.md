@@ -452,14 +452,20 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
 - **每日签到只属于 App** (`Operations/CheckIn.swift`,
   `ApelinAgentWorker/CheckIn/CheckInService.swift`,
   `Apelin/Service/CheckInStore.swift`, `Interface/Settings/CheckInController.swift`)。
-  `agentCheckIn` 不在 `agentOperations` 里，Agent 无权调用。WorkBuddy、Trae CN、
-  Qoder CN 复用「模型服务商」同一份 keychain 凭据（store id 分别是
-  `workbuddy`、`trae`、`qoder-cn`）；worker 从账户里读出 token 后直接访问私有
-  接口，当天结果写进 `checkin/cache.json`，`force` 仅重问服务端，服务端说今天
-  已领过就绝不重复领取。协议线上只有 `CheckInResult`：平台、结果、积分、连签
-  天数与机器可读的失败原因；token 与响应正文既不写缓存、也不进日志或回给 App。
-  设置 ▸ Agent ▸ 自动签到在打开开关时立刻补签一次，并每天第一次进入前台时
-  安静地跑一次；失败可手动点平台行或「全部签到」重试。
+  `agentCheckIn` 不在 `agentOperations` 里，Agent 无权调用。国内三平台
+  WorkBuddy / Trae CN / Qoder CN（store id：`workbuddy`、`trae`、`qoder-cn`）与
+  国际版 WorkBuddy AI / Qoder（store id：`workbuddy-ai`、`qoder`）都复用
+  「模型服务商」同一份 keychain 凭据。国际版没有独立的签到接口：WorkBuddy AI
+  用凭据 `domain` 拼 `https://` 作 base，走与国内版相同的
+  `v2/billing/meter/checkin-*` 接口，`active:false` 即当天没有活动；Qoder 国际版
+  用 `https://openapi.qoder.sh` 走与国内版相同的 campaigns 接口，只领
+  `CLAIM_BENEFIT` 类型活动，没有就返回「今日无奖励」。Trae 国际版没有签到接口，
+  不加入。worker 从账户里读出 token 后直接访问私有接口，当天结果写进
+  `checkin/cache.json`，`force` 仅重问服务端，服务端说今天已领过就绝不重复领取。
+  协议线上只有 `CheckInResult`：平台、结果、积分、连签天数与机器可读的失败原因；
+  token 与响应正文既不写缓存、也不进日志或回给 App。设置 ▸ Agent ▸ 自动签到在
+  打开开关时立刻补签一次，并每天第一次进入前台时安静地跑一次；失败可手动点平台行
+  或「全部签到」重试；「登录已过期」表示要去「模型服务商」重新登录这个账号。
 - **A chat channel belongs to the session host, not to a worker**
   (`Apelind/Session/Channel/WeChatChannel.swift`; the wire in
   `Operations/Channel.swift`, the page in `Interface/Settings/ChannelController.swift`).
