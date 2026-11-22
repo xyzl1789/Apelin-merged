@@ -94,7 +94,7 @@ public enum CheckInService {
         CheckInPlatform.allCases.firstIndex(of: platform) ?? 0
     }
 
-    // MARK: - One platform
+    // MARK: - 单个平台
 
     private static func checkOne(_ platform: CheckInPlatform, credentials: OAuthCredentials?) async -> CheckInResult {
         guard let credentials else {
@@ -294,7 +294,7 @@ public enum CheckInService {
         return CheckInResult(platform: .qoderCN, outcome: .claimed)
     }
 
-    // MARK: - HTTP
+    // MARK: - 网络请求
 
     private struct Reply {
         var status: Int

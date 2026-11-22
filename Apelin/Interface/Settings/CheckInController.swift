@@ -2,7 +2,7 @@ import ApelinProtocol
 import Then
 import UIKit
 
-/// Settings ▸ 自动签到：每天第一次打开 App 时为已登录的 WorkBuddy、Trae CN、
+/// 设置 ▸ 自动签到：每天第一次打开 App 时为已登录的 WorkBuddy、Trae CN、
 /// Qoder CN 账号领取当天积分。页面本身随时可以手动点「全部签到」再看一遍。
 ///
 /// 结果行只说今天怎样（已领、领过了、没有活动、未登录、失败原因），不展示
@@ -92,7 +92,7 @@ final class CheckInController: TableController {
         }
     }
 
-    // MARK: - Cells
+    // MARK: - 单元格
 
     private func cell(in tableView: UITableView, for row: Row) -> UITableViewCell {
         switch row {
@@ -155,7 +155,7 @@ final class CheckInController: TableController {
         return formatter.string(from: Date())
     }
 
-    // MARK: - Status text
+    // MARK: - 状态文字
 
     private func summary(for platform: CheckInPlatform) -> String? {
         if CheckInStore.shared.isRunning {
@@ -201,7 +201,7 @@ final class CheckInController: TableController {
         }
     }
 
-    // MARK: - Selection
+    // MARK: - 点击处理
 
     override func tableView(_: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
         guard let row = dataSource.value(at: indexPath) else { return true }

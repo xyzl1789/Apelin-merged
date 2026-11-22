@@ -8,7 +8,7 @@ extension Notification.Name {
 }
 
 /// 设置 ▸ 自动签到 的状态：每个平台今天的结果。网络、凭据与当天缓存全在
-/// worker 里；这个 store 只留要画的那几行，并保证自动签到每天只触发一次。
+/// worker 里；这个类只留要画的那几行，并保证自动签到每天只触发一次。
 @MainActor
 final class CheckInStore {
     static let shared = CheckInStore()
@@ -43,9 +43,8 @@ final class CheckInStore {
         results.filter(\.isDone).count
     }
 
-    /// Reads today's results once, joining a request already running. A failed
-    /// request keeps the last figures rather than replacing them with empty.
-    /// `platforms` limits the refresh to some of them, empty means all three.
+    /// 读一次今天的结果，正在跑的请求直接复用。请求失败时保留上一次的数字，
+    /// 不把页面清空。`platforms` 只填部分平台时，只刷新那几个。
     @discardableResult
     func refresh(platforms: [CheckInPlatform] = [], force: Bool = false) async -> [CheckInResult] {
         if let inFlight {
