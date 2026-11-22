@@ -162963,6 +162963,89 @@
           }
         }
       },
+      "This switch takes effect at once. Each tool still needs approval according to your permission mode.": {
+        "extractionState": "manual",
+        "localizations": {
+          "en": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "This switch takes effect at once. Each tool still needs approval according to your permission mode."
+            }
+          },
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "يعمل هذا المفتاح فورًا. ولا يزال كل أداة يحتاج إلى موافقة وفق وضع الأذونات لديك."
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Dieser Schalter wirkt sofort. Jedes Werkzeug braucht weiterhin eine Freigabe nach deinem Berechtigungsmodus."
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Este interruptor se aplica al instante. Cada herramienta sigue necesitando aprobación según tu modo de permisos."
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Cet interrupteur s'applique immédiatement. Chaque outil demande toujours une autorisation selon votre mode d'autorisation."
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Questo interruttore ha effetto immediato. Ogni strumento richiede comunque l'approvazione in base alla modalità di autorizzazione."
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "このスイッチはすぐに反映されます。各ツールは引き続き権限モードに従って承認が必要です。"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "이 스위치는 즉시 적용됩니다. 각 도구는 여전히 권한 모드에 따라 승인이 필요합니다."
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Este interruptor vale na hora. Cada ferramenta ainda precisa de aprovação conforme o seu modo de permissão."
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Этот переключатель действует сразу. Каждому инструменту всё равно нужно одобрение согласно вашему режиму разрешений."
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Công tắc này có hiệu lực ngay. Mỗi công cụ vẫn cần được phê duyệt theo chế độ quyền của bạn."
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "这个开关立即生效。每个工具仍需按你的权限模式获得批准。"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "這個開關立即生效。每個工具仍需依你的權限模式取得核准。"
+            }
+          }
+        }
+      },
       "Server names use letters, digits, _ and - only, up to 64 characters.": {
         "extractionState": "manual",
         "localizations": {

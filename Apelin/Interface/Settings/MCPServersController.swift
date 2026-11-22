@@ -283,12 +283,13 @@ final class MCPServerEditorController: TableController, UITextViewDelegate {
             default: nil
             }
         }
-        dataSource.footerTitle = { [weak self] section in
+        let isNew = original == nil
+        dataSource.footerTitle = { section in
             switch section {
             case 0:
                 // A new server is only written by Save, so the switch has
                 // nothing to act on yet: say what Back does instead.
-                self?.original == nil
+                isNew
                     ? String(localized: "Go back to discard unsaved changes. New settings apply when the conversation is opened again.")
                     : String(localized: "This switch takes effect at once. Each tool still needs approval according to your permission mode.")
             case 1: String(localized: "Server names use letters, digits, _ and - only, up to 64 characters.")
