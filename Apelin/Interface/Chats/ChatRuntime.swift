@@ -515,6 +515,10 @@ final class ChatRuntime {
                 eventCounts[id] = events.count
                 unloadedEvents.remove(id)
             }
+            // 文件里到底有多少条，只有读过的这一处知道：启动时用的是头里记的
+            // 数，头落后于文件时下一次保存就会从头里那个数往后追加，把文件里
+            // 已有的行再写一遍（这正是历史长成好几份的原因）。
+            await store.note(eventsOnDisk: id, count: events.count)
             eventLoads[id] = nil
         } catch {
             eventLoads[id] = nil
@@ -539,6 +543,9 @@ final class ChatRuntime {
         records[id]?.events = events
         eventCounts[id] = events.count
         unloadedEvents.remove(id)
+        // 同上：真读到了多少条，就告诉存储多少条，别让头里的旧数决定下一次
+        // 从哪里往后追加。
+        Task { [store] in await store.note(eventsOnDisk: id, count: events.count) }
         return events
     }
 

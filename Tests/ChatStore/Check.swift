@@ -69,7 +69,9 @@ func checkChatStore(_ scratch: URL, check: (Bool, String) -> Void) async throws 
         "its head says none",
     )
 
-    // Damage in the middle of the events is damage, never an empty history.
+    // Damage in the middle of the events costs that line alone: the
+    // conversation opens, and its head is corrected to what the file holds.
+    // One damaged line used to make the whole conversation unopenable.
     let brokenID = UUID()
     var broken = ChatRecord(summary: .untitled(lastInteraction: Date(), projectName: nil))
     broken.summary.id = brokenID
@@ -81,8 +83,47 @@ func checkChatStore(_ scratch: URL, check: (Bool, String) -> Void) async throws 
     try Data(lines.utf8).write(to: eventsURL(brokenID))
     store = ChatStore(folder: folder)
     loaded = try await store.load()
-    check(loaded.unreadable.contains { $0.name.hasPrefix(brokenID.uuidString) }, "a broken event line sets the record aside")
-    check(FileManager.default.fileExists(atPath: eventsURL(brokenID).path), "the events file is kept as it was")
+    check(!loaded.unreadable.contains { $0.name.hasPrefix(brokenID.uuidString) }, "a broken event line keeps the record")
+    check(
+        loaded.records.first { $0.summary.id == brokenID }?.events.map(\.seq.rawValue) == [2],
+        "the damaged line alone is dropped",
+    )
+    check(
+        String(decoding: try Data(contentsOf: recordURL(brokenID)), as: UTF8.self).contains("\"eventCount\":1"),
+        "the head is corrected to what the file holds",
+    )
+
+    // A head whose count is behind its file — a save that appended the events
+    // and was cut off before it wrote the head — writes the history out whole
+    // instead of appending lines the file already holds: the way a history used
+    // to grow to several copies of itself, which no longer decoded.
+    let behindID = UUID()
+    var behindRecord = ChatRecord(summary: .untitled(lastInteraction: Date(), projectName: nil))
+    behindRecord.summary.id = behindID
+    behindRecord.events = [event(1), event(2), event(3)]
+    try JSONEncoder().encode(behindRecord).write(to: recordURL(behindID))
+    store = ChatStore(folder: folder)
+    loaded = try await store.load()
+    let history = loaded.records.first { $0.summary.id == behindID }?.events ?? []
+    check(history.count == 3, "the history is on disk")
+    // The head counts two while the file holds three.
+    var stale = loaded.records.first { $0.summary.id == behindID }
+    try await store.save(stale!, revision: 1, writesEvents: false, eventCount: 2)
+    store = ChatStore(folder: folder)
+    loaded = try await store.load(readingEvents: false)
+    stale = loaded.records.first { $0.summary.id == behindID }
+    stale?.events = history + [event(4)]
+    try await store.save(stale!, revision: 2)
+    check(
+        try Data(contentsOf: eventsURL(behindID)).split(separator: 0x0A).count == 4,
+        "a count behind the file appends nothing twice",
+    )
+    store = ChatStore(folder: folder)
+    loaded = try await store.load()
+    check(
+        loaded.records.first { $0.summary.id == behindID }?.events.map(\.seq.rawValue) == [1, 2, 3, 4],
+        "the history is exactly what was saved",
+    )
 
     // A launch reads the head and how many events sit beside it, and no event
     // at all; a save of such a conversation writes the head alone.

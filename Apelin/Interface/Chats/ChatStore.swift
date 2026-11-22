@@ -526,10 +526,19 @@ actor ChatStore {
         // which is what a streamed turn costs now.
         if writesEvents {
             let onDisk = written[id] ?? 0
-            if record.events.count < onDisk {
+            // The remembered count is only a cursor while the file really ends
+            // with the event before it. A save cut off before it wrote the head
+            // leaves the count behind the file, and appending from it wrote
+            // lines the file already held — a history grown to several copies
+            // of itself, which no longer decodes and left the conversation
+            // unopenable. A `seq` cannot tell, since a reopened task replays
+            // the history under numbering of its own.
+            if ChatEventsFile.holds(record.events, count: onDisk, for: id, in: directory) {
+                if record.events.count > onDisk {
+                    try ChatEventsFile.append(Array(record.events[onDisk...]), for: id, in: directory)
+                }
+            } else {
                 try ChatEventsFile.write(record.events, for: id, in: directory)
-            } else if record.events.count > onDisk {
-                try ChatEventsFile.append(Array(record.events[onDisk...]), for: id, in: directory)
             }
         }
         let head = Head(record)
