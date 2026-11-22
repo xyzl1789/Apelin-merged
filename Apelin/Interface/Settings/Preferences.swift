@@ -185,8 +185,8 @@ enum Preferences {
         static var wire: String? { wire(for: nil) }
 
         /// The body for the given model, nil when no persona is in force.
-        static func wire(for model: String?) -> String? {
-            let text = forPrompt(model: model)
+        static func wire(for model: String?, project: String? = nil) -> String? {
+            let text = forPrompt(model: model, project: project)
             return text.isEmpty ? nil : text
         }
 
@@ -198,9 +198,43 @@ enum Preferences {
             try store.save(snapshot)
         }
 
-        /// The body for the persona in force at the given model, or "".
-        static func forPrompt(model: String?) -> String {
-            PersonaResolver.text(snapshot, model: model)
+        /// The body for the persona in force at the given model, or "", with
+        /// the instructions `project` carries after it. The project's own say
+        /// the same kind of thing for one project, so they come after the ones
+        /// for every chat and read as the more specific of the two.
+        static func forPrompt(model: String?, project: String? = nil) -> String {
+            let everyChat = PersonaResolver.text(snapshot, model: model)
+            guard let project, !project.isEmpty else { return everyChat }
+            let own = projectText(project).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !own.isEmpty else { return everyChat }
+            let heading = String(localized: "This project's own instructions, which come after those for every chat and apply to this project alone:")
+            let block = heading + "\n" + own
+            return everyChat.isEmpty ? block : everyChat + "\n\n" + block
+        }
+
+        /// The instructions saved for the project in folder `project` (its
+        /// folder name, which never changes), or "".
+        static func projectText(_ project: String) -> String {
+            UserDefaults.standard.string(forKey: projectKey(project)) ?? ""
+        }
+
+        /// Saves `project`'s instructions, dropping them when `text` is blank.
+        static func setProjectText(_ text: String, for project: String) {
+            let clipped = String(text.prefix(maximumCharacters))
+            guard !clipped.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                removeProjectText(project)
+                return
+            }
+            UserDefaults.standard.set(clipped, forKey: projectKey(project))
+        }
+
+        /// Drops a project's instructions, as deleting the project does.
+        static func removeProjectText(_ project: String) {
+            UserDefaults.standard.removeObject(forKey: projectKey(project))
+        }
+
+        private static func projectKey(_ project: String) -> String {
+            "agent.promptInjection.project." + project
         }
 
         private static func migrateLegacyIfNeeded() {

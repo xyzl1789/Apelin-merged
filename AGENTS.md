@@ -5413,6 +5413,17 @@ encoded without sorted keys, so they probably miss the conversation's cache.
 The device check is `Documents/Research/Device-Validation.md` ▸ Still to run
 ▸ Prompt caching.
 
+## 项目自己的指令
+
+除了所有对话共用的那份（设置 ▸ Agent ▸ Prompt Injection，由人设库解析），一个项目还可以有自己的指令。
+`Preferences.PromptInjection.projectText` / `setProjectText` 把它们存在设备默认值里，键是
+`agent.promptInjection.project.<项目文件夹名>`——项目文件夹名是项目不变的标识，改名不丢。
+`forPrompt(model:project:)` 把项目这份排在所有对话共用那份之后，并带一句说明的标题：两者都是读者自己的话，
+项目那份读作更具体的一条。`ChatRuntime` 在发送与打开会话时把对话的 `summary.projectName` 带进去，
+所以协议与 worker 都不用改——`AgentPromptRequest.promptInjection` 仍然只带一段文本。
+聊天 `…` 菜单 ▸ Project ▸ Project Instructions… 打开 `ProjectInstructionsController`；
+删除项目（`ChatRuntime.deleteProject`，以及目录在外部消失后由 `forgetDeletedProjects` 处理的情形）会一并清掉它的指令。
+
 ## Long-term agent memory
 
 `MemoryStore` in ApelinCore owns `memories.json` and `memories.lock` directly

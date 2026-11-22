@@ -436,6 +436,8 @@ final class ChatRuntime {
         }
         let folder = DataFolder.app
         try await Task.detached { try folder.removeProject(named: name) }.value
+        // The project's own instructions go with it.
+        Preferences.PromptInjection.removeProjectText(name)
         defer { onChange?() }
         for id in ids {
             try await removeRecord(id)
@@ -450,6 +452,9 @@ final class ChatRuntime {
         guard isLoaded else { return [] }
         let gone = DeletedProjects.gone(from: summaries, in: .app)
         guard !gone.conversations.isEmpty else { return [] }
+        for name in gone.projects {
+            Preferences.PromptInjection.removeProjectText(name)
+        }
         await forget(gone)
         onChange?()
         return gone.projects
@@ -947,7 +952,10 @@ final class ChatRuntime {
                 approvalMode: AgentPermissions.mode,
                 asksBeforeScreen: AgentPermissions.asksBeforeScreen,
                 runMode: ComposerModeStore.mode(for: id).runMode,
-                promptInjection: Preferences.PromptInjection.forPrompt(model: selected?.model),
+                promptInjection: Preferences.PromptInjection.forPrompt(
+                    model: selected?.model,
+                    project: records[id]?.summary.projectName,
+                ),
                 modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,
             ),
             descriptors: descriptors,
@@ -1260,7 +1268,7 @@ final class ChatRuntime {
             reasoningEffort: selected?.effort,
             serviceTier: selected?.tier,
             modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,
-            promptInjection: Preferences.PromptInjection.wire(for: selected?.model),
+            promptInjection: Preferences.PromptInjection.wire(for: selected?.model, project: record.summary.projectName),
             mcpServers: Preferences.MCPServers.wire,
             modelLimits: selected?.limits,
         )

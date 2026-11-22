@@ -40,6 +40,15 @@ enum ProjectActions {
             guard let presenter else { return }
             rename(projectName, from: presenter)
         }
+        // This project's own instructions, which its conversations carry after
+        // the ones every chat gets (`ProjectInstructionsController`).
+        let instructions = UIAction(
+            title: String(localized: "Project Instructions…"),
+            image: UIImage(systemName: "square.and.pencil"),
+        ) { [weak presenter] _ in
+            guard let presenter else { return }
+            presenter.presentPageAsFormSheet(ProjectInstructionsController(project: projectName))
+        }
         let export = UIAction(
             title: String(localized: "Export…"),
             image: UIImage(systemName: "square.and.arrow.up"),
@@ -66,7 +75,7 @@ enum ProjectActions {
         return UIMenu(children: [
             UIMenu(options: .displayInline, children: chatActions),
             UIMenu(options: .displayInline, children: folders),
-            UIMenu(title: String(localized: "Project"), options: .displayInline, children: [renameAction, export, distribute]),
+            UIMenu(title: String(localized: "Project"), options: .displayInline, children: [renameAction, instructions, export, distribute]),
         ])
     }
 
