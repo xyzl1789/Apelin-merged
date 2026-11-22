@@ -20,10 +20,11 @@ enum StorageKeeper {
     static func measure(
         _ area: StorageArea,
         data: DataFolder,
+        installRoot: String,
         children: Bool,
     ) -> StorageUsage {
         do {
-            let folders = try roots(area, data: data)
+            let folders = try roots(area, data: data, installRoot: installRoot)
             var bytes: Int64 = 0
             var files: Int64 = 0
             var entries: [StorageEntry]?
@@ -59,7 +60,7 @@ enum StorageKeeper {
             throw ApelinError(.badRequest, "\(area.rawValue) is not the host's to empty")
         }
         var reclaimed: Int64 = 0
-        for folder in try roots(area, data: data) {
+        for folder in try roots(area, data: data, installRoot: "/") {
             var metadata = stat()
             guard lstat(folder.path, &metadata) == 0 else { continue }
             for child in try children(of: folder) {
@@ -118,7 +119,7 @@ enum StorageKeeper {
     /// The folders one area is made of, each checked to be inside the data
     /// folder and spelled as this app spells it. A data folder that is not
     /// there yet has no areas.
-    private static func roots(_ area: StorageArea, data: DataFolder) throws -> [URL] {
+    private static func roots(_ area: StorageArea, data: DataFolder, installRoot: String) throws -> [URL] {
         var rootMetadata = stat()
         guard lstat(data.root.path, &rootMetadata) == 0 else {
             if errno == ENOENT { return [] }
@@ -141,7 +142,7 @@ enum StorageKeeper {
         case .toolchains: names = ["Environment"]
         }
         let root = try checked(data.root, inside: data.root)
-        return try names.map { name in
+        var folders = try names.map { name in
             let url = data.root.appendingPathComponent(name, isDirectory: true)
             var metadata = stat()
             if lstat(url.path, &metadata) != 0 {
@@ -157,6 +158,25 @@ enum StorageKeeper {
             }
             return url
         }
+        // 工具链解包在 bootstrap 里，不在数据目录：`usr/lib/apelin/toolchains/<id>`，
+        // 与 apelind 自身并列。`Environment/` 只放注册表与任务记录，所以只量它
+        // 会答成几 KB。注册表一并计入——移除工具链时它也跟着移除。
+        if area == .toolchains {
+            let toolchains = URL(fileURLWithPath: installRoot, isDirectory: true)
+                .appendingPathComponent("usr/lib/apelin/toolchains", isDirectory: true)
+            var metadata = stat()
+            if lstat(toolchains.path, &metadata) == 0 {
+                let base = CanonicalPath.resolve(installRoot) ?? installRoot
+                let expected = (base.hasSuffix("/") ? base : base + "/") + "usr/lib/apelin/toolchains"
+                guard metadata.st_mode & S_IFMT == S_IFDIR,
+                      CanonicalPath.resolve(toolchains.path) == expected
+                else {
+                    throw ApelinError(.denied, "the toolchains folder leads somewhere else")
+                }
+                folders.append(toolchains)
+            }
+        }
+        return folders
     }
 
     /// The path as it really is, refused unless it is `root` itself or a

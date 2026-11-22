@@ -129,8 +129,7 @@ final class StorageController: TableController {
 
     private func footer(for section: Section) -> String? {
         switch section {
-        case .disk:
-            String(localized: "Measured when this page opens, one folder at a time.")
+        case .disk: nil
         case .areas:
             String(localized: """
             项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。
