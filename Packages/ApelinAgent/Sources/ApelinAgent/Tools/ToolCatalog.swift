@@ -82,9 +82,8 @@ public extension AgentToolName {
              .gitTag, .gitStash,
              .conversationCreate, .conversationSend, .conversationStop, .conversationPlan,
              .projectSetEnvironment, .notificationSend,
+             .conversationCompact,
              .todoWrite:
-             .conversationCreate, .conversationSend, .conversationStop, .projectSetEnvironment, .notificationSend,
-             .conversationCompact:
             .writeProject
         // file_show copies a project file into the workspace's Attachments
         // and shows it to the user on this device; nothing else changes.

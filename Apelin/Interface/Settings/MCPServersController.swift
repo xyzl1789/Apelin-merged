@@ -269,29 +269,52 @@ final class MCPServerEditorController: TableController, UITextViewDelegate {
         noteView.delegate = self
         enabledSwitch.isOn = original?.enabled ?? true
         enabledSwitch.accessibilityLabel = String(localized: "Enabled")
+        enabledSwitch.addAction(UIAction { [weak self] _ in self?.enabledChanged() }, for: .valueChanged)
         for (name, value) in (original?.connection.headers ?? [:]).sorted(by: { $0.key < $1.key }) {
             headerDrafts.append(headerDraft(named: name, value: value))
         }
         dataSource.allowsEditing = true
         dataSource.headerTitle = { section in
             switch section {
-            case 0: String(localized: "Server Name")
-            case 1: String(localized: "Server URL")
-            case 2: String(localized: "HTTP Headers")
-            case 3: String(localized: "Note (Shown to Agent)")
+            case 1: String(localized: "Server Name")
+            case 2: String(localized: "Server URL")
+            case 3: String(localized: "HTTP Headers")
+            case 4: String(localized: "Note (Shown to Agent)")
             default: nil
             }
         }
-        dataSource.footerTitle = { section in
+        dataSource.footerTitle = { [weak self] section in
             switch section {
-            case 0: String(localized: "Server names use letters, digits, _ and - only, up to 64 characters.")
-            case 1: String(localized: "iOS supports HTTP Streamable only for now. Enter the server's full MCP HTTP endpoint.")
-            case 2: String(localized: "One header per row: the name on the left, the value on the right. Tokens are kept in this app's data folder.")
-            case 3: String(localized: "This note is handed to the agent as the server's description, so it knows when to use these tools.")
-            default: String(localized: "Go back to discard unsaved changes. New settings apply when the conversation is opened again.")
+            case 0:
+                // A new server is only written by Save, so the switch has
+                // nothing to act on yet: say what Back does instead.
+                self?.original == nil
+                    ? String(localized: "Go back to discard unsaved changes. New settings apply when the conversation is opened again.")
+                    : String(localized: "This switch takes effect at once. Each tool still needs approval according to your permission mode.")
+            case 1: String(localized: "Server names use letters, digits, _ and - only, up to 64 characters.")
+            case 2: String(localized: "iOS supports HTTP Streamable only for now. Enter the server's full MCP HTTP endpoint.")
+            case 3: String(localized: "One header per row: the name on the left, the value on the right. Tokens are kept in this app's data folder.")
+            default: String(localized: "This note is handed to the agent as the server's description, so it knows when to use these tools.")
             }
         }
         updateRows()
+    }
+
+    /// The switch is not one of the fields Save collects: it decides whether
+    /// this server is handed to a new conversation at all, so it is written as
+    /// it is turned, the way the list's own Enable and Disable menu items are.
+    /// A server that does not exist yet has nothing to write; Save creates it.
+    private func enabledChanged() {
+        guard let original else { return }
+        do {
+            var next = try store.read()
+            guard let index = next.servers.items.firstIndex(where: { $0.id == original.id }) else { return }
+            next.servers.items[index].enabled = enabledSwitch.isOn
+            try store.save(next)
+        } catch {
+            enabledSwitch.setOn(original.enabled, animated: true)
+            presentNotice(title: "Error", message: error.readableMessage)
+        }
     }
 
     private static func identifier(of row: Row) -> String {
@@ -307,11 +330,11 @@ final class MCPServerEditorController: TableController, UITextViewDelegate {
 
     private func updateRows(focusing draft: HeaderDraft? = nil) {
         let rows: [(Int, [Row])] = [
-            (0, [.name]),
-            (1, [.url]),
-            (2, headerDrafts.map { Row.header($0.id) } + [.addHeader]),
-            (3, [.note]),
-            (4, [.enabled]),
+            (0, [.enabled]),
+            (1, [.name]),
+            (2, [.url]),
+            (3, headerDrafts.map { Row.header($0.id) } + [.addHeader]),
+            (4, [.note]),
         ]
         guard let draft else {
             dataSource.update(rows)

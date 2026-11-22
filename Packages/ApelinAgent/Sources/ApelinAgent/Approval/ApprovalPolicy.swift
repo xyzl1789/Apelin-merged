@@ -494,6 +494,8 @@ public struct ApprovalPolicy: Sendable, Hashable {
         // mode switch: going to a plan asks nobody, and going back to a build
         // is the card the tool itself raises, with the agent's reason on it.
         case .questionAsk, .runMode:
+            return .allow(.notRequired)
+
         // The conversation's own context, summarised for the model's next
         // step: it reads, writes and runs nothing of the user's, and it
         // asks no one, as automatic compaction asks no one.
