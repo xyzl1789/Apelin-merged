@@ -29,7 +29,13 @@ final class CheckInStore {
     }
 
     private(set) var results: [CheckInResult] = []
+    /// 签到日志：最近若干条，持久化，供「签到日志」展示。
+    private(set) var logEntries: [CheckInResult] = []
     private var inFlight: Task<[CheckInResult], Never>?
+
+    /// 日志持久化的键与上限。
+    private static let logKey = "checkin.log"
+    private static let maxLog = 50
 
     /// 正在问服务端（页面据此把按钮换成「签到中…」）。
     var isRunning: Bool { inFlight != nil }
@@ -41,6 +47,36 @@ final class CheckInStore {
     /// 今天已经签到的平台数。
     var doneCount: Int {
         results.filter(\.isDone).count
+    }
+
+    /// 该平台最近一次签到日志。
+    func logEntry(for platform: CheckInPlatform) -> CheckInResult? {
+        logEntries.first { $0.platform == platform }
+    }
+
+    /// 把本次刷新得到的结果追加进签到日志，持久化，只留最近 `maxLog` 条。
+    private func appendLog(results: [CheckInResult]) {
+        var log = loadLog()
+        for result in results {
+            if log.contains(where: { $0.platform == result.platform && $0.updatedAt == result.updatedAt }) {
+                continue
+            }
+            log.append(result)
+        }
+        log.sort { $0.updatedAt > $1.updatedAt }
+        if log.count > Self.maxLog { log = Array(log.prefix(Self.maxLog)) }
+        logEntries = log
+        saveLog(log)
+    }
+
+    private func loadLog() -> [CheckInResult] {
+        guard let data = UserDefaults.standard.data(forKey: Self.logKey) else { return [] }
+        return (try? JSONDecoder().decode([CheckInResult].self, from: data)) ?? []
+    }
+
+    private func saveLog(_ log: [CheckInResult]) {
+        guard let data = try? JSONEncoder().encode(log) else { return }
+        UserDefaults.standard.set(data, forKey: Self.logKey)
     }
 
     /// 读一次今天的结果，正在跑的请求直接复用。请求失败时保留上一次的数字，
@@ -67,6 +103,7 @@ final class CheckInStore {
         let next = await task.value
         inFlight = nil
         results = next
+        appendLog(results: next)
         NotificationCenter.default.post(name: .checkInChanged, object: nil)
         return next
     }

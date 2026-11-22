@@ -230,6 +230,13 @@ final class ProviderBalanceCardCell: UITableViewCell {
         relayLabel.lineBreakMode = .byTruncatingTail
         relayLabel.isHidden = true
 
+        // 积分获取方式：余额下方一行小字，如「积分获取方式：每日签到、邀请好友」。
+        // 余额不可查的平台为空，这行保持隐藏，不占布局。
+        earnWaysLabel.font = .preferredFont(forTextStyle: .footnote)
+        earnWaysLabel.textColor = .secondaryLabel
+        earnWaysLabel.numberOfLines = 0
+        earnWaysLabel.lineBreakMode = .byTruncatingTail
+
         // 中间的空白：先被拉伸到占满剩余宽度，也先被压缩到 0。
         let footerGap = UIView().then {
             $0.setContentHuggingPriority(.init(1), for: .horizontal)
@@ -241,7 +248,7 @@ final class ProviderBalanceCardCell: UITableViewCell {
             $0.spacing = 8
         }
 
-        let stack = UIStackView(arrangedSubviews: [providerLabel, amountRow, footerRow, relayLabel]).then {
+        let stack = UIStackView(arrangedSubviews: [providerLabel, amountRow, earnWaysLabel, footerRow, relayLabel]).then {
             $0.axis = .vertical
             $0.alignment = .fill
             $0.spacing = 4
@@ -276,6 +283,12 @@ final class ProviderBalanceCardCell: UITableViewCell {
         hostLabel.text = balance.label
         relayLabel.isHidden = balance.relayKind == nil
         relayLabel.text = balance.relayKind
+        earnWaysLabel.isHidden = balance.earnWays.isEmpty
+        if !balance.earnWays.isEmpty {
+            earnWaysLabel.text = String(
+                localized: "积分获取方式：\(balance.earnWays.joined(separator: "、"))",
+            )
+        }
         if balance.stale {
             // 查不到时这一行写原因，站点照旧跟在后面。
             timeLabel.text = balance.problem ?? String(localized: "Balance unavailable")
@@ -287,7 +300,8 @@ final class ProviderBalanceCardCell: UITableViewCell {
             timeLabel.textColor = .tertiaryLabel
         }
         accessibilityLabel = "\(balance.provider.displayName)，\(balance.amount) \(balance.currency)"
-        accessibilityValue = "\(timeLabel.text ?? "")，\(balance.label)"
+        let ways = balance.earnWays.isEmpty ? "" : "，积分获取方式：\(balance.earnWays.joined(separator: "、"))"
+        accessibilityValue = "\(timeLabel.text ?? "")，\(balance.label)\(ways)"
     }
 }
 

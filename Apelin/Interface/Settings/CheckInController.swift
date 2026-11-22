@@ -13,6 +13,7 @@ final class CheckInController: TableController {
         case actions
         case platforms
         case growth
+        case log
     }
 
     private enum Row: Hashable {
@@ -20,6 +21,7 @@ final class CheckInController: TableController {
         case runAll
         case platform(CheckInPlatform)
         case detail(platform: CheckInPlatform, index: Int)
+        case logEntry(Int)
     }
 
     private lazy var dataSource = TableDataSource<Section, Row, Row>(
@@ -30,6 +32,8 @@ final class CheckInController: TableController {
     }
 
     private var runner: Task<Void, Never>?
+    /// 签到日志快照（最近 10 条，最新的在前），供日志 section 展示。
+    private var logSnapshot: [CheckInResult] = []
 
     init() {
         super.init(style: .insetGrouped)
@@ -75,6 +79,11 @@ final class CheckInController: TableController {
             }
         }
         if !detailRows.isEmpty { sections.append((.growth, detailRows)) }
+        // 签到日志：最近 10 条，最新的在前。
+        logSnapshot = Array(CheckInStore.shared.logEntries.prefix(10))
+        var logRows: [Row] = []
+        for index in logSnapshot.indices { logRows.append(.logEntry(index)) }
+        if !logRows.isEmpty { sections.append((.log, logRows)) }
         dataSource.update(sections, reconfigure: true)
     }
 
@@ -103,6 +112,8 @@ final class CheckInController: TableController {
             String(localized: "Growth tasks that need real use on the desktop stay red until they are done; the reason is listed below.")
         case .growth:
             String(localized: "Red means the action could not be finished automatically. A light means it was done or is harmless to skip.")
+        case .log:
+            "过去每次签到的结果，最新的一条排在最前。"
         }
     }
 
@@ -170,7 +181,48 @@ final class CheckInController: TableController {
             cell.accessibilityLabel = item.title
             cell.accessibilityValue = item.note
             return cell
+        case let .logEntry(index):
+            guard index < logSnapshot.count else { return UITableViewCell() }
+            let entry = logSnapshot[index]
+            let cell = tableView.dequeueReusableCell(withIdentifier: "log")
+                ?? UITableViewCell(style: .subtitle, reuseIdentifier: "log")
+            var content = UIListContentConfiguration.subtitleCell()
+            content.text = entry.platform.brand
+            var parts: [String] = []
+            switch entry.outcome {
+            case .claimed:
+                parts.append("已签到")
+                if let credit = entry.credit { parts.append("\(credit) 积分") }
+            case .alreadyClaimed:
+                parts.append("已签过")
+                if let total = entry.total { parts.append("\(total) 积分") }
+            case .nothingToDo:
+                parts.append("今日无奖励")
+            case .notSignedIn:
+                parts.append("未登录")
+            case .failed:
+                parts.append("签到失败")
+            }
+            parts.append(relativeTime(entry.updatedAt))
+            content.secondaryText = parts.joined(separator: " · ")
+            content.secondaryTextProperties.color = .secondaryLabel
+            cell.contentConfiguration = content
+            cell.accessoryType = .none
+            cell.selectionStyle = .none
+            cell.isAccessibilityElement = true
+            cell.accessibilityLabel = entry.platform.brand
+            cell.accessibilityValue = content.secondaryText
+            return cell
         }
+    }
+
+    /// 「x 分钟/小时/天前」式的相对时间。
+    private func relativeTime(_ date: Date) -> String {
+        let interval = Date().timeIntervalSince(date)
+        if interval < 60 { return "刚刚" }
+        if interval < 3600 { return "\(Int(interval / 60))分钟前" }
+        if interval < 86_400 { return "\(Int(interval / 3600))小时前" }
+        return "\(Int(interval / 86_400))天前"
     }
 
     @objc private dynamic func toggleChanged(_ toggle: UISwitch) {
@@ -245,6 +297,7 @@ final class CheckInController: TableController {
         case .runAll: return !CheckInStore.shared.isRunning
         case .platform: return !CheckInStore.shared.isRunning
         case .detail: return false
+        case .logEntry: return false
         }
     }
 
@@ -259,6 +312,8 @@ final class CheckInController: TableController {
         case let .platform(platform):
             refresh(platforms: [platform], force: true)
         case .detail:
+            break
+        case .logEntry:
             break
         }
     }
