@@ -135,6 +135,8 @@ public actor AgentSession {
     private var ownCalls: [String: (tool: AgentToolName, arguments: KWWKAI.JSONValue)] = [:]
     /// What the current run has received, for the app's counter.
     private var output = OutputTally()
+    /// Why the current run's last failure happened, as its `error` said.
+    private var runFailure: ApelinError.Reason?
     /// Where each message of the reader's is in the model's conversation,
     /// by message id (`HistoryAnchor`, `anchors.json`).
     var anchors: [String: HistoryAnchor] = [:]
@@ -288,13 +290,14 @@ public actor AgentSession {
                 tools: runner.agentTools(mcp: mcpTools, extensions: toolExtensions.extensions),
                 messages: transcript,
             ),
-            // a request the network failed waits for it to come back; each
+            // a request the network failed waits for it to come back, one
+            // that says the allowance is spent is not asked again, and each
             // that failed is journaled
             streamFn: NetworkRecovery.stream(
                 path: configuration.network,
-                inner: journal.observingRequests { model, context, options in
+                inner: SpentAllowance.stream(journal.observingRequests { model, context, options in
                     try await KWWKAI.stream(model: model, context: context, options: options)
-                },
+                }),
             ) {
                 journal.waitingForNetwork()
                 _ = try? await log.append(.reconnecting)
@@ -1604,6 +1607,7 @@ public actor AgentSession {
         case .agentStart:
             // the counter counts each run's output from nothing
             output = OutputTally()
+            runFailure = nil
             journal.runStarted(model: agent.state.model, messages: agent.state.messages.count)
         case let .messageStart(message):
             if case let .user(user) = message, let id = openingMessageID {
@@ -2001,6 +2005,7 @@ public actor AgentSession {
             return
         }
         journal.runFailed(error.localizedDescription)
+        runFailure = SpentAllowance.isSpent(ProviderFailure.capture(error)) ? .quota : nil
         await record(.error(message: error.localizedDescription))
     }
 

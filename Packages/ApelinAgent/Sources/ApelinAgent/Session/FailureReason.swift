@@ -29,6 +29,11 @@ public enum FailureReason {
     /// refusal, a request the provider would not take, a stop.
     /// `hasRoute`: whether the device has a route to the network now.
     public static func of(_ failure: ProviderFailure, hasRoute: Bool) -> ApelinError.Reason? {
+        // a spent allowance kwwk reads as a rate limit is the quota all the
+        // same (`SpentAllowance`)
+        if SpentAllowance.isSpent(failure) {
+            return .quota
+        }
         if failure.httpStatus == nil, failure.providerCode == nil,
            contextTooLarge.contains(where: failure.message.contains)
         {
