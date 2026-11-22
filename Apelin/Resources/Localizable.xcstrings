@@ -152367,73 +152367,73 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP القابل للبثّ"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP-Streaming"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP en streaming"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP en flux"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP in streaming"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP ストリーミング"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP 스트리밍"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP em streaming"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP-потоковая передача"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP dạng luồng"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP 流式传输"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP Streamable"
+            "value": "HTTP 串流傳輸"
           }
         }
       }
@@ -152865,73 +152865,73 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "يدعم iOS بروتوكول HTTP Streamable فقط حاليًا. أدخل نقطة نهاية MCP الكاملة للخادم."
+            "value": "يدعم iOS بروتوكول HTTP القابل للبثّ فقط حاليًا. أدخل نقطة نهاية MCP الكاملة للخادم."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "iOS unterstützt derzeit nur HTTP Streamable. Gib den vollständigen MCP-HTTP-Endpunkt des Servers ein."
+            "value": "iOS unterstützt derzeit nur HTTP-Streaming. Gib den vollständigen MCP-HTTP-Endpunkt des Servers ein."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "iOS solo admite HTTP Streamable por ahora. Introduce el endpoint HTTP MCP completo del servidor."
+            "value": "iOS solo admite HTTP en streaming por ahora. Introduce el endpoint HTTP MCP completo del servidor."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "iOS ne prend en charge que HTTP Streamable pour l'instant. Saisissez le point de terminaison HTTP MCP complet du serveur."
+            "value": "iOS ne prend en charge que le HTTP en flux pour l'instant. Saisissez le point de terminaison HTTP MCP complet du serveur."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Per ora iOS supporta solo HTTP Streamable. Inserisci l'endpoint HTTP MCP completo del server."
+            "value": "Per ora iOS supporta solo HTTP in streaming. Inserisci l'endpoint HTTP MCP completo del server."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iOS が対応するのは現在 HTTP Streamable のみです。サーバーの MCP HTTP エンドポイントを完全な形で入力してください。"
+            "value": "iOS が対応するのは現在 HTTP ストリーミングのみです。サーバーの MCP HTTP エンドポイントを完全な形で入力してください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "iOS는 현재 HTTP Streamable만 지원합니다. 서버의 전체 MCP HTTP 엔드포인트를 입력하세요."
+            "value": "iOS는 현재 HTTP 스트리밍만 지원합니다. 서버의 전체 MCP HTTP 엔드포인트를 입력하세요."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O iOS só oferece suporte a HTTP Streamable por enquanto. Informe o endpoint HTTP MCP completo do servidor."
+            "value": "O iOS só oferece suporte a HTTP em streaming por enquanto. Informe o endpoint HTTP MCP completo do servidor."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "iOS пока поддерживает только HTTP Streamable. Укажите полный HTTP-эндпоинт MCP сервера."
+            "value": "iOS пока поддерживает только HTTP-потоковую передачу. Укажите полный HTTP-эндпоинт MCP сервера."
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hiện iOS chỉ hỗ trợ HTTP Streamable. Nhập điểm cuối HTTP MCP đầy đủ của máy chủ."
+            "value": "Hiện iOS chỉ hỗ trợ HTTP dạng luồng. Nhập điểm cuối HTTP MCP đầy đủ của máy chủ."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "iOS 目前仅支持 HTTP Streamable。请填写服务器完整的 MCP HTTP 端点。"
+            "value": "iOS 目前仅支持 HTTP 流式传输。请填写服务器完整的 MCP HTTP 端点。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "iOS 目前僅支援 HTTP Streamable。請填寫伺服器完整的 MCP HTTP 端點。"
+            "value": "iOS 目前僅支援 HTTP 串流傳輸。請填寫伺服器完整的 MCP HTTP 端點。"
           }
         }
       }
@@ -153695,73 +153695,73 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "يقبل JSON قياسيًا بمفتاح mcpServers. يدعم iOS بروتوكول HTTP Streamable فقط؛ تُعرض إدخالات STDIO وSSE في المعاينة ويتم تخطيها."
+            "value": "يقبل JSON قياسيًا بمفتاح mcpServers. يدعم iOS بروتوكول HTTP القابل للبثّ فقط؛ تُعرض إدخالات STDIO وSSE في المعاينة ويتم تخطيها."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nimmt ein standardmäßiges mcpServers-JSON an. iOS unterstützt nur HTTP Streamable; STDIO- und SSE-Einträge erscheinen in der Vorschau und werden übersprungen."
+            "value": "Nimmt ein standardmäßiges mcpServers-JSON an. iOS unterstützt nur HTTP-Streaming; STDIO- und SSE-Einträge erscheinen in der Vorschau und werden übersprungen."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Acepta un JSON estándar de mcpServers. iOS solo admite HTTP Streamable; las entradas STDIO y SSE aparecen en la vista previa y se omiten."
+            "value": "Acepta un JSON estándar de mcpServers. iOS solo admite HTTP en streaming; las entradas STDIO y SSE aparecen en la vista previa y se omiten."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Accepte un JSON mcpServers standard. iOS ne prend en charge que HTTP Streamable ; les entrées STDIO et SSE apparaissent dans l'aperçu et sont ignorées."
+            "value": "Accepte un JSON mcpServers standard. iOS ne prend en charge que le HTTP en flux ; les entrées STDIO et SSE apparaissent dans l'aperçu et sont ignorées."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Accetta un JSON mcpServers standard. iOS supporta solo HTTP Streamable; le voci STDIO e SSE compaiono nell'anteprima e vengono saltate."
+            "value": "Accetta un JSON mcpServers standard. iOS supporta solo HTTP in streaming; le voci STDIO e SSE compaiono nell'anteprima e vengono saltate."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "標準の mcpServers JSON を受け付けます。iOS が対応するのは HTTP Streamable のみで、STDIO と SSE の項目はプレビューに表示され、取り込まれません。"
+            "value": "標準の mcpServers JSON を受け付けます。iOS が対応するのは HTTP ストリーミングのみで、STDIO と SSE の項目はプレビューに表示され、取り込まれません。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "표준 mcpServers JSON을 받습니다. iOS는 HTTP Streamable만 지원하므로 STDIO 및 SSE 항목은 미리보기에 표시되고 건너뜁니다."
+            "value": "표준 mcpServers JSON을 받습니다. iOS는 HTTP 스트리밍만 지원하므로 STDIO 및 SSE 항목은 미리보기에 표시되고 건너뜁니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aceita um JSON mcpServers padrão. O iOS só oferece suporte a HTTP Streamable; entradas STDIO e SSE aparecem na prévia e são ignoradas."
+            "value": "Aceita um JSON mcpServers padrão. O iOS só oferece suporte a HTTP em streaming; entradas STDIO e SSE aparecem na prévia e são ignoradas."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Принимает стандартный JSON с mcpServers. iOS поддерживает только HTTP Streamable; записи STDIO и SSE показываются в предпросмотре и пропускаются."
+            "value": "Принимает стандартный JSON с mcpServers. iOS поддерживает только HTTP-потоковую передачу; записи STDIO и SSE показываются в предпросмотре и пропускаются."
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nhận JSON mcpServers tiêu chuẩn. iOS chỉ hỗ trợ HTTP Streamable; các mục STDIO và SSE hiện trong phần xem trước và bị bỏ qua."
+            "value": "Nhận JSON mcpServers tiêu chuẩn. iOS chỉ hỗ trợ HTTP dạng luồng; các mục STDIO và SSE hiện trong phần xem trước và bị bỏ qua."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "接受标准 mcpServers JSON。iOS 仅支持 HTTP Streamable；STDIO 与 SSE 条目会在预览中列出并跳过。"
+            "value": "接受标准 mcpServers JSON。iOS 仅支持 HTTP 流式传输；STDIO 与 SSE 条目会在预览中列出并跳过。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "接受標準 mcpServers JSON。iOS 僅支援 HTTP Streamable；STDIO 與 SSE 項目會在預覽中列出並略過。"
+            "value": "接受標準 mcpServers JSON。iOS 僅支援 HTTP 串流傳輸；STDIO 與 SSE 項目會在預覽中列出並略過。"
           }
         }
       }
@@ -162632,7 +162632,588 @@
           }
         }
       }
-    }
+    },
+      "Note (Shown to Agent)": {
+        "extractionState": "manual",
+        "localizations": {
+          "en": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Note (Shown to Agent)"
+            }
+          },
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "ملاحظة (تظهر للوكيل)"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Notiz (für den Agent sichtbar)"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Nota (visible para el agente)"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Note (affichée à l'agent)"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Nota (visibile all'agente)"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "メモ（エージェントに表示）"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "메모(에이전트에 표시)"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Nota (visível para o agente)"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Заметка (видна агенту)"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Ghi chú (hiển thị cho tác nhân)"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "备注（展示给智能体）"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "備註（顯示給代理程式）"
+            }
+          }
+        }
+      },
+      "Header Name": {
+        "extractionState": "manual",
+        "localizations": {
+          "en": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Header Name"
+            }
+          },
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "اسم الترويسة"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Headername"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Nombre del encabezado"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Nom de l'en-tête"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Nome dell'intestazione"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "ヘッダー名"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "헤더 이름"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Nome do cabeçalho"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Имя заголовка"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Tên tiêu đề"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "请求头名称"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "請求頭名稱"
+            }
+          }
+        }
+      },
+      "Header Value": {
+        "extractionState": "manual",
+        "localizations": {
+          "en": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Header Value"
+            }
+          },
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "قيمة الترويسة"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Headerwert"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Valor del encabezado"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Valeur de l'en-tête"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Valore dell'intestazione"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "ヘッダー値"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "헤더 값"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Valor do cabeçalho"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Значение заголовка"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Giá trị tiêu đề"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "请求头的值"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "請求頭的值"
+            }
+          }
+        }
+      },
+      "Add Header": {
+        "extractionState": "manual",
+        "localizations": {
+          "en": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Add Header"
+            }
+          },
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "إضافة ترويسة"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Header hinzufügen"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Añadir encabezado"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Ajouter un en-tête"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Aggiungi intestazione"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "ヘッダーを追加"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "헤더 추가"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Adicionar cabeçalho"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Добавить заголовок"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Thêm tiêu đề"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "添加请求头"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "新增請求頭"
+            }
+          }
+        }
+      },
+      "Server names use letters, digits, _ and - only, up to 64 characters.": {
+        "extractionState": "manual",
+        "localizations": {
+          "en": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Server names use letters, digits, _ and - only, up to 64 characters."
+            }
+          },
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "تستخدم أسماء الخوادم الحروف والأرقام و _ و - فقط، حتى 64 حرفًا."
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Servernamen dürfen nur Buchstaben, Ziffern, _ und - enthalten, bis zu 64 Zeichen."
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Los nombres de servidor solo admiten letras, dígitos, _ y -, hasta 64 caracteres."
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Les noms de serveur n'acceptent que des lettres, des chiffres, _ et -, jusqu'à 64 caractères."
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "I nomi dei server accettano solo lettere, cifre, _ e -, fino a 64 caratteri."
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "サーバー名に使えるのは英数字と _ と - のみで、64 文字までです。"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "서버 이름에는 영문자, 숫자, _, -만 쓸 수 있으며 최대 64자입니다."
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Nomes de servidor aceitam apenas letras, dígitos, _ e -, até 64 caracteres."
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "В именах серверов допустимы только буквы, цифры, _ и -, до 64 символов."
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Tên máy chủ chỉ dùng chữ cái, chữ số, _ và -, tối đa 64 ký tự."
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "服务器名称只能包含字母、数字、_ 和 -，最多 64 个字符。"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "伺服器名稱只能包含字母、數字、_ 和 -，最多 64 個字元。"
+            }
+          }
+        }
+      },
+      "One header per row: the name on the left, the value on the right. Tokens are kept in this app's data folder.": {
+        "extractionState": "manual",
+        "localizations": {
+          "en": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "One header per row: the name on the left, the value on the right. Tokens are kept in this app's data folder."
+            }
+          },
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "ترويسة واحدة في كل صف: الاسم على اليسار والقيمة على اليمين. تُحفظ الرموز في مجلد بيانات هذا التطبيق."
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Ein Header pro Zeile: der Name links, der Wert rechts. Tokens liegen im Datenordner dieser App."
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Un encabezado por fila: el nombre a la izquierda y el valor a la derecha. Los tokens se guardan en la carpeta de datos de esta app."
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Un en-tête par ligne : le nom à gauche, la valeur à droite. Les jetons sont conservés dans le dossier de données de cette app."
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Un'intestazione per riga: il nome a sinistra, il valore a destra. I token restano nella cartella dati di questa app."
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "1 行に 1 つのヘッダー。左が名前、右が値です。トークンはこのアプリのデータフォルダに保存されます。"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "한 줄에 헤더 하나: 왼쪽이 이름, 오른쪽이 값입니다. 토큰은 이 앱의 데이터 폴더에 보관됩니다."
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Um cabeçalho por linha: o nome à esquerda e o valor à direita. Os tokens ficam na pasta de dados deste app."
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "По одному заголовку в строке: слева имя, справа значение. Токены хранятся в папке данных этого приложения."
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Mỗi dòng một tiêu đề: tên bên trái, giá trị bên phải. Token được lưu trong thư mục dữ liệu của ứng dụng này."
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "一行一个请求头：左边名称，右边值。令牌保存在本应用的数据目录里。"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "一列一個請求頭：左邊名稱，右邊值。權杖保存在本應用程式的資料目錄裡。"
+            }
+          }
+        }
+      },
+      "This note is handed to the agent as the server's description, so it knows when to use these tools.": {
+        "extractionState": "manual",
+        "localizations": {
+          "en": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "This note is handed to the agent as the server's description, so it knows when to use these tools."
+            }
+          },
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "تُسلَّم هذه الملاحظة إلى الوكيل كوصف للخادم، ليعرف متى يستخدم هذه الأدوات."
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Diese Notiz wird dem Agent als Beschreibung des Servers übergeben, damit er weiß, wann er diese Werkzeuge nutzt."
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Esta nota se entrega al agente como descripción del servidor, para que sepa cuándo usar estas herramientas."
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Cette note est transmise à l'agent comme description du serveur, pour qu'il sache quand utiliser ces outils."
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Questa nota viene passata all'agente come descrizione del server, così sa quando usare questi strumenti."
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "このメモはサーバーの説明としてエージェントに渡され、いつこれらのツールを使うかを判断する材料になります。"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "이 메모는 서버 설명으로 에이전트에게 전달되어, 언제 이 도구를 쓸지 판단하는 데 쓰입니다."
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Esta nota é entregue ao agente como descrição do servidor, para que ele saiba quando usar estas ferramentas."
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Эта заметка передаётся агенту как описание сервера, чтобы он знал, когда пользоваться этими инструментами."
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Ghi chú này được chuyển cho tác nhân làm mô tả máy chủ, để nó biết khi nào dùng các công cụ này."
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "这段备注会作为服务器描述交给智能体，让它知道什么时候该用这些工具。"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "這段備註會作為伺服器描述交給代理程式，讓它知道什麼時候該用這些工具。"
+            }
+          }
+        }
+      }
   },
   "version": "1.0"
 }

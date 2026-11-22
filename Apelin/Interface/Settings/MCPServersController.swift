@@ -191,20 +191,47 @@ final class MCPServersController: TableController {
     }
 }
 
-/// The fields are staged here; Save validates the entire record and persists
-/// it. Back discards edits, so an incomplete URL never disables a server.
+/// Each field has a section of its own, laid out after Minis: the header names
+/// what to fill in, the row holds it, the footer explains the rule. The fields
+/// are staged here; Save validates the entire record and persists it. Back
+/// discards edits, so an incomplete URL never disables a server.
 final class MCPServerEditorController: TableController, UITextViewDelegate {
-    private enum Row: String { case name, url, note, headers, enabled }
+    private enum Row: Equatable {
+        case name
+        case url
+        case header(String)
+        case addHeader
+        case note
+        case enabled
+    }
+
+    /// One header being typed, with the two fields that hold it and the row
+    /// that shows them: a reload puts the same text back in the same row, and
+    /// moving the fields between cells never costs the keyboard its focus.
+    private final class HeaderDraft {
+        let id = UUID().uuidString
+        let name = UITextField()
+        let value = UITextField()
+        var cell: UITableViewCell?
+    }
+
     private lazy var dataSource = TableDataSource<Int, String, Row>(
-        tableView: tableView, identifier: { $0.rawValue }
+        tableView: tableView, identifier: { Self.identifier(of: $0) }
     ) { [weak self] table, _, row in self?.cell(in: table, row: row) }
     private let store = MCPServerStore(root: DataFolder.app.root)
     private let original: MCPServerRecord?
     private let nameField = UITextField()
     private let urlField = UITextField()
-    private let noteField = UITextField()
-    private let headersView = UITextView()
+    private let noteView = UITextView()
     private let enabledSwitch = UISwitch()
+    private var headerDrafts: [HeaderDraft] = []
+    /// Each row keeps its cell: a change elsewhere in the list re-asks for
+    /// them, and a field handed to a new cell would lose the keyboard.
+    private lazy var nameCell = fieldCell(nameField)
+    private lazy var urlCell = fieldCell(urlField)
+    private lazy var noteCell = fieldCell(noteView, minimumHeight: 132)
+    private lazy var addHeaderRow = addHeaderCell()
+    private lazy var enabledCell = switchCell()
 
     init(record: MCPServerRecord?) {
         original = record
@@ -224,37 +251,74 @@ final class MCPServerEditorController: TableController, UITextViewDelegate {
             UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"), primaryAction: nil, menu: exportMenu),
         ]
         tableView.keyboardDismissMode = .interactive
+        tableView.rowHeight = UITableView.automaticDimension
         configure(nameField, label: String(localized: "Server Name"), value: original?.connection.name)
         configure(urlField, label: String(localized: "Server URL"), value: original?.connection.url)
         urlField.keyboardType = .URL
         urlField.autocapitalizationType = .none
         urlField.autocorrectionType = .no
-        configure(noteField, label: String(localized: "Description"), value: original?.connection.note)
-        headersView.text = original?.connection.headers.sorted { $0.key < $1.key }
-            .map { "\($0.key): \($0.value)" }.joined(separator: "\n") ?? ""
-        headersView.font = .preferredFont(forTextStyle: .body)
-        headersView.adjustsFontForContentSizeCategory = true
-        headersView.autocapitalizationType = .none
-        headersView.autocorrectionType = .no
-        headersView.accessibilityLabel = String(localized: "HTTP Headers")
+        noteView.text = original?.connection.note
+        noteView.accessibilityLabel = String(localized: "Note (Shown to Agent)")
+        noteView.font = .preferredFont(forTextStyle: .body)
+        noteView.adjustsFontForContentSizeCategory = true
+        noteView.autocapitalizationType = .sentences
+        noteView.backgroundColor = .clear
+        noteView.isScrollEnabled = false
+        noteView.textContainerInset = .zero
+        noteView.textContainer.lineFragmentPadding = 0
+        noteView.delegate = self
         enabledSwitch.isOn = original?.enabled ?? true
         enabledSwitch.accessibilityLabel = String(localized: "Enabled")
+        for (name, value) in (original?.connection.headers ?? [:]).sorted(by: { $0.key < $1.key }) {
+            headerDrafts.append(headerDraft(named: name, value: value))
+        }
+        dataSource.allowsEditing = true
         dataSource.headerTitle = { section in
             switch section {
-            case 0: String(localized: "HTTP Streamable")
-            case 1: String(localized: "HTTP Headers")
+            case 0: String(localized: "Server Name")
+            case 1: String(localized: "Server URL")
+            case 2: String(localized: "HTTP Headers")
+            case 3: String(localized: "Note (Shown to Agent)")
             default: nil
             }
         }
         dataSource.footerTitle = { section in
             switch section {
-            case 0: String(localized: "iOS supports HTTP Streamable only for now. Enter the server's full MCP HTTP endpoint.")
-            case 1: String(localized: "One header per line: Name: value. Tokens are stored in this app's data folder.")
-            case 2: String(localized: "Go back to discard unsaved changes. New settings apply when the conversation is opened again.")
-            default: nil
+            case 0: String(localized: "Server names use letters, digits, _ and - only, up to 64 characters.")
+            case 1: String(localized: "iOS supports HTTP Streamable only for now. Enter the server's full MCP HTTP endpoint.")
+            case 2: String(localized: "One header per row: the name on the left, the value on the right. Tokens are kept in this app's data folder.")
+            case 3: String(localized: "This note is handed to the agent as the server's description, so it knows when to use these tools.")
+            default: String(localized: "Go back to discard unsaved changes. New settings apply when the conversation is opened again.")
             }
         }
-        dataSource.update([(0, [.name, .url, .note]), (1, [.headers]), (2, [.enabled])])
+        updateRows()
+    }
+
+    private static func identifier(of row: Row) -> String {
+        switch row {
+        case .name: "name"
+        case .url: "url"
+        case let .header(id): "header-\(id)"
+        case .addHeader: "add-header"
+        case .note: "note"
+        case .enabled: "enabled"
+        }
+    }
+
+    private func updateRows(focusing draft: HeaderDraft? = nil) {
+        let rows: [(Int, [Row])] = [
+            (0, [.name]),
+            (1, [.url]),
+            (2, headerDrafts.map { Row.header($0.id) } + [.addHeader]),
+            (3, [.note]),
+            (4, [.enabled]),
+        ]
+        guard let draft else {
+            dataSource.update(rows)
+            return
+        }
+        // the new row exists only once the change is in, so the keyboard waits for it
+        dataSource.update(rows, completion: { _ = draft.name.becomeFirstResponder() })
     }
 
     private func configure(_ field: UITextField, label: String, value: String?) {
@@ -266,29 +330,41 @@ final class MCPServerEditorController: TableController, UITextViewDelegate {
         field.clearButtonMode = .whileEditing
     }
 
-    private func cell(in table: UITableView, row: Row) -> UITableViewCell {
-        if row == .enabled {
-            let cell = table.dequeueReusableCell(withIdentifier: "switch")
-                ?? UITableViewCell(style: .default, reuseIdentifier: "switch")
-            var content = UIListContentConfiguration.cell()
-            content.text = String(localized: "Enabled")
-            cell.contentConfiguration = content
-            cell.accessoryView = enabledSwitch
-            cell.selectionStyle = .none
-            cell.isAccessibilityElement = false
-            return cell
+    private func headerDraft(named name: String = "", value: String = "") -> HeaderDraft {
+        let draft = HeaderDraft()
+        configure(draft.name, label: String(localized: "Header Name"), value: name)
+        configure(draft.value, label: String(localized: "Header Value"), value: value)
+        for field in [draft.name, draft.value] {
+            field.autocapitalizationType = .none
+            field.autocorrectionType = .no
+            field.spellCheckingType = .no
         }
+        return draft
+    }
+
+    private func cell(in table: UITableView, row: Row) -> UITableViewCell {
+        switch row {
+        case .name:
+            return nameCell
+        case .url:
+            return urlCell
+        case .note:
+            return noteCell
+        case let .header(id):
+            guard let draft = headerDrafts.first(where: { $0.id == id }) else { return UITableViewCell() }
+            return headerCell(draft)
+        case .addHeader:
+            return addHeaderRow
+        case .enabled:
+            return enabledCell
+        }
+    }
+
+    /// A field filling the row's margins; the field is the element, not the row.
+    private func fieldCell(_ field: UIView, minimumHeight: CGFloat = 44) -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
         cell.selectionStyle = .none
         cell.isAccessibilityElement = false
-        let field: UIView
-        switch row {
-        case .name: field = nameField
-        case .url: field = urlField
-        case .note: field = noteField
-        case .headers: field = headersView
-        case .enabled: field = enabledSwitch
-        }
         field.translatesAutoresizingMaskIntoConstraints = false
         cell.contentView.addSubview(field)
         let margins = cell.contentView.layoutMarginsGuide
@@ -297,24 +373,106 @@ final class MCPServerEditorController: TableController, UITextViewDelegate {
             field.trailingAnchor.constraint(equalTo: margins.trailingAnchor),
             field.topAnchor.constraint(equalTo: margins.topAnchor),
             field.bottomAnchor.constraint(equalTo: margins.bottomAnchor),
-            field.heightAnchor.constraint(greaterThanOrEqualToConstant: row == .headers ? 120 : 44),
+            field.heightAnchor.constraint(greaterThanOrEqualToConstant: minimumHeight),
         ])
         return cell
     }
 
+    /// One header: its name on the left and its value on the right, each its
+    /// own stop for VoiceOver. The row is made once per header and handed back
+    /// on every reload, so a swipe or an added row never drops the keyboard.
+    private func headerCell(_ draft: HeaderDraft) -> UITableViewCell {
+        if let cell = draft.cell { return cell }
+        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        cell.selectionStyle = .none
+        cell.isAccessibilityElement = false
+        let row = UIStackView(arrangedSubviews: [draft.name, draft.value])
+        row.axis = .horizontal
+        row.spacing = 12
+        row.alignment = .center
+        row.translatesAutoresizingMaskIntoConstraints = false
+        cell.contentView.addSubview(row)
+        let margins = cell.contentView.layoutMarginsGuide
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: margins.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: margins.trailingAnchor),
+            row.topAnchor.constraint(equalTo: margins.topAnchor),
+            row.bottomAnchor.constraint(equalTo: margins.bottomAnchor),
+            cell.contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            draft.name.widthAnchor.constraint(equalTo: draft.value.widthAnchor),
+        ])
+        draft.cell = cell
+        return cell
+    }
+
+    private func addHeaderCell() -> UITableViewCell {
+        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        var content = UIListContentConfiguration.cell()
+        content.text = String(localized: "Add Header")
+        content.textProperties.color = .tintColor
+        content.image = UIImage(systemName: "plus.circle")
+        content.imageProperties.tintColor = .tintColor
+        cell.contentConfiguration = content
+        cell.accessibilityTraits.insert(.button)
+        return cell
+    }
+
+    /// A row that names its switch: the switch speaks its own on and off, and
+    /// the row's name is what tells it apart from the others.
+    private func switchCell() -> UITableViewCell {
+        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        var content = cell.defaultContentConfiguration()
+        content.text = String(localized: "Enabled")
+        cell.contentConfiguration = content
+        cell.selectionStyle = .none
+        cell.accessoryView = enabledSwitch
+        return cell
+    }
+
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        guard dataSource.value(at: indexPath) == .addHeader else { return }
+        let draft = headerDraft()
+        headerDrafts.append(draft)
+        updateRows(focusing: draft)
+    }
+
+    /// Only a header row can be swiped away; the fields keep their text.
+    override func tableView(_: UITableView, editingStyleForRowAt indexPath: IndexPath) -> UITableViewCell.EditingStyle {
+        guard let row = dataSource.value(at: indexPath), case .header = row else { return .none }
+        return .delete
+    }
+
+    override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        guard editingStyle == .delete, case let .header(id)? = dataSource.value(at: indexPath) else { return }
+        headerDrafts.removeAll { $0.id == id }
+        updateRows()
+    }
+
+    /// The note is a text view that grows with its text: the row follows it
+    /// rather than scrolling a few lines inside a fixed height.
+    func textViewDidChange(_ textView: UITextView) {
+        guard textView === noteView else { return }
+        UIView.performWithoutAnimation {
+            tableView.beginUpdates()
+            tableView.endUpdates()
+        }
+    }
+
     private func recordFromFields() throws -> MCPServerRecord {
         var headers: [String: String] = [:]
-        for line in headersView.text.components(separatedBy: .newlines) where !line.isEmpty {
-            guard let separator = line.firstIndex(of: ":") else { throw MCPStoreError.invalidHeader }
-            let key = String(line[..<separator]).trimmingCharacters(in: .whitespaces)
-            let value = String(line[line.index(after: separator)...]).trimmingCharacters(in: .whitespaces)
-            guard !key.isEmpty, headers[key] == nil else { throw MCPStoreError.invalidHeader }
-            headers[key] = value
+        for draft in headerDrafts {
+            let name = (draft.name.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = (draft.value.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            // a row left empty is one the user did not fill in, not a mistake
+            if name.isEmpty, value.isEmpty { continue }
+            guard !name.isEmpty, headers[name] == nil else { throw MCPStoreError.invalidHeader }
+            headers[name] = value
         }
         let connection = try MCPConnection(
             name: (nameField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
             url: (urlField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-            headers: headers, note: noteField.text
+            headers: headers, note: noteView.text
         )
         return MCPServerRecord(id: original?.id ?? UUID().uuidString.lowercased(),
                                connection: connection, enabled: enabledSwitch.isOn)
