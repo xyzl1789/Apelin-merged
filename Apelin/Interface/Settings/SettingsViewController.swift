@@ -311,6 +311,7 @@ final class ChatPreferencesController: TableController {
         case launch
         case returnKey
         case compression
+        case background
     }
 
     private struct RowContent: Equatable {
@@ -358,6 +359,7 @@ final class ChatPreferencesController: TableController {
                     : String(localized: "Send"),
             ),
             RowContent(row: .compression, detail: Preferences.percentText(Preferences.compressionThreshold)),
+            RowContent(row: .background, detail: Self.backgroundSummary),
         ])], reconfigure: true)
     }
 
@@ -371,6 +373,7 @@ final class ChatPreferencesController: TableController {
         case .launch: content.text = String(localized: "On Launch")
         case .returnKey: content.text = String(localized: "Return Key")
         case .compression: content.text = String(localized: "Compression Threshold")
+        case .background: content.text = String(localized: "Chat Background")
         }
         cell.contentConfiguration = content
         cell.accessoryType = .disclosureIndicator
@@ -422,6 +425,17 @@ final class ChatPreferencesController: TableController {
                     selected: choices.firstIndex { abs($0 - current) < 0.001 } ?? choices.count - 1,
                 ) { index in Preferences.compressionThreshold = choices[index] },
             )
+        case .background:
+            push(ChatBackgroundController())
+        }
+    }
+
+    /// 背景行显示聊天画在什么上面。
+    private static var backgroundSummary: String {
+        switch ChatBackground.current {
+        case .none: String(localized: "None")
+        case let .paper(paper): paper.title
+        case .image: String(localized: "Your Own Image")
         }
     }
 
@@ -433,7 +447,7 @@ final class ChatPreferencesController: TableController {
 /// A handful of answers with the one in use ticked. The page stays open after
 /// a tap, as Permission Mode does, so the reader sees what they picked before
 /// going back.
-private final class SettingChoiceController: TableController {
+final class SettingChoiceController: TableController {
     private enum Section: Hashable { case options }
 
     private struct Row: Equatable {

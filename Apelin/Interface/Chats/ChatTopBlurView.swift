@@ -7,6 +7,11 @@ final class ChatTopBlurView: UIView {
         NSClassFromString("CABackdropLayer") ?? CALayer.self
     }
 
+    /// Conversation 画在哪张纸上，顶部模糊淡入它的颜色而不是应用的背景色。
+    var paper: ChatBackground.Paper? {
+        didSet { updateFrost() }
+    }
+
     private let frost = CAGradientLayer()
 
     override init(frame: CGRect) {
@@ -57,7 +62,9 @@ final class ChatTopBlurView: UIView {
     }
 
     @objc dynamic private func updateFrost() {
-        let color = UIColor.pageBackground.resolvedColor(with: traitCollection)
+        let color = paper.map {
+            ChatBackgroundView.base($0, traits: traitCollection).resolvedColor(with: traitCollection)
+        } ?? UIColor.pageBackground.resolvedColor(with: traitCollection)
         frost.colors = [color.withAlphaComponent(1).cgColor, color.withAlphaComponent(0).cgColor]
     }
 

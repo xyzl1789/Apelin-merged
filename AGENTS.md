@@ -3371,7 +3371,21 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   backdrop and a matching page-color frost behind the status bar and navigation
   controls: radius 1 pt, linear alpha mask, linear page-color frost from 1.0
   to 0, and height equal to the top safe area plus 20 pt. The system top edge
-  effect is hidden on iOS 26. Image albums use
+  effect is hidden on iOS 26. Chat Background (owner, 2026-11-22): the chat draws
+  on a `ChatBackgroundView` behind the transparent message list and composer —
+  none (the app's own background), one of seven papers drawn entirely in code
+  (`PaperBackgroundView`, `ChatBackground.Paper`), or the reader's own picture
+  from PHPicker. The choice lives in `UserDefaults` (`ChatBackground.current`),
+  a picture is scaled to 3000 px and stored as `Background/chat.jpg` in
+  `DataFolder.app` so it outlives the picker's temporary file, and a picture is
+  drawn at `ChatBackground.opacity` (100%–25%) while a paper is opaque. Each
+  paper has its own light and dark colours (the conversation's text is white in
+  the dark), a three-stop ground lit from the top left, a radial edge, a fixed
+  one-pixel fibre tile, and three of them add ruled lines, a grid or dots. The
+  top blur's frost fades into the paper's own base colour instead of the app's
+  background. Settings ▸ Preferences ▸ Chat Background is `ChatBackgroundController`;
+  changing it posts `ChatBackground.changed`, which `ChatController` observes
+  to reload the paper, picture and frost. Image albums use
   the user bubble's accent gradient with a 1 pt inset and concentric continuous
   corners; that inset is included in their width and height limits. Transcript
   rows do not clip selection handles. Text selections retain the system menu;

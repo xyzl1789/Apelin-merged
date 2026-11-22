@@ -32,6 +32,9 @@ final class ChatController: UIViewController {
     @objc dynamic private var openingQueueEditor = false
     private let composer = ComposerView()
     private let topBlur = ChatTopBlurView()
+    /// 在所有内容之下：读者选的纸或图片，画在消息列表和输入框下面，
+    /// 这两者在可以透明的地方保持透明。
+    private let chatBackground = ChatBackgroundView()
     /// A tap on the page, anywhere the composer is not, puts the keyboard
     /// away; the tap still reaches what it landed on.
     private let keyboardDismissTap = UITapGestureRecognizer()
@@ -175,6 +178,16 @@ final class ChatController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .pageBackground
+        chatBackground.frame = view.bounds
+        chatBackground.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(chatBackground)
+        reloadBackground()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(reloadBackground),
+            name: ChatBackground.changed,
+            object: nil,
+        )
 
         // The keyboard goes when the page is tapped anywhere but on the
         // composer. `cancelsTouchesInView` stays false, so the tap still
@@ -481,7 +494,8 @@ final class ChatController: UIViewController {
                     }
                 }
         }
-        view.insertSubview(messageList, at: 0)
+        // 在页面自身背景之上、别的东西之下：背景视图留在最底，列表叠在它上面。
+        view.insertSubview(messageList, aboveSubview: chatBackground)
         // The composer is another overlay; explicitly identify the list
         // whose scroll position drives the navigation bar's edge treatment.
         setContentScrollView(messageList, for: .top)
@@ -641,6 +655,17 @@ final class ChatController: UIViewController {
             }
         }
         return abs(messageList.contentOffset.y - messageList.maximumContentOffset.y) <= 0.5
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    /// 设置页最后留下的纸或图片。
+    @objc private func reloadBackground() {
+        chatBackground.opacity = ChatBackground.opacity
+        chatBackground.background = ChatBackground.current
+        topBlur.paper = ChatBackground.current.paper
     }
 
     override func viewDidLayoutSubviews() {
