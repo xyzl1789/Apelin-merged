@@ -70,8 +70,9 @@ final class CheckInStore {
     }
 
     private func loadLog() -> [CheckInResult] {
-        guard let data = UserDefaults.standard.data(forKey: Self.logKey) else { return [] }
-        return (try? JSONDecoder().decode([CheckInResult].self, from: data)) ?? []
+        guard let data = UserDefaults.standard.data(forKey: Self.logKey) else { return logEntries }
+        // 解码失败不回退空数组：下一次 save 不会把旧日志覆盖掉。
+        return (try? JSONDecoder().decode([CheckInResult].self, from: data)) ?? logEntries
     }
 
     private func saveLog(_ log: [CheckInResult]) {
