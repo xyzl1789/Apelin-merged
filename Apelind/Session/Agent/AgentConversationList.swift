@@ -130,7 +130,7 @@ enum AgentConversationList {
                 projectID: project.id,
                 projectName: project.name,
                 title: AgentConversationRules.title(title),
-                state: record.state,
+                state: record.state.isTerminal ? record.state : .interrupted,
                 updatedAt: record.updatedAt,
                 parentSessionID: AgentSessionLineage.load(session: session, state: state)?.parentSessionID,
             ))

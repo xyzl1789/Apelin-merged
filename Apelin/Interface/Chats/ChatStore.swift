@@ -220,10 +220,11 @@ extension ChatRecord {
     /// reads past that replay instead of showing it again. With no history
     /// there is nothing to read past: a first task's events are all new,
     /// an error before its first prompt included.
-    mutating func reopen(as task: TaskHandle) {
+    mutating func reopen(as task: TaskHandle, ended: Bool = false) {
         // A task is followed again, so whatever turn it is in is going until
-        // the host or its events say otherwise.
-        run = .running
+        // the host or its events say otherwise — unless the host has already
+        // reported it ended, which the newest task of a stored session is.
+        run = ended ? .ended : .running
         guard self.task != task else { return }
         self.task = task
         replay = events.isEmpty ? nil : SessionReplay(of: events)

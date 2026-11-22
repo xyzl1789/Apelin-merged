@@ -285,7 +285,7 @@ final class ChatRuntime {
                 // reopened session; asking again about the same task settles
                 // nothing and must not redraw the page.
                 if record.task != session.task {
-                    records[record.summary.id]?.reopen(as: session.task)
+                    records[record.summary.id]?.reopen(as: session.task, ended: session.state.isTerminal)
                 }
                 // A task the host reports ended is read to its end too: the
                 // reply, and the run's own end, are in the events after this
@@ -1295,6 +1295,10 @@ final class ChatRuntime {
         records[id]?.reopen(as: result.task)
         changed(id)
         follow(id, task: result.task)
+        // The open answer names a task, not its state: a stored session's
+        // newest one is usually over, and waiting for the five-second sweep
+        // leaves its row lit — send turned into Stop — with nothing to stop.
+        await reconcileRuns()
         return result
     }
 
