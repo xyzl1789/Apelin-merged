@@ -187,4 +187,41 @@ func checkChatStore(_ scratch: URL, check: (Bool, String) -> Void) async throws 
         (try? ChatEventsFile.scan(AgentConversations.openedEventKind, for: scanID, in: chats))?.count == 1,
         "a scan drops the last line a write cut short",
     )
+
+    // A history big enough to be decoded in slices reads back exactly the
+    // events it holds, in the file's order, and drops a damaged line the same
+    // way a small one does.
+    let bigID = UUID()
+    var big = ChatRecord(summary: .untitled(lastInteraction: Date(), projectName: nil))
+    big.summary.id = bigID
+    big.events = (1 ... 4000).map { event(UInt64($0)) }
+    try JSONEncoder().encode(big).write(to: recordURL(bigID))
+    _ = try await ChatStore(folder: folder).load()
+    let bigURL = eventsURL(bigID)
+    check(try Data(contentsOf: bigURL).count > 256 * 1024, "the history is big enough to be read in slices")
+    let bigRead = try ChatEventsFile.read(bigID, in: chats)
+    check(bigRead.count == 4000, "a sliced read keeps every event")
+    check(bigRead.map(\.seq.rawValue) == (1 ... 4000).map { UInt64($0) }, "a sliced read keeps the file's order")
+    // A damaged line in the middle costs that line alone, wherever the slice
+    // boundaries fall.
+    var damaged = String(decoding: try Data(contentsOf: bigURL), as: UTF8.self)
+    damaged = damaged.replacingOccurrences(of: "\"seq\":2000,", with: "\"seq\":broken,")
+    try Data(damaged.utf8).write(to: bigURL)
+    let damagedRead = try ChatEventsFile.read(bigID, in: chats)
+    check(damagedRead.count == 3999, "a damaged line alone is dropped from a sliced read")
+    check(!damagedRead.contains { $0.seq.rawValue == 2000 }, "the damaged event is the one that went")
+
+    // A torn last line is cut from the tail without reading the whole file,
+    // so what is appended after it is the only thing the file gains.
+    var withTorn = try Data(contentsOf: bigURL)
+    let beforeTrim = withTorn.count
+    withTorn.append(contentsOf: Data("{\"seq\":4001,\"kind\":\"prompt\",\"pay".utf8))
+    try withTorn.write(to: bigURL)
+    try ChatEventsFile.append([event(4002)], for: bigID, in: chats)
+    let afterTrim = try Data(contentsOf: bigURL)
+    check(afterTrim.count > beforeTrim, "the append landed after the torn line was cut")
+    check(!String(decoding: afterTrim, as: UTF8.self).contains("4001"), "the torn line is gone")
+    let trimmed = try ChatEventsFile.read(bigID, in: chats)
+    check(trimmed.count == 4000, "the history reads back whole after a torn line was cut")
+    check(trimmed.last?.seq.rawValue == 4002, "the appended event is the last one")
 }

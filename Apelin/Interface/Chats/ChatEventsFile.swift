@@ -1,5 +1,6 @@
 import ApelinCore
 import ApelinProtocol
+import Dispatch
 import Foundation
 
 /// A conversation's events on disk, beside its record: `Chats/<id>.events.jsonl`,
@@ -32,13 +33,85 @@ enum ChatEventsFile {
         let url = url(for: id, in: folder)
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         let data = try Data(contentsOf: url)
+        return decodeEveryLine(in: data)
+    }
+
+    /// The events of every line in `data`, in the order the file holds them.
+    ///
+    /// A conversation's history can be a quarter of a million lines, and a line
+    /// decodes on its own: reading one took seconds on the device that opened
+    /// it, which is the wait the reader saw. The file is cut into a few pieces
+    /// at line boundaries and the pieces are decoded beside each other, then
+    /// put back in order, so the answer is the same array the one-by-one read
+    /// gave and only the time it takes differs.
+    private static func decodeEveryLine(in data: Data) -> [TaskEvent] {
+        let pieces = min(8, max(1, ProcessInfo.processInfo.activeProcessorCount))
+        // A small history decodes in one pass: starting threads would cost
+        // more than it saves.
+        guard pieces > 1, data.count > 256 * 1024 else { return decodeLines(in: data) }
+        let bounds = lineBounds(of: data, pieces: pieces)
+        guard bounds.count > 2 else { return decodeLines(in: data) }
+        let decoded = DecodedPieces(count: bounds.count - 1)
+        DispatchQueue.concurrentPerform(iterations: bounds.count - 1) { index in
+            decoded.set(decodeLines(in: data[bounds[index]..<bounds[index + 1]]), at: index)
+        }
+        return decoded.all
+    }
+
+    /// The offsets `pieces` slices of `data` start at, each cut just past a
+    /// newline, so that no line is split between two slices and every line is
+    /// decoded exactly once and whole. The first offset is 0 and the last is
+    /// `data.count`.
+    private static func lineBounds(of data: Data, pieces: Int) -> [Int] {
+        var bounds = [0]
+        bounds.reserveCapacity(pieces + 1)
+        let step = data.count / pieces
+        for index in 1 ..< pieces {
+            guard step > 0 else { break }
+            var cut = index * step
+            guard cut > bounds[bounds.count - 1] else { continue }
+            while cut < data.count, data[data.startIndex + cut] != 0x0A { cut += 1 }
+            cut = min(cut + 1, data.count)
+            guard cut > bounds[bounds.count - 1], cut < data.count else { continue }
+            bounds.append(cut)
+        }
+        bounds.append(data.count)
+        return bounds
+    }
+
+    /// Every event `bytes` holds. A line that does not decode is dropped, as
+    /// `read` drops it.
+    private static func decodeLines(in bytes: Data) -> [TaskEvent] {
         let decoder = JSONCoding.decoder()
         var events: [TaskEvent] = []
-        for line in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
+        for line in bytes.split(separator: 0x0A, omittingEmptySubsequences: true) {
             guard let event = try? decoder.decode(TaskEvent.self, from: Data(line)) else { continue }
             events.append(event)
         }
         return events
+    }
+
+    /// The slices being decoded beside each other, each put back at its own
+    /// place so the file's order is the order that comes out.
+    private final class DecodedPieces: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storage: [[TaskEvent]]
+
+        init(count: Int) {
+            storage = Array(repeating: [], count: count)
+        }
+
+        func set(_ events: [TaskEvent], at index: Int) {
+            lock.lock()
+            storage[index] = events
+            lock.unlock()
+        }
+
+        var all: [TaskEvent] {
+            lock.lock()
+            defer { lock.unlock() }
+            return storage.flatMap { $0 }
+        }
     }
 
     /// The events of one kind a saved conversation holds, read for a scan that
@@ -51,14 +124,41 @@ enum ChatEventsFile {
     static func scan(_ kind: String, for id: UUID, in folder: URL) throws -> [TaskEvent] {
         let url = url(for: id, in: folder)
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
-        let data = try Data(contentsOf: url)
         let needle = Data(kind.utf8)
         let decoder = JSONCoding.decoder()
         var events: [TaskEvent] = []
-        for line in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
-            guard line.range(of: needle) != nil else { continue }
-            guard let event = try? decoder.decode(TaskEvent.self, from: Data(line)) else { continue }
-            if event.kind == kind { events.append(event) }
+        // Read in windows rather than whole: a launch scans every chat whose
+        // history is still on disk, and a history of tens of megabytes held in
+        // memory for each of them is the memory the rest of the launch needed.
+        let chunk: Int = 1 << 20
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return [] }
+        defer { try? handle.close() }
+        var carry = Data()
+        while true {
+            let piece: Data?
+            do {
+                piece = try handle.read(upToCount: chunk)
+            } catch {
+                break
+            }
+            guard let piece, !piece.isEmpty else { break }
+            carry.append(piece)
+            // Only whole lines are looked at; the rest waits for the next
+            // window, since a line split in two would not decode.
+            guard let lastBreak = carry.lastIndex(of: 0x0A) else { continue }
+            let whole = carry[carry.startIndex ... lastBreak]
+            carry = Data(carry[carry.index(after: lastBreak)...])
+            for line in whole.split(separator: 0x0A, omittingEmptySubsequences: true) {
+                guard line.range(of: needle) != nil else { continue }
+                guard let event = try? decoder.decode(TaskEvent.self, from: Data(line)) else { continue }
+                if event.kind == kind { events.append(event) }
+            }
+        }
+        // A last line with no newline after it is the one a write cut short.
+        if !carry.isEmpty, carry.range(of: needle) != nil,
+           let event = try? decoder.decode(TaskEvent.self, from: carry), event.kind == kind
+        {
+            events.append(event)
         }
         return events
     }
@@ -183,14 +283,24 @@ enum ChatEventsFile {
         guard let size = try? handle.seekToEnd(), size > 0 else { return }
         do { try handle.seek(toOffset: size - 1) } catch { return }
         guard let last = try? handle.read(upToCount: 1), last == Data([0x0A]) else {
-            // Find the last newline and cut the file there.
-            guard let whole = try? Data(contentsOf: url) else { return }
-            if let index = whole.lastIndex(of: 0x0A) {
-                truncate(url.path, off_t(index + 1))
-            } else {
-                truncate(url.path, 0)
+            // Find the last newline and cut the file there. Read from the tail,
+            // growing the window, rather than the whole file: a conversation's
+            // history is tens of megabytes, and this runs before every append.
+            var length = min(size, 64 * 1024)
+            while true {
+                guard (try? handle.seek(toOffset: size - length)) != nil,
+                      let chunk = try? handle.read(upToCount: Int(length))
+                else { return }
+                if let index = chunk.lastIndex(of: 0x0A) {
+                    truncate(url.path, off_t(size - length + UInt64(index) + 1))
+                    return
+                }
+                guard length < size else {
+                    truncate(url.path, 0)
+                    return
+                }
+                length = min(size, length * 4)
             }
-            return
         }
     }
 }
