@@ -86,37 +86,6 @@ public struct MCPStatusReport: Sendable, Hashable {
         Set(servers.filter { $0.isAvailable }.map(\.name))
     }
 
-    /// 给 `<system-state>` 的一行英文提示；全部可用或没有服务器时 nil。
-    public var stateLine: String? {
-        let problems = servers.filter { server in
-            !server.isAvailable && server.phase != .connecting && server.phase != .closed
-        }
-        guard !problems.isEmpty else { return nil }
-        let detail = problems.map { server -> String in
-            let why = server.reason.map { ": \($0)" } ?? ""
-            return "\(server.name) (\(server.phase.rawValue)\(why))"
-        }.joined(separator: ", ")
-        return "- MCP servers not available right now: \(detail). Do not call their tools until they are back; other configured servers still work."
-    }
-
-    /// 给会话日志的中文提示，一台服务器一行，只在连接失败、需要授权或断开时说。
-    public var diagnosticMessages: [String] {
-        servers.compactMap { server in
-            guard !server.isAvailable else { return nil }
-            let why = server.reason.map { "（\($0)）" } ?? ""
-            switch server.phase {
-            case .failed:
-                return "MCP 服务器 \(server.name) 连接失败\(why)，其工具暂不可用。"
-            case .authorizationRequired:
-                return "MCP 服务器 \(server.name) 需要重新授权\(why)，其工具暂不可用。"
-            case .disconnected:
-                return "MCP 服务器 \(server.name) 已断开\(why)，正在自动重连。"
-            case .connecting, .connected, .closed:
-                return nil
-            }
-        }
-    }
-
     /// 服务器给的任意文本压成一行并限长，避免换行打断提示词块和会话日志。
     private static func brief(_ value: String?) -> String? {
         guard let value else { return nil }

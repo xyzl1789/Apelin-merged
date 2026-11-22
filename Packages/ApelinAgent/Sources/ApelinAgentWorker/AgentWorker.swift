@@ -232,6 +232,23 @@ public enum AgentWorker {
                 )
 
             }
+        case .agentMCPTools:
+            await WorkerMain.serve(AgentMCPToolsRequest.self, request) { query in
+                let home = URL(fileURLWithPath: context.assignment.home, isDirectory: true)
+                let store = MCPServerStore(root: ApelinDataRoot(home: home).url)
+                let snapshot = try store.read()
+                guard let record = snapshot.servers.items.first(where: { $0.connection.name == query.serverName }) else {
+                    throw MCPStoreError.serverNotFound
+                }
+                return AgentMCPToolsResponse(
+                    serverName: record.connection.name,
+                    tools: try await MCPServerToolInspector.list(
+                        name: record.connection.name,
+                        url: record.connection.url,
+                        headers: record.connection.headers,
+                    ),
+                )
+            }
         case .agentProviderBalances:
             await WorkerMain.serve(AgentProviderBalancesRequest.self, request) { balances in
                 let home = URL(fileURLWithPath: context.assignment.home, isDirectory: true)

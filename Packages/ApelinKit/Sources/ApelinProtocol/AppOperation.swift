@@ -81,6 +81,8 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
     case agentRunCode
     case agentCredentialImport
     case agentAccountList
+    /// Read-only live `tools/list` for one configured HTTP MCP server.
+    case agentMCPTools
     /// Read-only balance lookups for the provider accounts that publish one.
     case agentProviderBalances
     case agentSkillList
@@ -196,8 +198,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .confirmLoaded, .confirmLoadedAttach, .captureScreen, .readUITree, .uiAction: .diagnostics
         case .agentDelegation, .agentOpen, .agentPrompt, .agentGenerateImage, .agentSteer, .agentAbort, .agentCompact, .agentConfigure, .agentQueue, .agentApprove, .agentAttach, .agentList,
              .agentClose, .agentRunCode, .agentCredentialImport, .agentAccountList, .agentSkillList,
-
-             .agentRewritePrompt, .agentModelTest, .agentProviderBalances,
+             .agentRewritePrompt, .agentModelTest, .agentProviderBalances, .agentMCPTools,
              .agentAPIConfiguration, .agentModelList,
              .agentModelActivate, .agentSignIn, .agentSignInRespond, .agentSignInCancel, .agentSignOut,
              .agentRewind, .agentEditMessage, .agentDeleteReply, .agentFork:
@@ -286,6 +287,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .agentCredentialImport: AgentCredentialImportRequest.self
         case .agentAccountList: AgentAccountListRequest.self
         case .agentProviderBalances: AgentProviderBalancesRequest.self
+        case .agentMCPTools: AgentMCPToolsRequest.self
         case .agentSkillList: AgentSkillListRequest.self
         case .agentRewritePrompt: AgentRewritePromptRequest.self
         case .agentModelTest: AgentModelTestRequest.self

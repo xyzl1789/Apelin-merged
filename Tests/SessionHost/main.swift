@@ -534,6 +534,8 @@ do {
 
 do {
     check(CallerPolicy.allows(.app, .protectedEditCommit), "the app may edit")
+    check(CallerPolicy.allows(.app, .agentMCPTools), "the app may inspect a configured MCP server")
+    check(!CallerPolicy.allows(.worker(.agent, instance: "s"), .agentMCPTools), "an agent cannot read MCP secrets or probe servers")
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .buildStart), "the agent may build")
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .approvalDigestState), "the agent may read the ledger")
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .installationList), "the agent may list installations")
@@ -542,13 +544,15 @@ do {
         && !CallerPolicy.allows(.worker(.environment, instance: nil), .applicationList), "the apps under Applications are the app's alone")
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .toolHostCall), "the agent may call tools")
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .confirmLoaded) && CallerPolicy.allows(.worker(.agent, instance: "s"), .confirmLoadedAttach), "the agent starts and reads a load check")
-    // Accounts are the app's alone: a session's agent never starts, answers
-    // or reads a sign-in, and never lists or forgets an account.
-    for operation: AppOperation in [.protectedEditOpen, .protectedEditCommit, .ptyOpen, .ptyAttach, .agentApprove, .agentSteer, .agentCompact,
-                                    .toolchainRemove, .sdkRemove, .environmentCancel,
-                                    .agentAccountList, .agentAPIConfiguration, .agentModelList, .agentModelActivate, .agentSignIn, .agentSignInRespond, .agentSignInCancel, .agentSignOut,
-                                    .agentCredentialImport, .transferExport, .transferInspect, .transferImport]
-    {
+    // Accounts and MCP server configuration are the app's alone: a session's
+    // agent never starts, answers or reads a sign-in, or probes configured servers.
+    for operation: AppOperation in [
+        .protectedEditOpen, .protectedEditCommit, .ptyOpen, .ptyAttach, .agentApprove, .agentSteer, .agentCompact,
+        .toolchainRemove, .sdkRemove, .environmentCancel,
+        .agentAccountList, .agentAPIConfiguration, .agentModelList, .agentModelActivate, .agentSignIn,
+        .agentSignInRespond, .agentSignInCancel, .agentSignOut, .agentMCPTools,
+        .agentCredentialImport, .transferExport, .transferInspect, .transferImport,
+    ] {
         check(!CallerPolicy.allows(.worker(.agent, instance: "s"), operation), "the agent may not call \(operation.rawValue)")
     }
     // The device's toolchains and SDKs: listed, set up, imported, tested

@@ -1,3 +1,5 @@
+import ApelinCore
+import ApelinProtocol
 import Foundation
 import KWWKAgent
 import KWWKMCP
@@ -49,5 +51,53 @@ enum MCPBridge {
         await manager.start()
         _ = await manager.waitForStartup(timeout: timeout)
         return await (manager, manager.tools().map(\.tool))
+    }
+}
+
+/// Read-only tool enumeration used by Settings. It creates a short-lived
+/// client, lists tools, then closes the HTTP session without retaining auth.
+public enum MCPServerToolInspector {
+    public static func list(
+        name: String,
+        url: String,
+        headers: [String: String],
+        timeout: TimeInterval = 15,
+    ) async throws -> [AgentMCPToolSummary] {
+        guard let endpoint = URL(string: url),
+              let scheme = endpoint.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              endpoint.host?.isEmpty == false
+        else { throw ToolArgumentError("MCP 服务器地址无效") }
+        let connection = try MCPServerConfiguration(name: name, url: endpoint, headers: headers)
+        let client = MCPClient(
+            transport: MCPStreamableHTTPTransport(
+                url: connection.url, headers: connection.headers,
+                requestTimeoutSeconds: timeout,
+            ),
+            clientName: "Apelin",
+            clientVersion: "1",
+            requestTimeoutSeconds: timeout,
+        )
+        do {
+            try await client.connect(timeoutSeconds: timeout)
+            let tools = try await client.listTools(timeoutSeconds: timeout)
+            await client.close()
+            return tools.prefix(256).map { tool in
+                AgentMCPToolSummary(
+                    name: String(tool.name.prefix(256)),
+                    description: tool.description.map { String($0.prefix(2_000)) },
+                )
+            }
+        } catch {
+            await client.close()
+            throw MCPServerToolInspectionError.unavailable
+        }
+    }
+}
+
+public enum MCPServerToolInspectionError: Error, LocalizedError, Sendable {
+    case unavailable
+
+    public var errorDescription: String? {
+        "无法连接 MCP 服务器或读取工具列表，请检查服务器地址与请求头。"
     }
 }

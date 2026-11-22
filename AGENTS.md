@@ -402,7 +402,8 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   `crashOpen`, `crashSymbolicate`; `confirmLoaded`, `confirmLoadedAttach`, `captureScreen`,
   `readUITree`, `uiAction`; `agentOpen`, `agentPrompt`, `agentSteer`,
   `agentAbort`, `agentCompact`, `agentApprove`, `agentAttach`, `agentList`, `agentClose`, `agentDelegation`,
-  `agentRunCode`, `agentCredentialImport`, `agentAccountList`, `agentProviderBalances`, `agentSkillList`, `agentAPIConfiguration`, `agentModelList`, `agentModelTest`, `agentModelActivate`, `agentSignIn`,
+  `agentRunCode`, `agentCredentialImport`, `agentAccountList`, `agentProviderBalances`,
+  `agentMCPTools`, `agentSkillList`, `agentAPIConfiguration`, `agentModelList`, `agentModelTest`, `agentModelActivate`, `agentSignIn`,
   `agentSignInRespond`, `agentSignInCancel`, `agentSignOut`, `agentRewind`, `agentEditMessage`,
   `agentDeleteReply`, `agentFork`; `toolHostOpen`, `toolHostClose`,
   `toolHostCall`;

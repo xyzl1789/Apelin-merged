@@ -113,6 +113,40 @@ public enum AgentSignInField: String, Codable, Sendable, CaseIterable {
     case callbackURL
 }
 
+/// One tool description returned by a live, read-only MCP `tools/list` request.
+public struct AgentMCPToolSummary: Codable, Sendable, Equatable {
+    public var name: String
+    public var description: String?
+
+    public init(name: String, description: String? = nil) {
+        self.name = name
+        self.description = description
+    }
+}
+
+/// Fetches a configured MCP server's current tools list. Only the server name
+/// crosses the app/worker boundary; URL and authentication headers stay in the
+/// protected MCP settings file and the reply contains no credentials.
+public struct AgentMCPToolsRequest: OperationRequest {
+    public typealias Response = AgentMCPToolsResponse
+    public static let operation = AppOperation.agentMCPTools
+    public var serverName: String
+
+    public init(serverName: String) {
+        self.serverName = serverName
+    }
+}
+
+public struct AgentMCPToolsResponse: Codable, Sendable, Equatable {
+    public var serverName: String
+    public var tools: [AgentMCPToolSummary]
+
+    public init(serverName: String, tools: [AgentMCPToolSummary] = []) {
+        self.serverName = serverName
+        self.tools = tools
+    }
+}
+
 /// A read-only balance lookup for every signed-in provider account whose
 /// endpoint publishes one. The reply never carries a credential, a URL with a
 /// query, or the server's own text: the app draws a figure, not a response.
@@ -421,6 +455,12 @@ public extension ApelinService {
 
     func agentSignOut(provider: AgentProvider) async throws {
         _ = try await send(AgentSignOutRequest(provider: provider))
+    }
+}
+
+public extension ApelinService {
+    func agentMCPTools(serverName: String) async throws -> AgentMCPToolsResponse {
+        try await send(AgentMCPToolsRequest(serverName: serverName))
     }
 }
 

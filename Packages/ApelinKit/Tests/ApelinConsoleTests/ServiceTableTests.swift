@@ -177,6 +177,10 @@ final class ServiceTableTests: XCTestCase {
             ])) { _ = try await $0.agentAccountList() }
         case .agentProviderBalances:
             return Row(reply: AgentProviderBalancesResponse()) { _ = try await $0.agentProviderBalances(force: true) }
+        case .agentMCPTools:
+            return Row(reply: AgentMCPToolsResponse(serverName: "docs", tools: [AgentMCPToolSummary(name: "search")])) {
+                _ = try await $0.agentMCPTools(serverName: "docs")
+            }
         case .agentSkillList:
             return Row(reply: AgentSkillListResponse(skills: [
                 AgentSkill(name: "example", description: "An example.", source: .builtIn, body: "Do it."),

@@ -265,9 +265,6 @@ public actor AgentSession {
             mcpStatuses = []
         }
         let mcpStatus = MCPStatusReport(statuses: mcpStatuses)
-        for message in mcpStatus.diagnosticMessages {
-            _ = try? await log.append(.error(message: message))
-        }
         let toolExtensions = ToolExtensionOffer.read(
             installRoot: configuration.installRoot,
             policy: configuration.toolExtensionPolicy,
@@ -616,7 +613,6 @@ public actor AgentSession {
             hostRestarted: delta && restartUntoldBefore,
             installRoot: configuration.installRoot,
         )
-        facts.mcpNote = mcpStatus.stateLine
         return (SystemState.make(facts) + text, toldBefore, restartUntoldBefore)
     }
 
@@ -1085,7 +1081,6 @@ public actor AgentSession {
             // A message the reader sent from a chat channel: the model is told
             // so in this message's `<system-state>`, as it is told the mode.
             facts.source = item.source
-            facts.mcpNote = mcpStatus.stateLine
             // The conversation whose agent opened this one: the model knows
             // where its turns are reported back to.
             facts.parentSessionID = configuration.openerSessionID

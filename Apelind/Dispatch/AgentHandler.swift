@@ -105,9 +105,9 @@ enum AgentHandler: DomainHandler {
             return reply
         case .agentRunCode:
             return await runCode(request, host: host)
-        // The credential worker's operations are the app's alone (CallerPolicy).
+        // MCP tool discovery is app-only and reads the protected server config.
         case .agentCredentialImport, .agentAccountList, .agentSkillList, .agentRewritePrompt,
-             .agentAPIConfiguration, .agentModelList, .agentSignOut, .agentProviderBalances:
+             .agentAPIConfiguration, .agentModelList, .agentSignOut, .agentProviderBalances, .agentMCPTools:
             return await host.forward(request, to: .agent, instance: credentialInstance)
         // The probe runs for up to a minute: a task, so the page shows each
         // stage as it happens instead of only the report at the end.

@@ -197,7 +197,7 @@ final class SettingsViewController: TableController {
         case .promptInjection:
             content.text = String(localized: "Prompt Injection")
         case .mcpServers:
-            content.text = String(localized: "MCP Servers")
+            content.text = "MCP 服务器"
         case .autoAssistant:
             content.text = String(localized: "Auto Assistant")
         case .usageStats:

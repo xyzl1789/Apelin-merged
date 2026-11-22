@@ -79,6 +79,18 @@ public struct MCPServerRecord: Codable, Equatable, Hashable, Sendable, Identifia
     }
 }
 
+/// JSON import preview: HTTP entries that can be committed, plus unsupported
+/// entries that must stay visible to the user rather than being silently lost.
+public struct MCPServerImportPreview: Sendable {
+    public var servers: [MCPServerRecord]
+    public var unsupported: [String]
+
+    public init(servers: [MCPServerRecord], unsupported: [String]) {
+        self.servers = servers
+        self.unsupported = unsupported
+    }
+}
+
 /// The whole file. Unreadable records are kept as they were, never replaced
 /// by an empty list the next save would make permanent.
 public struct MCPServerSnapshot: Codable {
@@ -186,6 +198,125 @@ public struct MCPServerStore: Sendable {
         return snapshot
     }
 
+    /// Parses Claude Desktop/OpenMinis-style `mcpServers` JSON. The iOS client
+    /// accepts only the streamable HTTP transport it can actually run; STDIO
+    /// and SSE entries are returned in `unsupported` for the preview.
+    public func parseImport(_ text: String) throws -> MCPServerImportPreview {
+        guard text.utf8.count <= Self.maximumFileBytes,
+              let data = text.data(using: .utf8),
+              let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let entries = root["mcpServers"] as? [String: Any],
+              !entries.isEmpty
+        else { throw MCPStoreError.invalidImport }
+
+        var servers: [MCPServerRecord] = []
+        var unsupported: [String] = []
+        let names = entries.keys.sorted()
+        for name in names.prefix(Self.maximumServers) {
+            let label = String(name.prefix(128)).components(separatedBy: .newlines).joined(separator: " ")
+            guard let entry = entries[name] as? [String: Any] else {
+                unsupported.append("\(label)：配置格式无效")
+                continue
+            }
+            guard entry["type"] == nil || entry["type"] is String else {
+                unsupported.append("\(label)：传输类型无效")
+                continue
+            }
+            let type = (entry["type"] as? String ?? "http").lowercased()
+            if entry["command"] != nil || type == "stdio" || type == "sse" || type == "eventsource" {
+                unsupported.append("\(label)：当前 iOS 版本只支持 HTTP Streamable")
+                continue
+            }
+            if entry["oauth"] != nil {
+                unsupported.append("\(label)：交互式 OAuth 尚未接入")
+                continue
+            }
+            guard type == "http" || type == "streamable-http" || type == "streamablehttp",
+                  let url = entry["url"] as? String
+            else {
+                unsupported.append("\(label)：缺少受支持的 HTTP URL 配置")
+                continue
+            }
+
+            var headers: [String: String] = [:]
+            if let rawHeaders = entry["headers"] {
+                guard let values = rawHeaders as? [String: Any] else {
+                    unsupported.append("\(label)：请求头格式无效")
+                    continue
+                }
+                var validHeaders = true
+                for key in values.keys.sorted() {
+                    guard let value = values[key] as? String else {
+                        validHeaders = false
+                        break
+                    }
+                    headers[key] = value
+                }
+                guard validHeaders else {
+                    unsupported.append("\(label)：请求头必须是字符串键值对")
+                    continue
+                }
+            }
+            let note = (entry["description"] as? String) ?? (entry["note"] as? String)
+            if url.contains("$$") || headers.values.contains(where: { $0.contains("$$") }) {
+                unsupported.append("\(label)：配置引用了未展开的环境变量")
+                continue
+            }
+            do {
+                let connection = try MCPConnection(name: name, url: url, headers: headers, note: note)
+                servers.append(MCPServerRecord(connection: connection, enabled: entry["enabled"] as? Bool ?? true))
+            } catch {
+                unsupported.append("\(label)：服务器名称、地址或请求头校验失败")
+            }
+        }
+        if names.count > Self.maximumServers {
+            unsupported.append("另有 \(names.count - Self.maximumServers) 项未预览；单次最多处理 \(Self.maximumServers) 项")
+        }
+        return MCPServerImportPreview(servers: servers, unsupported: unsupported)
+    }
+
+    /// Merges previewed servers by name. An imported record replaces the
+    /// same-named configuration while retaining its local stable ID.
+    public func merging(_ preview: MCPServerImportPreview, into snapshot: MCPServerSnapshot) throws -> MCPServerSnapshot {
+        var result = snapshot
+        for imported in preview.servers {
+            if let index = result.servers.items.firstIndex(where: { $0.connection.name == imported.connection.name }) {
+                let old = result.servers.items[index]
+                result.servers.items[index] = MCPServerRecord(
+                    id: old.id, connection: imported.connection, enabled: imported.enabled,
+                )
+            } else {
+                result.servers.items.append(imported)
+            }
+        }
+        try validate(result)
+        return result
+    }
+
+    /// Exports the selected server records in the standard `mcpServers` shape.
+    /// Headers are intentionally included for portable configurations.
+    public func exportJSON(_ records: [MCPServerRecord]) throws -> String {
+        var entries: [String: Any] = [:]
+        for record in records {
+            var entry: [String: Any] = [
+                "type": "http",
+                "url": record.connection.url,
+                "enabled": record.enabled,
+            ]
+            if !record.connection.headers.isEmpty { entry["headers"] = record.connection.headers }
+            if let note = record.connection.note { entry["description"] = note }
+            entries[record.connection.name] = entry
+        }
+        let data = try JSONSerialization.data(
+            withJSONObject: ["mcpServers": entries],
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes],
+        )
+        guard data.count <= Self.maximumFileBytes, let text = String(data: data, encoding: .utf8) else {
+            throw MCPStoreError.full
+        }
+        return text
+    }
+
     public func enabledConnections() throws -> [MCPConnection] {
         try read().servers.items.filter(\.enabled).map(\.connection)
     }
@@ -224,6 +355,8 @@ public enum MCPStoreError: Error, Equatable, LocalizedError {
     case duplicateName
     case full
     case unsafeFile
+    case invalidImport
+    case serverNotFound
 
     public var errorDescription: String? {
         switch self {
@@ -234,6 +367,8 @@ public enum MCPStoreError: Error, Equatable, LocalizedError {
         case .duplicateName: return "MCP 服务器名称不能重复。"
         case .full: return "MCP 服务器数量或配置文件已达上限。"
         case .unsafeFile: return "MCP 配置文件无法安全读写。"
+        case .invalidImport: return "MCP JSON 无效；仅支持带 mcpServers 的 HTTP Streamable 配置。"
+        case .serverNotFound: return "MCP 服务器配置已不存在，请返回列表刷新后重试。"
         }
     }
 }
