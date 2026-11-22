@@ -188,15 +188,15 @@ final class CheckInController: TableController {
         case .failed:
             switch result.reason {
             case .signedOut:
-                String(localized: "Sign-In Expired")
+                return String(localized: "Sign-In Expired")
             case .network:
-                String(localized: "No Internet Connection")
+                return String(localized: "No Internet Connection")
             case .rateLimited:
-                String(localized: "Usage Limit Reached")
+                return String(localized: "Usage Limit Reached")
             case .rejected:
-                String(localized: "Request Refused")
+                return String(localized: "Request Refused")
             case .server, .none:
-                String(localized: "Something went wrong. Try again.")
+                return String(localized: "Something went wrong. Try again.")
             }
         }
     }
