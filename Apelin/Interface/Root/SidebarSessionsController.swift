@@ -188,7 +188,12 @@ final class SidebarSessionsController: UIViewController {
     func refresh() {
         guard isViewLoaded else { return }
         let previous = Dictionary(uniqueKeysWithValues: chats.map { ($0.id, $0) })
-        chats = runtime.summaries.filter { $0.projectName == projectName }
+        let next = runtime.summaries.filter { $0.projectName == projectName }
+        let nextByID = Dictionary(uniqueKeysWithValues: next.map { ($0.id, $0) })
+        // Dictionary 的迭代顺序不是侧栏顺序；以 ID 和摘要比较，避免
+        // 后台正文更新时反复创建完全相同的树、分区和差异快照。
+        guard previous != nextByID else { return }
+        chats = next
         let pinChanged = chats.contains { chat in
             previous[chat.id].map { $0.isPinned != chat.isPinned } ?? false
         }

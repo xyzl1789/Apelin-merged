@@ -22,7 +22,7 @@ final class SidebarWorkspacesController: UIViewController {
 
     private var projects: [ProjectSummary] = []
     private var current: ProjectSummary?
-    private var chats: [ChatSummary] = []
+    private var activity = ChatWorkspaceActivity([])
 
     private lazy var newButton = UIButton(configuration: .plain()).then {
         var configuration = UIButton.Configuration.plain()
@@ -84,13 +84,17 @@ final class SidebarWorkspacesController: UIViewController {
     /// The three things the page draws, as the sidebar works them out.
     func update(projects: [ProjectSummary], current: ProjectSummary?, chats: [ChatSummary]) {
         let changedProjects = self.projects != projects
-        if isViewLoaded, !changedProjects, self.current == current, self.chats == chats,
+        let nextActivity = ChatWorkspaceActivity(chats)
+        if isViewLoaded, !changedProjects, self.activity == nextActivity,
            !dataSource.snapshot().itemIdentifiers.isEmpty {
+            // 只变更选中项目时更新高亮，不重新排序和重载所有项目行。
+            self.current = current
+            selectCurrent()
             return
         }
         self.projects = projects
         self.current = current
-        self.chats = chats
+        self.activity = nextActivity
         guard isViewLoaded else { return }
         if changedProjects || dataSource.snapshot().itemIdentifiers.isEmpty {
             applySnapshot()
@@ -102,7 +106,7 @@ final class SidebarWorkspacesController: UIViewController {
     private func applySnapshot(reloads: Bool = false) {
         var snapshot = NSDiffableDataSourceSnapshot<Int, Row>()
         snapshot.appendSections([0])
-        let rows = Self.order(projects: projects, chats: chats)
+        let rows = Self.order(projects: projects, activity: activity)
         snapshot.appendItems(rows, toSection: 0)
         if reloads {
             let existing = dataSource.snapshot().itemIdentifiers
@@ -116,12 +120,8 @@ final class SidebarWorkspacesController: UIViewController {
     /// Newest activity first, as aimini sorts: a workspace whose last
     /// conversation is recent comes before one never opened, and the names
     /// break the ties.
-    private static func order(projects: [ProjectSummary], chats: [ChatSummary]) -> [Row] {
-        var latest: [String: Date] = [:]
-        for chat in chats {
-            guard let name = chat.projectName else { continue }
-            latest[name] = max(latest[name] ?? .distantPast, chat.lastInteraction)
-        }
+    private static func order(projects: [ProjectSummary], activity: ChatWorkspaceActivity) -> [Row] {
+        let latest = activity.latest
         let sorted = projects.sorted { left, right in
             let leftTime = latest[left.name] ?? .distantPast
             let rightTime = latest[right.name] ?? .distantPast
@@ -185,7 +185,7 @@ final class SidebarWorkspacesController: UIViewController {
         case .general: nil
         case let .project(name): name
         }
-        let count = chats.filter { $0.projectName == name && $0.isWorking }.count
+        let count = activity.running[name] ?? 0
         guard count > 0 else { return nil }
         let label = UILabel()
         label.text = "\(count)"

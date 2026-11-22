@@ -28,6 +28,26 @@ func checkChatLineage() {
         chat(title, parent.projectName, parent: parent.id, relationship: .branch, number: number)
     }
 
+    // 项目页的输入按活动聚合：不因标题/已读状态或输入顺序变化而重载。
+    var activityA = chat("会话甲", "项目甲")
+    activityA.isWorking = true
+    var activityB = chat("会话乙", "项目甲")
+    activityB.lastInteraction = Date(timeIntervalSince1970: 9)
+    var general = chat("临时会话", nil)
+    general.isWorking = true
+    let activity = ChatWorkspaceActivity([activityA, activityB, general])
+    precondition(activity.latest["项目甲"] == activityB.lastInteraction)
+    precondition(activity.running["项目甲"] == 1 && activity.running[nil] == 1)
+    activityA.title = "新标题"
+    activityA.isUnread = true
+    precondition(ChatWorkspaceActivity([general, activityB, activityA]) == activity)
+    activityB.isWorking = true
+    precondition(ChatWorkspaceActivity([activityA, activityB, general]).running["项目甲"] == 2)
+    activityA.projectName = "项目乙"
+    let moved = ChatWorkspaceActivity([activityA, activityB, general])
+    precondition(moved.running["项目甲"] == 1 && moved.running["项目乙"] == 1)
+    precondition(ChatWorkspaceActivity([]).latest.isEmpty && ChatWorkspaceActivity([]).running.isEmpty)
+
     // MARK: A record saved before lineage keeps none of it.
 
     let legacy = Data(#"{"id":"1B4E28BA-2FA1-11D2-883F-0016D3CCA427","title":"Old","updated":0,"isPinned":false,"isWorking":false}"#.utf8)

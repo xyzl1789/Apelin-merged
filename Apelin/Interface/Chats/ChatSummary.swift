@@ -170,6 +170,21 @@ extension ChatSummary {
     }
 }
 
+/// 项目页只依赖最近交互时间和运行数量；标题、已读状态不触发项目页重载。
+struct ChatWorkspaceActivity: Equatable {
+    var latest: [String: Date] = [:]
+    var running: [String?: Int] = [:]
+
+    init(_ chats: [ChatSummary]) {
+        for chat in chats {
+            if let name = chat.projectName {
+                latest[name] = max(latest[name] ?? .distantPast, chat.lastInteraction)
+            }
+            if chat.isWorking { running[chat.projectName, default: 0] += 1 }
+        }
+    }
+}
+
 /// Pure presentation rules, shared by the runtime and its standalone checks.
 /// Missing parents and malformed cycles keep the stored title as a fallback.
 enum ChatLineage {
