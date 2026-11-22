@@ -198,6 +198,116 @@ console now goes on after a restart only past a successful respring.
 
 ## Still to run on the owner's devices
 
+- [ ] A load check that waits for its target, stops with its call and
+      says whether the target ran (2026-11-22, issue #76, AGENTS.md ▸
+      Diagnostics). On the Mac only so far: `ConfirmLoadedTests`, the
+      worker's `DiagnosticsWorkerTests` (window bounds, the process
+      evidence with a fake process list, a cancel before and after the
+      trigger), `ChannelHostBackendTests` (the stop sends
+      `confirmLoadedCancel`) and `LoadCheckCancelChecks`. The marker is now
+      heard through icli's `SyslogStream` rather than `captureSyslog`, and
+      the process list is icli's `listProcesses` read as mobile, neither of
+      them run from a load check on a device yet. On an iPhone and the iPad
+      vphone, then on the reporter's kind of device (iOS 17.3.1, roothide):
+      1. `make device-run SCRIPT=diagnostics`: the loaded check's
+         `result.process.runningAtStart` holds SpringBoard's pid (the
+         process list reads as mobile), and the ten-minute check of a
+         process that does not exist ends `cancelled` within about two
+         seconds of `confirmLoadedCancel`.
+      2. A wait across a process start: in a chat, a tweak filtered to an
+         app by bundle id, the app not running (no longer `notFound`);
+         `apelin_package_confirm_loaded` with `wait_seconds: 120`, the app
+         opened about 20 s in. The call answers `loaded` as soon as the
+         app starts, not at 120 s, and `targetProcess` says it started
+         while the call listened, with its pid. Then the reporter's case:
+         a tweak filtered by `Executables` to `dtremotedisplayd`, the Mac
+         connected (Xcode's Devices window) while the call listens.
+      3. Not started: the same call with `wait_seconds: 20` and nothing
+         started: `targetProcess` says `dtremotedisplayd` never ran while
+         the call listened, and the `process` evidence is `absent`; with
+         the target already running and not restarted, it says it was
+         already running when the call began and to restart it while the
+         call listens.
+      4. Stop mid-listen: `wait_seconds: 180`, Stop about 10 s in. The turn
+         ends within the stop's two seconds, and the check's task, read
+         with `Scripts/device.py call confirmLoadedAttach` and its task id
+         from the session's log, ended `cancelled` within a second or two
+         of the Stop, not at 180 s.
+
+- [ ] Why Irisin did not answer, and who holds the package database
+      (2026-11-21, issue #66, AGENTS.md ▸ Install bridge; all four cases
+      ran on the iOS 26.4 iPad vphone, and the first in a chat on the iPhone
+      one, with dpkg itself holding the locks there: the 0.4.8 record
+      below; what is left is the reporter's kind of device, an iPhone with
+      a background `dpkg-fill` after every package run, the holder named
+      there). The session host asks irisind
+      once per run, so before each case `Scripts/device.py kill-host`;
+      then an install (`make device-run SCRIPT=i1-smoke`, or Settings ▸
+      Toolchains ▸ a setup) fails with the case's sentence, in English;
+      then the device is put back and `make device-test` (smoke) passes.
+      On the iPhone vphone, as root, with the jbroot's paths:
+      1. irisind's job booted out (`launchctl bootout system
+         /Library/LaunchDaemons/wiki.qaq.irisind.plist`): "Irisin's
+         background service is not loaded…". With the plist also moved
+         aside: "Irisin's background service is missing <path>…". Put the
+         plist back and `launchctl bootstrap system` it.
+      2. `chmod 775 usr/libexec`: "Irisin rejected Apelin's background
+         service because the folder <jbroot>/usr/libexec has unsafe
+         permissions (owner 0, permissions 775)…". `chmod 755` it back at
+         once.
+      3. The real job booted out and a test job of the same Mach service
+         (`wiki.qaq.irisin.service`) whose program is `sleep 600`
+         bootstrapped: the install fails after about 20 s with "Irisin's
+         background service is not responding…", and nothing is left
+         waiting. Boot the test job out and the real one in.
+      4. A program holding `var/lib/dpkg/lock-frontend` (`perl -e 'use
+         Fcntl; open(F, "+<", shift) or die; my $l = pack("qqlss", 0, 0,
+         0, F_WRLCK, 0); fcntl(F, F_SETLK, $l) or die; sleep 120'
+         <path> &`, or python3's `fcntl.lockf`): the install fails at once
+         with "The package database is in use by perl… (process <pid>).
+         Wait for it to finish, then try again. Irisin reported: …"; once
+         it exits the install goes through.
+      The reporter's device (an iPhone with a background `dpkg-fill` after
+      every package run) is the real case.
+
+- [ ] A spent allowance, and Stop wherever a turn waits (2026-11-21, #67,
+      AGENTS.md ▸ Agent sessions). On the Mac `SpentAllowanceTests`,
+      `StopTests` and `StopWatchTests` ran against a provider on the Mac;
+      1 to 5 below ran on the iOS 26.4 iPad vphone (the 0.4.8 record), not
+      yet on an iPhone. On the iPhone vphone (iOS 26.4, then 27.0.1), with this
+      round's roothide package: copy `Documents/Console/fixtures/
+      stand-in-endpoint.pl` to the host and run `perl stand-in-endpoint.pl
+      <host> 8099`, `<host>` the host's address on its guests' network;
+      it answers as `/tmp/apelin-stand-in-mode` says
+      when each request comes and logs each request. In Settings ▸ Model
+      Providers ▸ OpenAI-Compatible API, any key and
+      `http://<host>:8099/v1`, Fetch Models, enable `stand-in`, Save
+      (mode `ok`). In a chat on `stand-in`, each mode written to the file
+      before the message:
+      1. `quota`: the turn ends within 2 s on "Usage Limit Reached" with
+         "You have exceeded your premium request allowance." under it,
+         never "Reconnecting…", and the host logs one request. On 0.4.7
+         the same read "Reconnecting…" for about 80 s over eight requests,
+         then "Too Many Requests".
+      2. `quota-late`: send a message, and a second while "Thinking…":
+         5 s later the turn ends on "Usage Limit Reached", the second
+         message is back in the composer under a passing "Message Not
+         Sent", "Back in the input box", and the host logs one request
+         (0.4.7: a second run, a second request).
+      3. `ratelimit`: "Reconnecting…"; Stop ends the turn within a second
+         and Stop goes; `ok`, and the next message is answered.
+      4. `silent`, then `stall` ("Hello " and nothing more): Stop ends each
+         turn within a second, and the next message (`ok`) is answered.
+      5. The quota row with the app in Simplified Chinese: 已达用量上限
+         over the provider's words, and read by VoiceOver.
+      Not on a vphone: iOS 16.5.1, the report's, where none of this has
+      run; a real provider's spent allowance (GitHub Copilot's premium
+      requests, the report's likely provider, is the one to try when an
+      account runs out); and the worker's 20 s bound, "Did Not Stop in
+      Time" over "Apelin ended this reply. Send a message to continue.",
+      which needs a request that does not hear its cancellation:
+      `StopWatchTests` alone shows it.
+
 - [ ] Token limits and compaction (2026-11-21, issue #68, AGENTS.md ▸ Agent
       sign-in ▸ Model limits and Agent sessions ▸ Compaction; only the Mac's
       `ContextLimitsTests`, `AgentModelLimitsTests`, the session host's

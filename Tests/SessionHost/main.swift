@@ -545,6 +545,8 @@ do {
         && !CallerPolicy.allows(.worker(.environment, instance: nil), .applicationList), "the apps under Applications are the app's alone")
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .toolHostCall), "the agent may call tools")
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .confirmLoaded) && CallerPolicy.allows(.worker(.agent, instance: "s"), .confirmLoadedAttach), "the agent starts and reads a load check")
+    check(CallerPolicy.allows(.worker(.agent, instance: "s"), .confirmLoadedCancel), "and stops one with the call that waited on it")
+    check(!CallerPolicy.allows(.worker(.environment, instance: nil), .confirmLoadedCancel), "no other worker stops one")
     // Accounts and MCP server configuration are the app's alone: a session's
     // agent never starts, answers or reads a sign-in, or probes configured servers.
     for operation: AppOperation in [
@@ -1690,6 +1692,10 @@ await screenConsentChecks(scratch: scratch, scratchPath: scratchPath)
 await resetToRemoteChecks(scratch: scratch, scratchPath: scratchPath)
 try await gitBranchChecks(scratch: scratch, scratchPath: scratchPath)
 try await terminalChecks(scratch: scratch, scratchPath: scratchPath)
+
+// MARK: - Stopping a load check (LoadCheckCancelChecks.swift)
+
+await loadCheckCancelChecks(scratch: scratch, scratchPath: scratchPath)
 
 // MARK: - Install bridge against a fake irisind
 
