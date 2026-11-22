@@ -7,14 +7,14 @@ func checkLinkedPackage() {
     let list = Data(#"""
     [
       {"id": "app/Apelin", "name": "Apelin", "license": "MIT", "url": "", "text": "", "version": "0.4.9"},
-      {"id": "kwwk/LICENSE", "name": "kwwk", "license": "MIT", "url": "", "text": "", "version": "0.1.121"},
+      {"id": "kwwk/LICENSE", "name": "kwwk", "license": "MIT", "url": "", "text": "", "version": "0.1.127"},
       {"id": "kwwk/Sources/x/LICENSE", "name": "kwwk / Sources/x", "license": "MIT", "url": "", "text": ""},
       {"id": "dog/LICENSE", "name": "Dog", "license": "MIT", "url": "", "text": "",
        "version": "997b8c58047c9bda25f95dce55390d5439bb02bd"},
       {"id": "then/LICENSE", "name": "Then", "license": "MIT", "url": "", "text": ""}
     ]
     """#.utf8)
-    precondition(LinkedPackage.version(of: "kwwk", in: list) == "0.1.121")
+    precondition(LinkedPackage.version(of: "kwwk", in: list) == "0.1.127")
     precondition(LinkedPackage.version(of: "Apelin", in: list) == "0.4.9")
     precondition(LinkedPackage.version(of: "Dog", in: list) == nil, "a revision is no version to show")
     precondition(LinkedPackage.version(of: "Then", in: list) == nil, "none stated")

@@ -4,7 +4,7 @@ import Foundation
 /// (`Licenses.json`): what the app says of one comes from the checkout it
 /// was built from, never from a number kept by hand.
 enum LinkedPackage {
-    /// The kwwk the agent's workers link, such as `0.1.121`; nil when the
+    /// The kwwk the agent's workers link, such as `0.1.127`; nil when the
     /// bundle's list does not say.
     static let kwwkVersion: String? = Bundle.main.url(forResource: "Licenses", withExtension: "json")
         .flatMap { try? Data(contentsOf: $0) }
