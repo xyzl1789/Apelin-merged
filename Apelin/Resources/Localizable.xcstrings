@@ -163877,7 +163877,1008 @@
           }
         }
       }
-    }
+    },
+      "Automatic Check-In": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "تسجيل الحضور التلقائي"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Automatisches Einchecken"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Registro automático"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Pointage automatique"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Registro automatico"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "自動チェックイン"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "자동 체크인"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Check-in automático"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Автоматическая отметка"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Điểm danh tự động"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "自动签到"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "自動簽到"
+            }
+          }
+        }
+      },
+      "Check In": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "تسجيل الحضور"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Einchecken"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Registro diario"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Pointage"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Registro giornaliero"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "チェックイン"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "체크인"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Check-in"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Отметка"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Điểm danh"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "签到"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "簽到"
+            }
+          }
+        }
+      },
+      "Check In All": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "تسجيل الحضور للكل"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Alle einchecken"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Registrar todo"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Pointer pour tout"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Registra tutto"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "すべてチェックイン"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "모두 체크인"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Fazer check-in em tudo"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Отметить всё"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Điểm danh tất cả"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "全部签到"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "全部簽到"
+            }
+          }
+        }
+      },
+      "Checking In…": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "جارٍ تسجيل الحضور…"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Wird eingecheckt…"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Registrando…"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Pointage en cours…"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Registrazione in corso…"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "チェックイン中…"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "체크인 중…"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Fazendo check-in…"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Отмечается…"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Đang điểm danh…"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "签到中…"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "簽到中…"
+            }
+          }
+        }
+      },
+      "Checked In": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "تم تسجيل الحضور"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Eingecheckt"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Registrado"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Pointé"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Registrato"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "チェックイン済み"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "체크인 완료"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Check-in feito"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Отмечено"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Đã điểm danh"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "已签到"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "已簽到"
+            }
+          }
+        }
+      },
+      "No Reward Today": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "لا مكافأة اليوم"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Heute keine Belohnung"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Hoy no hay recompensa"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Aucune récompense aujourd’hui"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Nessuna ricompensa oggi"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "今日の報酬はありません"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "오늘은 보상이 없습니다"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Nenhuma recompensa hoje"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Сегодня награды нет"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Hôm nay không có thưởng"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "今天没有奖励"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "今天沒有獎勵"
+            }
+          }
+        }
+      },
+      "Not Signed In": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "لم يتم تسجيل الدخول"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Nicht angemeldet"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Sesión no iniciada"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Non connecté"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Non connesso"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "未ログイン"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "로그인되지 않음"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Não conectado"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Вход не выполнен"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Chưa đăng nhập"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "未登录"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "未登入"
+            }
+          }
+        }
+      },
+      "Sign-In Expired": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "انتهت صلاحية تسجيل الدخول"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Anmeldung abgelaufen"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "La sesión ha caducado"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Connexion expirée"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Accesso scaduto"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "ログインの有効期限切れ"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "로그인이 만료되었습니다"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Sessão expirada"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Срок входа истёк"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Phiên đăng nhập hết hạn"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "登录状态已失效"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "登入狀態已失效"
+            }
+          }
+        }
+      },
+      "Points": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "نقاط"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Punkte"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "puntos"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "points"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "punti"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "ポイント"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "포인트"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "pontos"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "баллов"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "điểm"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "积分"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "積分"
+            }
+          }
+        }
+      },
+      "Request Refused": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "رفض الخادم الطلب"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Anfrage abgelehnt"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "El servidor rechazó la solicitud"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Requête refusée"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Richiesta rifiutata"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "リクエストが拒否されました"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "요청이 거부되었습니다"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "A solicitação foi recusada"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Запрос отклонён"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Máy chủ từ chối yêu cầu"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "服务器拒绝了请求"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "伺服器拒絕了請求"
+            }
+          }
+        }
+      },
+      "Streak %lld Days": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "%lld يومًا متتاليًا"
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "%lld Tage in Folge"
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "%lld días seguidos"
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "%lld jours d’affilée"
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "%lld giorni di fila"
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "連続 %lld 日"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "%lld일 연속"
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "%lld dias seguidos"
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "%lld дней подряд"
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "%lld ngày liên tiếp"
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "连续 %lld 天"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "連續 %lld 天"
+            }
+          }
+        }
+      },
+      "Once a day, when you open Apelin, each signed-in WorkBuddy, Trae CN and Qoder CN account checks in for you.": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "مرة واحدة يوميًا، عند فتح Apelin، يسجّل كل حساب WorkBuddy وTrae CN وQoder CN مسجّل الدخول الحضور تلقائيًا."
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Einmal am Tag, wenn du Apelin öffnest, checkt jedes angemeldete WorkBuddy-, Trae CN- und Qoder CN-Konto für dich ein."
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Una vez al día, al abrir Apelin, cada cuenta conectada de WorkBuddy, Trae CN y Qoder CN registra su asistencia por ti."
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Une fois par jour, à l’ouverture d’Apelin, chaque compte WorkBuddy, Trae CN et Qoder CN connecté pointe automatiquement pour vous."
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Una volta al giorno, all’apertura di Apelin, ogni account connesso di WorkBuddy, Trae CN e Qoder CN registra la presenza per te."
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "1日1回、Apelinを開くとサインイン済みの WorkBuddy、Trae CN、Qoder CN の各アカウントが自動でチェックインします。"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "하루 한 번 Apelin을 열면 로그인된 WorkBuddy, Trae CN, Qoder CN 계정이 자동으로 체크인합니다."
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Uma vez por dia, ao abrir o Apelin, cada conta conectada do WorkBuddy, Trae CN e Qoder CN faz check-in automaticamente."
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Раз в день при открытии Apelin каждому аккаунту WorkBuddy, Trae CN и Qoder CN с выполненным входом отметка ставится автоматически."
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Mỗi ngày một lần, khi mở Apelin, mỗi tài khoản WorkBuddy, Trae CN và Qoder CN đã đăng nhập sẽ tự điểm danh."
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "每天打开 Apelin 时，为每个已登录的 WorkBuddy、Trae CN、Qoder CN 账号自动签到一次。"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "每天開啟 Apelin 時，為每個已登入的 WorkBuddy、Trae CN、Qoder CN 帳號自動簽到一次。"
+            }
+          }
+        }
+      },
+      "Each row shows today's result. Check In All asks the server again right away.": {
+        "extractionState": "manual",
+        "localizations": {
+          "ar": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "يعرض كل صف نتيجة اليوم. «تسجيل الحضور للكل» يسأل الخادم مرة أخرى فورًا."
+            }
+          },
+          "de": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Jede Zeile zeigt das heutige Ergebnis. „Alle einchecken“ fragt den Server sofort erneut."
+            }
+          },
+          "es": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Cada fila muestra el resultado de hoy. «Registrar todo» vuelve a preguntar al servidor al instante."
+            }
+          },
+          "fr": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Chaque ligne affiche le résultat du jour. « Pointer pour tout » interroge à nouveau le serveur immédiatement."
+            }
+          },
+          "it": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Ogni riga mostra il risultato di oggi. «Registra tutto» interroga subito di nuovo il server."
+            }
+          },
+          "ja": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "各行には今日の結果が表示されます。「すべてチェックイン」はすぐにサーバーへ再度問い合わせます。"
+            }
+          },
+          "ko": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "각 행에는 오늘의 결과가 표시됩니다. '모두 체크인'은 즉시 서버에 다시 요청합니다."
+            }
+          },
+          "pt-BR": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Cada linha mostra o resultado de hoje. “Fazer check-in em tudo” consulta o servidor novamente na hora."
+            }
+          },
+          "ru": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "В каждой строке результат за сегодня. «Отметить всё» сразу заново спрашивает сервер."
+            }
+          },
+          "vi": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "Mỗi dòng hiển thị kết quả hôm nay. “Điểm danh tất cả” hỏi lại máy chủ ngay lập tức."
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "每行显示今天的结果。「全部签到」会立即再向服务器确认一次。"
+            }
+          },
+          "zh-Hant": {
+            "stringUnit": {
+              "state": "translated",
+              "value": "每列顯示今天的結果。「全部簽到」會立即再向伺服器確認一次。"
+            }
+          }
+        }
+      }
   },
   "version": "1.0"
 }

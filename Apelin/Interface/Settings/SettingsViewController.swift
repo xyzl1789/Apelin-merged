@@ -31,6 +31,9 @@ final class SettingsViewController: TableController {
         /// 设置 ▸ Agent ▸ 用量统计：模型 token 用量的汇总与明细。
         case usageStats
 
+        /// 设置 ▸ Agent ▸ 自动签到：每天第一次打开 App 时领取各平台的签到积分。
+        case checkIn
+
         case memories
         case skills
         case toolchain
@@ -69,6 +72,9 @@ final class SettingsViewController: TableController {
                 case .defaultModels: Preferences.DefaultModels.summary
                 case .permissionMode: AgentPermissions.title(for: AgentPermissions.mode)
                 case .promptInjection: Preferences.PromptInjection.enabled
+                    ? String(localized: "On")
+                    : String(localized: "Off")
+                case .checkIn: CheckInStore.shared.automaticEnabled
                     ? String(localized: "On")
                     : String(localized: "Off")
                 case .mcpServers: Preferences.MCPServers.snapshot.servers.items.filter(\.enabled).count.formatted()
@@ -113,6 +119,12 @@ final class SettingsViewController: TableController {
             ]),
         ).then { $0.accessibilityLabel = String(localized: "More") }
         updateRows()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(updateRows),
+            name: .checkInChanged,
+            object: nil,
+        )
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -137,7 +149,7 @@ final class SettingsViewController: TableController {
     private func rows(in section: Section) -> [Row] {
         switch section {
         case .chat: [.preferences]
-        case .agent: [.modelProviders, .defaultModels, .permissionMode, .promptInjection, .mcpServers, .autoAssistant, .usageStats, .memories, .skills]
+        case .agent: [.modelProviders, .defaultModels, .permissionMode, .promptInjection, .mcpServers, .autoAssistant, .usageStats, .checkIn, .memories, .skills]
         case .environment: [.toolchain, .sdks, .apps, .templates]
         case .storage: [.storage]
         case .git: [.git]
@@ -209,6 +221,8 @@ final class SettingsViewController: TableController {
             content.text = String(localized: "Auto Assistant")
         case .usageStats:
             content.text = String(localized: "用量统计")
+        case .checkIn:
+            content.text = String(localized: "Check In")
 
         case .memories:
             content.text = String(localized: "Memories")
@@ -265,6 +279,7 @@ final class SettingsViewController: TableController {
         case .mcpServers: page = MCPServersController()
         case .autoAssistant: page = AutoAssistantController()
         case .usageStats: page = UsageStatsController()
+        case .checkIn: page = CheckInController()
 
         case .memories: page = MemoriesController()
         case .skills: page = SkillsController()

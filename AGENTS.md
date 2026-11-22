@@ -402,7 +402,7 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   `crashOpen`, `crashSymbolicate`; `confirmLoaded`, `confirmLoadedAttach`, `captureScreen`,
   `readUITree`, `uiAction`; `agentOpen`, `agentPrompt`, `agentSteer`,
   `agentAbort`, `agentCompact`, `agentApprove`, `agentAttach`, `agentList`, `agentClose`, `agentDelegation`,
-  `agentRunCode`, `agentCredentialImport`, `agentAccountList`, `agentProviderBalances`,
+  `agentRunCode`, `agentCredentialImport`, `agentAccountList`, `agentProviderBalances`, `agentCheckIn`,
   `agentMCPTools`, `agentSkillList`, `agentAPIConfiguration`, `agentModelList`, `agentModelTest`, `agentModelActivate`, `agentSignIn`,
   `agentSignInRespond`, `agentSignInCancel`, `agentSignOut`, `agentRewind`, `agentEditMessage`,
   `agentDeleteReply`, `agentFork`; `toolHostOpen`, `toolHostClose`,
@@ -449,6 +449,17 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   `Apelind/Dispatch/<Domain>Handler.swift` (and `CallerPolicy` if a worker may
   call it); and this list. A worker-served operation is then a case in that
   worker's handler.
+- **每日签到只属于 App** (`Operations/CheckIn.swift`,
+  `ApelinAgentWorker/CheckIn/CheckInService.swift`,
+  `Apelin/Service/CheckInStore.swift`, `Interface/Settings/CheckInController.swift`)。
+  `agentCheckIn` 不在 `agentOperations` 里，Agent 无权调用。WorkBuddy、Trae CN、
+  Qoder CN 复用「模型服务商」同一份 keychain 凭据（store id 分别是
+  `workbuddy`、`trae`、`qoder-cn`）；worker 从账户里读出 token 后直接访问私有
+  接口，当天结果写进 `checkin/cache.json`，`force` 仅重问服务端，服务端说今天
+  已领过就绝不重复领取。协议线上只有 `CheckInResult`：平台、结果、积分、连签
+  天数与机器可读的失败原因；token 与响应正文既不写缓存、也不进日志或回给 App。
+  设置 ▸ Agent ▸ 自动签到在打开开关时立刻补签一次，并每天第一次进入前台时
+  安静地跑一次；失败可手动点平台行或「全部签到」重试。
 - **A chat channel belongs to the session host, not to a worker**
   (`Apelind/Session/Channel/WeChatChannel.swift`; the wire in
   `Operations/Channel.swift`, the page in `Interface/Settings/ChannelController.swift`).

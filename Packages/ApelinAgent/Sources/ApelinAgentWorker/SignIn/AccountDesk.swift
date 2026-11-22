@@ -49,6 +49,8 @@ public actor AccountDesk {
     /// One balance lookup at a time: a second caller joins the request the
     /// first one started, rather than asking every provider twice.
     private var balanceInFlight: Task<AgentProviderBalancesResponse, Error>?
+    /// 签到同一时间只跑一遍：自动签到与设置页的手动签到撞上时后者等前者的结果。
+    private var checkInInFlight: Task<AgentCheckInResponse, Error>?
 
     public init(
         store: any CredentialSource,
@@ -254,6 +256,29 @@ public actor AccountDesk {
         }
         balanceInFlight = task
         defer { balanceInFlight = nil }
+        return try await task.value
+    }
+
+    /// 给已登录的 WorkBuddy / Trae CN / Qoder CN 账号做当天签到。和余额一样
+    /// 先把凭据读成值，服务只拿值；当天问过的平台用 worker 里的缓存，`force`
+    /// 才重新打服务端。领取结果不可撤销，因此只有 App 明确要求时才真的领取。
+    public func checkIn(platforms: [CheckInPlatform], force: Bool, home: URL) async throws -> AgentCheckInResponse {
+        if let running = checkInInFlight {
+            return try await running.value
+        }
+        var accounts: [(String, OAuthCredentials)] = []
+        for id in await store.providerIds() {
+            guard CheckInPlatform.allCases.contains(where: { CheckInService.storeID($0) == id }),
+                  let saved = try await store.credentials(for: id) else { continue }
+            accounts.append((id, saved))
+        }
+        os.Logger(subsystem: "wiki.qaq.apelin", category: "CheckIn")
+            .info("worker 收到签到：force=\(force, privacy: .public)，平台 \(platforms.map(\.rawValue).joined(separator: ","), privacy: .public)，凭据 \(accounts.map(\.0).joined(separator: ","), privacy: .public)")
+        let task = Task<AgentCheckInResponse, Error> {
+            await CheckInService.run(platforms: platforms, force: force, accounts: accounts, home: home)
+        }
+        checkInInFlight = task
+        defer { checkInInFlight = nil }
         return try await task.value
     }
 

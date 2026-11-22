@@ -88,6 +88,8 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
     case agentMCPTools
     /// Read-only balance lookups for the provider accounts that publish one.
     case agentProviderBalances
+    /// 每日签到：从已登录的 WorkBuddy / Trae CN / Qoder CN 账号领取当天积分。
+    case agentCheckIn
     case agentSkillList
     /// Rewrites a composer draft: one turn of the chosen model, with no
     /// session and no tools, asked to improve the text and answer with it.
@@ -207,7 +209,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .confirmLoaded, .confirmLoadedAttach, .captureScreen, .readUITree, .uiAction: .diagnostics
         case .agentDelegation, .agentOpen, .agentPrompt, .agentGenerateImage, .agentSteer, .agentAbort, .agentCompact, .agentConfigure, .agentSetRunMode, .agentQueue, .agentApprove, .agentAttach, .agentList,
              .agentClose, .agentRunCode, .agentCredentialImport, .agentAccountList, .agentSkillList,
-             .agentRewritePrompt, .agentModelTest, .agentProviderBalances, .agentMCPTools,
+             .agentRewritePrompt, .agentModelTest, .agentProviderBalances, .agentCheckIn, .agentMCPTools,
              .agentAPIConfiguration, .agentModelList,
              .agentModelActivate, .agentSignIn, .agentSignInRespond, .agentSignInCancel, .agentSignOut,
              .agentRewind, .agentEditMessage, .agentDeleteReply, .agentFork:
@@ -298,6 +300,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .agentCredentialImport: AgentCredentialImportRequest.self
         case .agentAccountList: AgentAccountListRequest.self
         case .agentProviderBalances: AgentProviderBalancesRequest.self
+        case .agentCheckIn: AgentCheckInRequest.self
         case .agentMCPTools: AgentMCPToolsRequest.self
         case .agentSkillList: AgentSkillListRequest.self
         case .agentRewritePrompt: AgentRewritePromptRequest.self

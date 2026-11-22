@@ -179,6 +179,8 @@ final class ServiceTableTests: XCTestCase {
             ])) { _ = try await $0.agentAccountList() }
         case .agentProviderBalances:
             return Row(reply: AgentProviderBalancesResponse()) { _ = try await $0.agentProviderBalances(force: true) }
+        case .agentCheckIn:
+            return Row(reply: AgentCheckInResponse()) { _ = try await $0.agentCheckIn(force: true) }
         case .agentMCPTools:
             return Row(reply: AgentMCPToolsResponse(serverName: "docs", tools: [AgentMCPToolSummary(name: "search")])) {
                 _ = try await $0.agentMCPTools(serverName: "docs")

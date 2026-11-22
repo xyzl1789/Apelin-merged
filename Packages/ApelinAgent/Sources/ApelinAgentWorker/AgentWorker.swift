@@ -260,6 +260,11 @@ public enum AgentWorker {
                 let home = URL(fileURLWithPath: context.assignment.home, isDirectory: true)
                 return try await accounts.providerBalances(force: balances.force, home: home)
             }
+        case .agentCheckIn:
+            await WorkerMain.serve(AgentCheckInRequest.self, request) { checkIn in
+                let home = URL(fileURLWithPath: context.assignment.home, isDirectory: true)
+                return try await accounts.checkIn(platforms: checkIn.platforms, force: checkIn.force, home: home)
+            }
         case .agentSkillList:
             await WorkerMain.serve(AgentSkillListRequest.self, request) { _ in
                 let home = URL(fileURLWithPath: context.assignment.home, isDirectory: true)

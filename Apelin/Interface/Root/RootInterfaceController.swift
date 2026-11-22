@@ -260,6 +260,8 @@ final class RootInterfaceController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        // 冷启动不会收到 willEnterForeground；自动签到这里补一次（当天已跑过则不动）。
+        CheckInStore.shared.automaticRunIfNeeded()
         guard WelcomeFlow.shouldPresent else {
             StorageWarning.checkFreeSpace(from: self)
             return
@@ -276,6 +278,8 @@ final class RootInterfaceController: UIViewController {
         // at the next launch.
         Task { await chatRuntime.reconcileRuns() }
         StorageWarning.checkFreeSpace(from: self)
+        // 自动签到：每天第一次回到前台时安静地跑一次，worker 会复用当天缓存。
+        CheckInStore.shared.automaticRunIfNeeded()
     }
 
     /// What streamed or was typed since the last write goes to disk before
