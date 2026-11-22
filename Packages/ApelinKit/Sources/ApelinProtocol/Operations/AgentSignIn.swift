@@ -184,10 +184,13 @@ public struct ProviderBalance: Codable, Sendable, Equatable {
     /// 自定义中转站被探测出的类型（如「New API · /api/usage/token」）；官方
     /// 服务商或没探明时为 nil。展示时照原样显示，不含密钥或完整 URL。
     public var relayKind: String?
+    /// 积分获取方式，如「每日签到」「邀请好友」。余额不可查的平台为空，不显示。
+    public var earnWays: [String]
 
     public init(accountID: String, provider: AgentProvider, label: String,
                 amount: String, currency: String, fraction: Double?,
-                updatedAt: Date, stale: Bool, problem: String?, relayKind: String? = nil) {
+                updatedAt: Date, stale: Bool, problem: String?, relayKind: String? = nil,
+                earnWays: [String] = []) {
         self.accountID = accountID
         self.provider = provider
         self.label = label
@@ -198,6 +201,7 @@ public struct ProviderBalance: Codable, Sendable, Equatable {
         self.stale = stale
         self.problem = problem
         self.relayKind = relayKind
+        self.earnWays = earnWays
     }
 }
 

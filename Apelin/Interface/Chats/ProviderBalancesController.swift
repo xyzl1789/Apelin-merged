@@ -173,6 +173,8 @@ final class ProviderBalanceCardCell: UITableViewCell {
     private let timeLabel = UILabel()
     private let hostLabel = UILabel()
     private let relayLabel = UILabel()
+    /// 余额下方一行：「积分获取方式：每日签到、邀请好友」。余额不可查的平台为空，不显示。
+    private let earnWaysLabel = UILabel()
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)

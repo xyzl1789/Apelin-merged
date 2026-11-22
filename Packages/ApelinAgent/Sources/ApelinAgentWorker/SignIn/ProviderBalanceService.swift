@@ -159,7 +159,8 @@ enum ProviderBalanceService {
                 lines.append(Self.line(storeID: storeID, provider: provider, host: base.host,
                                        figure: Figure(amount: cached.amount, unit: cached.unit,
                                                       fraction: cached.fraction, relayKind: cached.relayKind),
-                                       updatedAt: cached.updatedAt, stale: false, problem: nil))
+                                       updatedAt: cached.updatedAt, stale: false, problem: nil,
+                                       earnWays: Self.earnWays(for: provider)))
                 continue
             }
             // 自定义中转站：从记忆里取 24 小时内认出的家族，只查它一个端点。
@@ -185,7 +186,8 @@ enum ProviderBalanceService {
                                   updatedAt: now, relayKind: result.relayKind)
                 try? JSONCoding.encode(item).write(to: file, options: .atomic)
                 lines.append(Self.line(storeID: storeID, provider: provider, host: base.host,
-                                       figure: result, updatedAt: now, stale: false, problem: nil))
+                                       figure: result, updatedAt: now, stale: false, problem: nil,
+                                       earnWays: Self.earnWays(for: provider)))
             } catch {
                 // 本来支持、只是这次没查到：保留圆环，显示上次缓存或失败说明。
                 let problem = (error as? Problem) ?? .unexpected
@@ -194,7 +196,8 @@ enum ProviderBalanceService {
                 } ?? Figure(amount: "--", unit: "", fraction: nil, relayKind: nil)
                 lines.append(Self.line(storeID: storeID, provider: provider, host: base.host,
                                        figure: fallback, updatedAt: cached?.updatedAt ?? Date(),
-                                       stale: true, problem: problem.text))
+                                       stale: true, problem: problem.text,
+                                       earnWays: Self.earnWays(for: provider)))
             }
         }
         return AgentProviderBalancesResponse(balances: lines)
@@ -742,7 +745,8 @@ enum ProviderBalanceService {
     }
 
     private static func line(storeID: String, provider: AgentProvider, host: String,
-                             figure: Figure, updatedAt: Date, stale: Bool, problem: String?) -> ProviderBalance {
+                             figure: Figure, updatedAt: Date, stale: Bool, problem: String?,
+                             earnWays: [String] = []) -> ProviderBalance {
         ProviderBalance(
             accountID: storeID,
             provider: provider,
@@ -754,7 +758,18 @@ enum ProviderBalanceService {
             stale: stale,
             problem: problem,
             relayKind: figure.relayKind,
+            earnWays: earnWays,
         )
+    }
+
+    /// 哪些平台能稳定读到余额，才在余额卡下标注积分获取方式。其余平台不查或
+    /// 余额不可取，保持空，不编造获取方式。
+    private static func earnWays(for provider: AgentProvider) -> [String] {
+        switch provider {
+        case .workBuddy: return ["每日签到", "邀请好友"]
+        case .trae: return ["每日签到", "邀请好友"]
+        default: return []
+        }
     }
 }
 

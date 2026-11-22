@@ -132,7 +132,7 @@ enum GrowthCenter {
         }
         let streakData = (streakJSON["data"] as? [String: Any]) ?? [:]
         let cards = int((streakData["makeup_cards"] as? [String: Any])?["balance"])
-        guard cards > 0 else {
+        guard let cards, cards > 0 else {
             out.details.append(.init(title: "连签补登", succeeded: true, note: "没有补登卡，跳过（不影响签到）"))
             return out
         }

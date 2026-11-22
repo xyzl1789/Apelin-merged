@@ -586,9 +586,7 @@ actor WorkerState {
             for await record in events {
                 await relay.relay(record.event, historical: record.seq <= boundary, at: record.date)
                 if record.seq > boundary, case let .finished(reason) = record.event {
-                    self?.runActive = false
-                    self?.stopWatch?.cancel()
-                    self?.stopWatch = nil
+                    await self?.clearRunMarks()
                     await relay.flush()
                     await self?.runFinished(reason)
                 }
@@ -701,6 +699,13 @@ actor WorkerState {
 
     func abort() async {
         await session?.abort()
+    }
+
+    /// The run's own marks, cleared where the actor owns them.
+    private func clearRunMarks() {
+        runActive = false
+        stopWatch?.cancel()
+        stopWatch = nil
     }
 
     /// A run ended; a headless session ends with it.
