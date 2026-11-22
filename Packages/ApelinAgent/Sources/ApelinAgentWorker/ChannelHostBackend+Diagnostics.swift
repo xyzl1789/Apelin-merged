@@ -176,19 +176,19 @@ public extension ChannelHostBackend {
             return "The screen is still off. Press unlock once more; if it stays off, ask the user to wake the device."
         }
         if response.locked == true {
-            return "The device's keybag is unlocked, but its lock screen is still up. Ask the user to swipe up or unlock the device, and never ask for or type the passcode."
+            return "设备的 keybag 已解锁，但锁屏仍在。请让用户上滑或解锁设备，绝不要索要或输入密码。"
         }
         switch response.unlockedBy {
         case .nothing?:
-            return "The device was already unlocked with its screen on; nothing was pressed."
+            return "设备原本就已解锁且屏幕亮着，什么都没按。"
         case .wake?:
-            return "The device was already unlocked; its screen was off, so it was woken."
+            return "设备原本就已解锁，屏幕是灭的，所以只做了唤醒。"
         case .lockScreen?:
-            return "No passcode was needed: the device was woken, taken past its lock screen and to the Home Screen."
+            return "无需密码：设备已唤醒、越过锁屏并到达主屏幕。"
         case .passcode?:
-            return "The device was unlocked with the passcode saved in Apelin's Settings, taken past its lock screen and to the Home Screen."
+            return "设备已用 Apelin 设置里保存的密码解锁，越过锁屏并到达主屏幕。"
         case nil:
-            return "The device is unlocked and its screen is on."
+            return "设备已解锁且屏幕亮着。"
         }
     }
 

@@ -504,7 +504,7 @@ struct ChannelHostBackendTests {
         let fixture = try Fixture()
         let press = ApelinAgent.UIActionRequest(context: fixture.context(), targetID: nil, action: .pressButton("unlock"))
         fixture.host.on(.uiAction, reply: ApelinProtocol.UIActionResponse(locked: false, screenOff: false))
-        #expect(try await fixture.backend.uiAction(press).message == "The device is unlocked and its screen is on.")
+        #expect(try await fixture.backend.uiAction(press).message == "设备已解锁且屏幕亮着。")
         #expect(fixture.host.requests(ApelinProtocol.UIActionRequest.self).map(\.action) == [.press(button: "unlock")])
         fixture.host.on(.uiAction, reply: ApelinProtocol.UIActionResponse(locked: true, screenOff: false))
         let stayed = try await fixture.backend.uiAction(press).message
@@ -521,10 +521,10 @@ struct ChannelHostBackendTests {
         let fixture = try Fixture()
         let press = ApelinAgent.UIActionRequest(context: fixture.context(), targetID: nil, action: .pressButton("unlock"))
         let messages: [(DeviceUnlockPath, String)] = [
-            (.nothing, "The device was already unlocked with its screen on; nothing was pressed."),
-            (.wake, "The device was already unlocked; its screen was off, so it was woken."),
-            (.lockScreen, "No passcode was needed: the device was woken, taken past its lock screen and to the Home Screen."),
-            (.passcode, "The device was unlocked with the passcode saved in Apelin's Settings, taken past its lock screen and to the Home Screen."),
+            (.nothing, "设备原本就已解锁且屏幕亮着，什么都没按。"),
+            (.wake, "设备原本就已解锁，屏幕是灭的，所以只做了唤醒。"),
+            (.lockScreen, "无需密码：设备已唤醒、越过锁屏并到达主屏幕。"),
+            (.passcode, "设备已用 Apelin 设置里保存的密码解锁，越过锁屏并到达主屏幕。"),
         ]
         for (path, message) in messages {
             fixture.host.on(.uiAction, reply: ApelinProtocol.UIActionResponse(locked: false, screenOff: false, unlockedBy: path))
