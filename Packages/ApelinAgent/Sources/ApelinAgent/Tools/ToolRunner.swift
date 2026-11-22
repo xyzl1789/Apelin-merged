@@ -609,6 +609,12 @@ actor ToolRunner {
             try await record(.notice(title: notice.title, body: notice.body))
             return text(notices.sentMessage)
 
+        case .questionAsk:
+            return try await askQuestion(arguments, toolCallID: context.toolCallID, cancellation: cancellation)
+
+        case .runMode:
+            return try await changeRunMode(arguments, toolCallID: context.toolCallID, cancellation: cancellation)
+
         case .webSearch:
             let result = try await WebSearch.shared.search(arguments)
             return text(result.answer)

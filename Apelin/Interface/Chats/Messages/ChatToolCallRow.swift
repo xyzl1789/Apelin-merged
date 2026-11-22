@@ -337,6 +337,8 @@ enum ToolSymbol {
             "checklist"
         case .notificationSend:
             "bell"
+        case .conversationCompact:
+            "rectangle.compress.vertical"
         case .questionAsk:
             "questionmark.bubble"
         case .runMode:
