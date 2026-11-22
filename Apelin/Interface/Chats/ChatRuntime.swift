@@ -244,6 +244,7 @@ final class ChatRuntime {
         isReconciled = true
         onChange?()
         watchHostRuns()
+        warmRecentEvents()
     }
 
     /// Puts every saved row in step with what the host reports now: a run it
@@ -274,6 +275,24 @@ final class ChatRuntime {
                 guard !Task.isCancelled, let self else { return }
                 guard UIApplication.shared.applicationState != .background else { continue }
                 await self.reconcileRuns()
+            }
+        }
+    }
+
+    /// 预热最近几条对话的事件：冷启动后第一次打开原本要等整份历史读完、
+    /// 解码完才显示，而读者最先点的几乎总是最近那几条。以较低的优先级读，
+    /// 读完就装进内存，打开时 `prepareEvents` 便不必再等。
+    private func warmRecentEvents(limit: Int = 2) {
+        let recent = records.values
+            .filter { unloadedEvents.contains($0.summary.id) }
+            .sorted { $0.summary.lastInteraction > $1.summary.lastInteraction }
+            .prefix(limit)
+            .map(\.summary.id)
+        guard !recent.isEmpty else { return }
+        Task(priority: .utility) { [weak self] in
+            for id in recent {
+                guard let self, !Task.isCancelled else { return }
+                _ = try? await self.prepareEvents(id, priority: .utility)
             }
         }
     }
@@ -510,9 +529,9 @@ final class ChatRuntime {
     /// 同一会话的显示与后台跟随共享一次磁盘读取。
     private var eventLoads: [UUID: Task<[TaskEvent], Error>] = [:]
 
-    private func prepareEvents(_ id: UUID) async throws {
+    private func prepareEvents(_ id: UUID, priority: TaskPriority = .userInitiated) async throws {
         guard unloadedEvents.contains(id), records[id] != nil else { return }
-        let load = eventLoads[id] ?? startEventLoad(id)
+        let load = eventLoads[id] ?? startEventLoad(id, priority: priority)
         _ = try await load.value
     }
 
@@ -523,12 +542,12 @@ final class ChatRuntime {
     /// 仍要装进去。此前结果是在等待方的 `await` 之后才写入的，读者一切
     /// 走，那一读就成了空转，切回来还得从头再读一遍——这正是「要切换
     /// 会话才刷出来」的由来。
-    private func startEventLoad(_ id: UUID) -> Task<[TaskEvent], Error> {
+    private func startEventLoad(_ id: UUID, priority: TaskPriority = .userInitiated) -> Task<[TaskEvent], Error> {
         let folder = DataFolder.app.root.appendingPathComponent("Chats")
         let load = Task { [weak self] () throws -> [TaskEvent] in
             defer { self?.eventLoads[id] = nil }
             // 读者正等着这一页：这一读不排到后台的其它工作后面去。
-            let events = try await Task.detached(priority: .userInitiated) {
+            let events = try await Task.detached(priority: priority) {
                 try ChatEventsFile.read(id, in: folder)
             }.value
             await self?.installEvents(events, for: id)
