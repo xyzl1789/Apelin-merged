@@ -285,9 +285,7 @@ final class ProviderBalanceCardCell: UITableViewCell {
         relayLabel.text = balance.relayKind
         earnWaysLabel.isHidden = balance.earnWays.isEmpty
         if !balance.earnWays.isEmpty {
-            earnWaysLabel.text = String(
-                localized: "积分获取方式：\(balance.earnWays.joined(separator: "、"))",
-            )
+            earnWaysLabel.text = "积分获取方式：\(balance.earnWays.joined(separator: "、"))"
         }
         if balance.stale {
             // 查不到时这一行写原因，站点照旧跟在后面。
