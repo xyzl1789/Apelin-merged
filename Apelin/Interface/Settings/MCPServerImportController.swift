@@ -14,15 +14,15 @@ final class MCPServerImportController: TableController, UITextViewDelegate {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "导入 MCP JSON"
+        title = String(localized: "Import MCP JSON")
         navigationItem.backButtonDisplayMode = .minimal
         navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "解析", primaryAction: UIAction { [weak self] _ in self?.parse() },
+            title: String(localized: "Parse"), primaryAction: UIAction { [weak self] _ in self?.parse() },
         )
         input.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
         input.autocorrectionType = .no
         input.autocapitalizationType = .none
-        input.accessibilityLabel = "MCP JSON 配置"
+        input.accessibilityLabel = String(localized: "MCP JSON Configuration")
         input.delegate = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
         tableView.rowHeight = UITableView.automaticDimension
@@ -40,13 +40,15 @@ final class MCPServerImportController: TableController, UITextViewDelegate {
     }
 
     override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        if section == 0 { return "粘贴 MCP JSON" }
+        if section == 0 { return String(localized: "Paste MCP JSON") }
         guard let preview else { return nil }
-        return "导入预览 · \(preview.servers.count) 个可导入 · \(preview.unsupported.count) 个不支持 · \(replacingNames.count) 个同名配置将更新"
+        return String(localized: "Import Preview · \(preview.servers.count) importable · \(preview.unsupported.count) unsupported · \(replacingNames.count) existing will be updated")
     }
 
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        if section == 0 { return "接受标准 mcpServers JSON。iOS 当前仅支持 HTTP Streamable；STDIO/SSE 会在预览中列出并跳过。" }
+        if section == 0 {
+            return String(localized: "Takes a standard mcpServers JSON. iOS supports HTTP Streamable only; STDIO and SSE entries are listed in the preview and skipped.")
+        }
         return nil
     }
 
@@ -69,17 +71,17 @@ final class MCPServerImportController: TableController, UITextViewDelegate {
         if let preview, indexPath.row < preview.servers.count {
             let server = preview.servers[indexPath.row]
             content.text = server.connection.name
-            let replacement = replacingNames.contains(server.connection.name) ? " · 将更新已有配置" : ""
-            content.secondaryText = server.connection.url + (server.enabled ? "" : " · 已停用") + replacement
+            let replacement = replacingNames.contains(server.connection.name) ? " · " + String(localized: "Will update the existing entry") : ""
+            content.secondaryText = server.connection.url + (server.enabled ? "" : " · " + String(localized: "Off")) + replacement
             content.image = UIImage(systemName: "globe")
             content.imageProperties.tintColor = .systemGreen
         } else if let preview, indexPath.row - preview.servers.count < preview.unsupported.count {
             content.text = preview.unsupported[indexPath.row - preview.servers.count]
-            content.secondaryText = "此项不会导入"
+            content.secondaryText = String(localized: "This entry is not imported")
             content.image = UIImage(systemName: "exclamationmark.triangle.fill")
             content.imageProperties.tintColor = .systemOrange
         } else {
-            content.text = "没有可导入的 HTTP 配置"
+            content.text = String(localized: "No HTTP entry to import")
             content.textProperties.color = .secondaryLabel
         }
         cell.contentConfiguration = content
@@ -91,7 +93,7 @@ final class MCPServerImportController: TableController, UITextViewDelegate {
         preview = nil
         replacingNames = []
         navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "解析", primaryAction: UIAction { [weak self] _ in self?.parse() },
+            title: String(localized: "Parse"), primaryAction: UIAction { [weak self] _ in self?.parse() },
         )
         tableView.reloadSections(IndexSet(integer: 1), with: .automatic)
     }
@@ -104,16 +106,16 @@ final class MCPServerImportController: TableController, UITextViewDelegate {
             preview = parsed
             let count = parsed.servers.count
             navigationItem.rightBarButtonItem = UIBarButtonItem(
-                title: "导入", primaryAction: UIAction { [weak self] _ in self?.commit() },
+                title: String(localized: "Import"), primaryAction: UIAction { [weak self] _ in self?.commit() },
             )
             navigationItem.rightBarButtonItem?.isEnabled = count > 0
         } catch {
             preview = nil
             replacingNames = []
             navigationItem.rightBarButtonItem = UIBarButtonItem(
-                title: "解析", primaryAction: UIAction { [weak self] _ in self?.parse() },
+                title: String(localized: "Parse"), primaryAction: UIAction { [weak self] _ in self?.parse() },
             )
-            presentNotice(title: "JSON 无效", message: error.readableMessage)
+            presentNotice(title: "Invalid JSON", message: error.readableMessage)
         }
         tableView.reloadData()
     }
@@ -129,16 +131,16 @@ final class MCPServerImportController: TableController, UITextViewDelegate {
                 return
             }
             presentConfirmation(
-                title: "更新同名服务器？",
-                message: "这些名称已存在：\(conflicts.joined(separator: "、"))。继续后会用导入内容替换对应配置，包括请求头。",
-                cancelTitle: "取消",
-                confirmTitle: "更新并导入",
+                title: "Update Existing Servers?",
+                message: "These names already exist: \(conflicts.joined(separator: ", ")). Continuing replaces their configuration with the imported one, request headers included.",
+                cancelTitle: "Cancel",
+                confirmTitle: "Update and Import",
             ) { [weak self] in
                 do { try self?.apply(preview) }
-                catch { self?.presentNotice(title: "导入失败", message: error.readableMessage) }
+                catch { self?.presentNotice(title: "Import Failed", message: error.readableMessage) }
             }
         } catch {
-            presentNotice(title: "导入失败", message: error.readableMessage)
+            presentNotice(title: "Import Failed", message: error.readableMessage)
         }
     }
 

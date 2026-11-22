@@ -21,12 +21,12 @@ final class MCPServerToolsController: UITableViewController {
         super.viewDidLoad()
         title = serverName
         navigationItem.leftBarButtonItem = UIBarButtonItem(
-            title: "完成", style: .done, target: self, action: #selector(done),
+            title: String(localized: "Done"), style: .done, target: self, action: #selector(done),
         )
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "arrow.clockwise"),
             primaryAction: UIAction { [weak self] _ in self?.refresh() },
-        ).then { $0.accessibilityLabel = "刷新工具列表" }
+        ).then { $0.accessibilityLabel = String(localized: "Refresh Tool List") }
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "tool")
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 76
@@ -44,14 +44,14 @@ final class MCPServerToolsController: UITableViewController {
         let cell = tableView.dequeueReusableCell(withIdentifier: "tool", for: indexPath)
         var content = UIListContentConfiguration.subtitleCell()
         if isLoading {
-            content.text = "正在连接并获取工具…"
+            content.text = String(localized: "Connecting and fetching tools…")
             content.image = UIImage(systemName: "arrow.triangle.2.circlepath")
         } else if let errorText {
             content.text = errorText
             content.image = UIImage(systemName: "exclamationmark.triangle.fill")
             content.imageProperties.tintColor = .systemOrange
         } else if tools.isEmpty {
-            content.text = "服务器没有报告工具。"
+            content.text = String(localized: "The server reported no tools.")
             content.textProperties.color = .secondaryLabel
         } else {
             let tool = tools[indexPath.row]
