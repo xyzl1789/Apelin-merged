@@ -32,6 +32,8 @@ final class ChatController: UIViewController {
     @objc dynamic private var openingQueueEditor = false
     private let composer = ComposerView()
     private let topBlur = ChatTopBlurView()
+    /// 没有消息的对话开场时，在输入框上方空白区中央显示的那行字。
+    private let welcome = ChatWelcomeView()
     /// 在所有内容之下：读者选的纸或图片，画在消息列表和输入框下面，
     /// 这两者在可以透明的地方保持透明。
     private let chatBackground = ChatBackgroundView()
@@ -309,6 +311,7 @@ final class ChatController: UIViewController {
             make.trailing.lessThanOrEqualTo(view.safeAreaLayoutGuide).offset(-16)
             make.width.equalTo(view.safeAreaLayoutGuide).offset(-32).priority(.low)
         }
+        addWelcome()
 
         var latestConfiguration: UIButton.Configuration
         if #available(iOS 26, *) {
@@ -666,6 +669,39 @@ final class ChatController: UIViewController {
         NotificationCenter.default.removeObserver(self)
     }
 
+    /// 把开场那行字放在导航栏和输入框之间，也就是将来有消息时正文的中部。
+    private func addWelcome() {
+        view.insertSubview(welcome, aboveSubview: messageList)
+        welcome.isHidden = true
+        let centre = UILayoutGuide()
+        view.addLayoutGuide(centre)
+        centre.snp.makeConstraints { make in
+            make.top.equalTo(view.safeAreaLayoutGuide.snp.top)
+            make.bottom.equalTo(composer.snp.top)
+        }
+        welcome.snp.makeConstraints { make in
+            make.centerX.equalTo(view)
+            make.centerY.equalTo(centre.snp.centerY)
+            make.top.greaterThanOrEqualTo(centre.snp.top)
+            make.leading.greaterThanOrEqualTo(view.safeAreaLayoutGuide.snp.leading).offset(24)
+            make.trailing.lessThanOrEqualTo(view.safeAreaLayoutGuide.snp.trailing).offset(-24)
+        }
+    }
+
+    /// 页面没有消息时显示开场那行字；一旦写了消息，就以消息取代它。
+    private func updateWelcome() {
+        let empty = messages.isEmpty && (chat?.isUntitled ?? true)
+        if empty {
+            guard welcome.isHidden else { return }
+            welcome.isHidden = false
+            welcome.play()
+        } else {
+            guard !welcome.isHidden else { return }
+            welcome.isHidden = true
+            welcome.stop()
+        }
+    }
+
     /// 设置页最后留下的纸或图片。
     @objc private func reloadBackground() {
         chatBackground.opacity = ChatBackground.opacity
@@ -675,6 +711,7 @@ final class ChatController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateWelcome()
         updateMessageListInsets()
         // Not while `use(_:)` is still swapping the conversation in:
         // restoring its draft lays the window out before its rows are in the
@@ -1065,6 +1102,7 @@ final class ChatController: UIViewController {
             followedTurn = message
         }
         showTranscript(items)
+        updateWelcome()
         followTurn(heldLatest: heldLatest)
         if revealsCompaction {
             revealLatestMessage()

@@ -44,7 +44,7 @@ final class ChatBackgroundView: UIView {
         imageView.frame = bounds
     }
 
-    private func apply() {
+    @objc dynamic private func apply() {
         switch background {
         case .none:
             paperView.isHidden = true

@@ -83,7 +83,7 @@ final class PaperBackgroundView: UIView {
         paper.design(dark: traits.userInterfaceStyle == .dark).base[1]
     }
 
-    private func applyStyle() {
+    @objc dynamic private func applyStyle() {
         let design = paper.design(dark: traitCollection.userInterfaceStyle == .dark)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -101,7 +101,7 @@ final class PaperBackgroundView: UIView {
         CATransaction.commit()
     }
 
-    private func drawnPattern() -> CGPath? {
+    @objc dynamic private func drawnPattern() -> CGPath? {
         let path = CGMutablePath()
         switch paper.pattern {
         case .none:
