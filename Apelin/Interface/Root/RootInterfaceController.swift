@@ -21,6 +21,12 @@ final class RootInterfaceController: UIViewController {
     let navigator = DetailNavigator()
     private let sidebar = SidebarController()
     private let chatRuntime = ChatRuntime()
+
+    /// The app's one runtime, for a page that deletes a project or a
+    /// conversation outside the sidebar: Settings ▸ Storage.
+    var conversations: ChatRuntime {
+        chatRuntime
+    }
     @objc private dynamic var restoredChat = false
     /// 启动时锁存，后续手动打开设置的新标记不能改变本次恢复决策。
     private let previousOpeningInterrupted = ChatOpeningRecovery.pending()

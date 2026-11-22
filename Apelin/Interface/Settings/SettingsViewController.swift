@@ -11,6 +11,7 @@ final class SettingsViewController: TableController {
         case chat
         case agent
         case environment
+        case storage
         case git
         case plugins
         case about
@@ -37,6 +38,8 @@ final class SettingsViewController: TableController {
         /// Settings ▸ Apps: the apps under the bootstrap's `Applications`.
         case apps
         case templates
+        /// 设置 ▸ 存储：本应用在数据目录里存了什么，以及清理。
+        case storage
         /// Settings ▸ Plugins: the WeChat ClawBot channel.
         case weChat
         case git
@@ -136,6 +139,7 @@ final class SettingsViewController: TableController {
         case .chat: [.preferences]
         case .agent: [.modelProviders, .defaultModels, .permissionMode, .promptInjection, .mcpServers, .autoAssistant, .usageStats, .memories, .skills]
         case .environment: [.toolchain, .sdks, .apps, .templates]
+        case .storage: [.storage]
         case .git: [.git]
         case .plugins: [.weChat]
         case .about: [.version, .licenses, .logs]
@@ -160,6 +164,8 @@ final class SettingsViewController: TableController {
         case .chat: nil
         case .agent: String(localized: "Agent")
         case .environment: String(localized: "Environment")
+        // 这一行自己就是名字。
+        case .storage: nil
         case .git: nil
         case .plugins: String(localized: "Plugins")
         case .about: String(localized: "About")
@@ -171,6 +177,7 @@ final class SettingsViewController: TableController {
         case .chat: nil
         case .agent: nil
         case .environment: nil
+        case .storage: nil
         case .plugins: nil
         case .git:
             String(localized: "The author of your commits, your GitHub account, and the package repository your releases are published to.")
@@ -215,6 +222,8 @@ final class SettingsViewController: TableController {
             content.text = String(localized: "Apps")
         case .templates:
             content.text = String(localized: "Templates")
+        case .storage:
+            content.text = String(localized: "Storage")
         case .weChat:
             content.text = String(localized: "WeChat ClawBot")
         case .git:
@@ -263,6 +272,7 @@ final class SettingsViewController: TableController {
         case .sdks: page = SDKListController()
         case .apps: page = AppsController()
         case .templates: page = TemplatesController()
+        case .storage: page = StorageController()
         case .weChat: page = ChannelController()
         case .git: page = GitSettingsController()
         case .licenses: page = LicensesViewController()

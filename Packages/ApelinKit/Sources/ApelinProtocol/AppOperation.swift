@@ -180,6 +180,12 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
     case transferInspect
     case transferImport
 
+    /// Settings ▸ Storage: what each place Apelin keeps bytes costs, asked one
+    /// area at a time so a slow folder holds nothing else up, and the
+    /// emptying of the folders no model indexes.
+    case storageUsage
+    case storagePurge
+
     /// Which `Operations/<Domain>.swift` and `Dispatch/<Domain>Handler.swift`
     /// own the operation.
     public var domain: OperationDomain {
@@ -221,6 +227,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
             .distribution
         case .channelStatus, .channelSignIn, .channelVerifyCode, .channelConfigure, .channelSignOut:
             .channel
+        case .storageUsage, .storagePurge: .storage
         }
     }
 
@@ -370,6 +377,8 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .channelVerifyCode: ChannelVerifyCodeRequest.self
         case .channelConfigure: ChannelConfigureRequest.self
         case .channelSignOut: ChannelSignOutRequest.self
+        case .storageUsage: StorageUsageRequest.self
+        case .storagePurge: StoragePurgeRequest.self
         }
     }
 }
@@ -393,6 +402,7 @@ public enum OperationDomain: String, Codable, CaseIterable, Sendable {
     case transfer
     case distribution
     case channel
+    case storage
 }
 
 /// A request on the wire. Each operation has exactly one request type, and

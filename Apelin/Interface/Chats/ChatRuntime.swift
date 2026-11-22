@@ -341,6 +341,16 @@ final class ChatRuntime {
         follow(record.summary.id, task: task)
     }
 
+    /// Whether any conversation is working right now: a turn running, a
+    /// message sending, a session opening. What removes the sessions a turn
+    /// depends on asks first.
+    var hasWorkingConversations: Bool {
+        if records.values.contains(where: { $0.summary.isWorking || $0.sending != nil }) {
+            return true
+        }
+        return !opening.isEmpty
+    }
+
     /// Lists and follows a session an `apelin://` link named that had no
     /// row (`ChatLinkTarget`), and returns its row.
     func adoptLinked(_ record: ChatRecord) -> ChatSummary? {
