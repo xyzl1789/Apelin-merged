@@ -61,6 +61,7 @@ public enum AgentWorker {
         case .agentPrompt:
             await WorkerMain.serve(AgentPromptRequest.self, request) { prompt in
                 let session = try await state.session(prompt.sessionID)
+                await state.markRunActive()
                 if let mode = prompt.approvalMode {
                     await session.setApprovalMode(AgentWorker.approvalMode(mode))
                 }
@@ -146,7 +147,8 @@ public enum AgentWorker {
             }
         case .agentAbort:
             await WorkerMain.serve(AgentAbortRequest.self, request) { abort in
-                try await (state.session(abort.sessionID)).abort()
+                // 应用的「停止」：由 worker 计时，未结束的运行会被兜底结束。
+                try await state.stop(abort.sessionID)
                 return Acknowledged()
             }
         case .agentCompact:
@@ -421,6 +423,14 @@ actor WorkerState {
     private var relay: Task<Void, Never>?
     private var closeWhenFinished = false
     private var finished = false
+    /// A stop's timed fallback: a run that does not answer its cancellation
+    /// is ended by the worker, so Stop always ends the turn.
+    private var stopWatch: Task<Void, Never>?
+    /// Whether the current run is still going, for that fallback. Set when
+    /// the run opens, cleared by its `.finished` event.
+    private var runActive = false
+    /// How long a stopped run has to end before the worker ends it.
+    private let stopPatience: Duration = .seconds(20)
 
     func open(_ open: AgentOpenRequest, taskID: TaskID, context: WorkerContext) async throws {
         guard session == nil, !opening else {
@@ -548,6 +558,9 @@ actor WorkerState {
             for await record in events {
                 await relay.relay(record.event, historical: record.seq <= boundary, at: record.date)
                 if record.seq > boundary, case let .finished(reason) = record.event {
+                    runActive = false
+                    stopWatch?.cancel()
+                    stopWatch = nil
                     await relay.flush()
                     await self?.runFinished(reason)
                 }
@@ -555,6 +568,7 @@ actor WorkerState {
             await relay.flush()
         }
         if let prompt = open.prompt, !prompt.isEmpty {
+            runActive = true
             try await session.prompt(prompt)
             // A conversation another agent opened is named by its opener,
             // or like one the user started; a headless run is not named.
@@ -612,6 +626,49 @@ actor WorkerState {
             return .deny(reason: typed.isEmpty ? "denied in Apelin" : typed)
         }
         return .approve(approve.scope == .session ? .session : .once)
+    }
+
+    /// Marks the start of a run, for the stop fallback.
+    func markRunActive() {
+        stopWatch?.cancel()
+        stopWatch = nil
+        runActive = true
+    }
+
+    /// Stops the run of session `sessionID`, the app's Stop (`agentAbort`).
+    /// The session's abort is followed by a timed fallback: a run still
+    /// going after `stopPatience` is ended by the worker, so Stop always
+    /// ends the turn even when something holds its cancellation.
+    func stop(_ sessionID: String) async throws {
+        _ = try session(sessionID)
+        await stop()
+    }
+
+    func stop() async {
+        guard let session else { return }
+        await session.abort()
+        stopWatch?.cancel()
+        let patience = stopPatience
+        stopWatch = Task { [weak self] in
+            try? await Task.sleep(for: patience)
+            guard let self, !Task.isCancelled else { return }
+            await self.endUnstoppedIfRunning()
+        }
+    }
+
+    /// The timed fallback: if the stopped run has not ended, end the task
+    /// with the reason the app says as "Did Not Stop in Time".
+    private func endUnstoppedIfRunning() async {
+        guard runActive, !finished else { return }
+        runActive = false
+        let message = "This chat did not stop in time, so Apelin ended it. Send a message to continue."
+        if let context, let taskID {
+            context.emit(taskID, "error", .object([
+                "message": .string(message),
+                "reason": .string(ApelinError.Reason.unstopped.rawValue),
+            ]))
+        }
+        await close(.cancelled, message: message)
     }
 
     func abort() async {

@@ -39,6 +39,7 @@ struct ChatFailure: Hashable {
         case .server: String(localized: "Model Provider Error")
         case .contextOverflow: String(localized: "Chat Too Long")
         case .invalidRequest: String(localized: "Request Not Accepted")
+        case .unstopped: String(localized: "Did Not Stop in Time")
         default: nil
         }
     }
@@ -53,6 +54,7 @@ struct ChatFailure: Hashable {
         case .authentication: String(localized: "Check this provider’s sign-in in Settings ▸ Model Providers.")
         case .contextOverflow: String(localized: "Compact the context or start a new chat, then send your message again.")
         case .invalidRequest: String(localized: "The provider refused this request. Check the model name and your message, then try again.")
+        case .unstopped: String(localized: "Apelin ended this reply. Send a message to continue.")
         default: nil
         }
     }

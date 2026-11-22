@@ -29,4 +29,7 @@ public extension ApelinError.Reason {
     /// parameter, a message it will not take. Switching models does not
     /// answer for it, so the app leaves it out of its switch set.
     static let invalidRequest = Self(rawValue: "invalidRequest")
+    /// Not a request's failure: a stopped run that had not ended in time,
+    /// which the worker ended itself.
+    static let unstopped = Self(rawValue: "unstopped")
 }
