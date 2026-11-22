@@ -160308,6 +160308,2330 @@
           }
         }
       }
+    },
+    "%@ available of %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ available of %@"
+          }
+        }
+      }
+    },
+    "%@ 会被删除，其他内容不受影响。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会被删除，其他内容不受影响。"
+          }
+        }
+      }
+    },
+    "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的消息以及智能体续接用的记录会一并删除。此操作无法撤销。"
+          }
+        }
+      }
+    },
+    "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apelin 自己清空这些目录。最近一小时内写过的构建目录会保留，以免构建还在用它。"
+          }
+        }
+      }
+    },
+    "DELETE": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DELETE"
+          }
+        }
+      }
+    },
+    "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/ 下的每个目录连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        }
+      }
+    },
+    "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects/%@ 的 %@ 连同 Git 历史一并删除，其中的每条对话也会消失。此操作无法撤销。"
+          }
+        }
+      }
+    },
+    "全部删除": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部删除"
+          }
+        }
+      }
+    },
+    "删除": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        }
+      }
+    },
+    "删除%@？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除%@？"
+          }
+        }
+      }
+    },
+    "删除所有对话？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有对话？"
+          }
+        }
+      }
+    },
+    "删除所有项目？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除所有项目？"
+          }
+        }
+      }
+    },
+    "对话的消息与智能体续接用的记录会一并删除，无法恢复。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话的消息与智能体续接用的记录会一并删除，无法恢复。"
+          }
+        }
+      }
+    },
+    "无法删除对话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除对话"
+          }
+        }
+      }
+    },
+    "无法删除项目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除项目"
+          }
+        }
+      }
+    },
+    "无法清空": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法清空"
+          }
+        }
+      }
+    },
+    "有些对话没能删除。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些对话没能删除。"
+          }
+        }
+      }
+    },
+    "有些目录没能删除。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有些目录没能删除。"
+          }
+        }
+      }
+    },
+    "有对话正在进行": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有对话正在进行"
+          }
+        }
+      }
+    },
+    "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构建、临时文件、导出、日志和编辑备份都会清空，共 %@。"
+          }
+        }
+      }
+    },
+    "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话的消息以及智能体续接用的记录都会被删除。此操作无法撤销。输入 DELETE 以继续。"
+          }
+        }
+      }
+    },
+    "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每条对话都保留、照常可读，但不能再从原处接着做：下一条消息会重新开始一个会话。输入 DELETE 以清空。"
+          }
+        }
+      }
+    },
+    "清空%@？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空%@？"
+          }
+        }
+      }
+    },
+    "清空以上全部？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空以上全部？"
+          }
+        }
+      }
+    },
+    "清空会话记录？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空会话记录？"
+          }
+        }
+      }
+    },
+    "等它结束后再清空会话记录。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等它结束后再清空会话记录。"
+          }
+        }
+      }
+    },
+    "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目与对话会连同 Git 历史和消息一并永久删除。SDK 与工具链在各自的页面移除。"
+          }
+        }
+      }
+    },
+    "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的目录、其中的文件和 Git 历史会被删除，其中的每条对话也会一并消失。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
