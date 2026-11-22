@@ -1,6 +1,172 @@
 {
   "sourceLanguage": "en",
   "strings": {
+      "Not set" : {
+        "extractionState" : "manual",
+        "localizations" : {
+          "ar" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Not set"
+            }
+          },
+          "de" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Not set"
+            }
+          },
+          "en" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Not set"
+            }
+          },
+          "es" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Not set"
+            }
+          },
+          "fr" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Not set"
+            }
+          },
+          "it" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Not set"
+            }
+          },
+          "ja" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Not set"
+            }
+          },
+          "ko" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Not set"
+            }
+          },
+          "pt-BR" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Not set"
+            }
+          },
+          "ru" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Not set"
+            }
+          },
+          "vi" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Not set"
+            }
+          },
+          "zh-Hans" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "未设置"
+            }
+          },
+          "zh-Hant" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "未設定"
+            }
+          }
+        }
+      },
+      "Set for this project" : {
+        "extractionState" : "manual",
+        "localizations" : {
+          "ar" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Set for this project"
+            }
+          },
+          "de" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Set for this project"
+            }
+          },
+          "en" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Set for this project"
+            }
+          },
+          "es" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Set for this project"
+            }
+          },
+          "fr" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Set for this project"
+            }
+          },
+          "it" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Set for this project"
+            }
+          },
+          "ja" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Set for this project"
+            }
+          },
+          "ko" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Set for this project"
+            }
+          },
+          "pt-BR" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Set for this project"
+            }
+          },
+          "ru" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Set for this project"
+            }
+          },
+          "vi" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Set for this project"
+            }
+          },
+          "zh-Hans" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "已设置"
+            }
+          },
+          "zh-Hant" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "已設定"
+            }
+          }
+        }
+      },
       "Its SKILL.md has no one-line description, which chats need to know when to use it." : {
         "extractionState" : "manual",
         "localizations" : {

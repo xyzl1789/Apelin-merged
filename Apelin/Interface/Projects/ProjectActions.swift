@@ -41,9 +41,15 @@ enum ProjectActions {
             rename(projectName, from: presenter)
         }
         // This project's own instructions, which its conversations carry after
-        // the ones every chat gets (`ProjectInstructionsController`).
+        // the ones every chat gets (`ProjectInstructionsController`). The
+        // subtitle says whether any are set, so the menu shows it at a glance.
+        let ownInstructions = Preferences.PromptInjection.projectText(projectName)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let instructions = UIAction(
             title: String(localized: "Project Instructions…"),
+            subtitle: ownInstructions.isEmpty
+                ? String(localized: "Not set")
+                : String(localized: "Set for this project"),
             image: UIImage(systemName: "square.and.pencil"),
         ) { [weak presenter] _ in
             guard let presenter else { return }
