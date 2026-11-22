@@ -157,10 +157,12 @@ final class ChatActivityRow: ListRowView {
         let textWidth = max(1, bounds.width - insets.left - insets.right)
         let sourceHeight = Self.sourceHeight(ChatActivityContent.source(message), width: textWidth)
         let titleHeight = Self.titleHeight(for: message, width: textWidth)
-        let stepsHeight = expansion.isHidden ? 0 : expansion.fittingHeight(width: textWidth)
+        // 列表已经为这一行量过步骤、定下 bounds。步骤是最后一项：把剩余
+        // 空间给它，而不是在显示路径上再量一遍整叠视图。
+        let hasSteps = !expansion.isHidden && expansion.hasSteps
         let layout = ChatActivityLayout(
             source: sourceHeight, title: titleHeight,
-            banner: bannerView.isHidden ? 0 : ToolCallBannerView.height, steps: stepsHeight,
+            banner: bannerView.isHidden ? 0 : ToolCallBannerView.height, steps: hasSteps ? 1 : 0,
             top: message.activityJoinsPrevious ? 0 : insets.top, bottom: insets.bottom,
         )
         sourceLabel.font = .preferredFont(forTextStyle: .caption1)
@@ -182,6 +184,7 @@ final class ChatActivityRow: ListRowView {
                 right: max(0, bounds.width - bannerView.frame.maxX),
             )
         }
+        let stepsHeight = hasSteps ? max(0, bounds.height - layout.stepsY - insets.bottom) : 0
         expansion.frame = expansion.isHidden ? .zero : CGRect(
             x: insets.left, y: layout.stepsY, width: textWidth, height: stepsHeight,
         )
