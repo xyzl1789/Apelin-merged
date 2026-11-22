@@ -1,6 +1,7 @@
 import ApelinProtocol
 
 /// The provider, model, effort, tier and model figures a session runs with
+/// The provider, model, effort, tier and model limits a session runs with
 /// now: what its open request named, then what each of the app's prompts
 /// named. A conversation the session opens starts with the same.
 public actor SessionModelChoice {
@@ -10,6 +11,7 @@ public actor SessionModelChoice {
         public var reasoningEffort: AgentReasoningEffort?
         public var serviceTier: AgentServiceTier?
         public var modelParameters: AgentModelParameters?
+        public var modelLimits: AgentModelLimits?
     }
 
     public private(set) var current = Choice()
@@ -29,6 +31,7 @@ public actor SessionModelChoice {
         reasoningEffort: AgentReasoningEffort? = nil,
         serviceTier: AgentServiceTier? = nil,
         modelParameters: AgentModelParameters? = nil,
+        modelLimits: AgentModelLimits? = nil,
     ) {
         current = Choice(
             provider: provider,
@@ -36,6 +39,7 @@ public actor SessionModelChoice {
             reasoningEffort: reasoningEffort,
             serviceTier: serviceTier,
             modelParameters: modelParameters,
+            modelLimits: modelLimits,
         )
     }
 
@@ -45,6 +49,7 @@ public actor SessionModelChoice {
         reasoningEffort: AgentReasoningEffort?,
         serviceTier: AgentServiceTier?,
         modelParameters: AgentModelParameters? = nil,
+        modelLimits: AgentModelLimits? = nil,
     ) {
         current = Choice(
             provider: provider,
@@ -52,6 +57,7 @@ public actor SessionModelChoice {
             reasoningEffort: reasoningEffort,
             serviceTier: serviceTier,
             modelParameters: modelParameters,
+            modelLimits: modelLimits,
         )
     }
 }

@@ -34,6 +34,7 @@ public extension ChannelHostBackend {
                 reasoningEffort: inherits ? choice.reasoningEffort : nil,
                 serviceTier: inherits ? choice.serviceTier : nil,
                 modelParameters: inherits ? choice.modelParameters : nil,
+                modelLimits: inherits ? choice.modelLimits : nil,
                 prompt: request.prompt,
                 title: request.title,
                 delegationBrief: request.brief,

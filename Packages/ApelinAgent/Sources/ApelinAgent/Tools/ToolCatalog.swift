@@ -1,5 +1,6 @@
 import struct ApelinCore.MemoryStore
 import enum ApelinCore.ProjectDisplayName
+import enum ApelinProtocol.AgentContextBudget
 import enum ApelinProtocol.AgentNoticeRules
 import enum ApelinProtocol.AgentQuestionRules
 import enum ApelinProtocol.AgentRunModeRules
@@ -71,7 +72,9 @@ public extension AgentToolName {
         // A notice is a few words to the user, which the host bounds. A
         // project's displayName is a label, outside every approval digest.
         // A remote is a name and an address in the repository's
-        // configuration; a push that uses one still asks.
+        // configuration; a push that uses one still asks. Compacting
+        // rewrites the conversation the model reads, nothing of the user's,
+        // and is no read the user could take off the presets.
         case .fileWrite, .fileEdit, .fileCreate, .memorySave, .memoryDelete, .projectCreate, .projectRename,
              .gitStage, .gitUnstage, .gitCommit, .gitInit, .gitFetch, .gitPull, .gitClone,
              .gitRemoteSet, .gitRemoteRemove,
@@ -80,6 +83,8 @@ public extension AgentToolName {
              .conversationCreate, .conversationSend, .conversationStop, .conversationPlan,
              .projectSetEnvironment, .notificationSend,
              .todoWrite:
+             .conversationCreate, .conversationSend, .conversationStop, .projectSetEnvironment, .notificationSend,
+             .conversationCompact:
             .writeProject
         // file_show copies a project file into the workspace's Attachments
         // and shows it to the user on this device; nothing else changes.
@@ -217,6 +222,7 @@ public extension AgentToolName {
         case .conversationRead: "Read a conversation of this project, or of the one project names: its state (running, waitingForApproval, idle or ended), the assistant's messages after after_seq, the approvals it is waiting on, and last_seq to pass as after_seq next time. With wait_seconds, wait until it finishes a turn after after_seq, asks for approval, or ends."
         case .conversationStop: "Stop the turn a conversation you opened is running. With close: true, also end the conversation and free its place; the user can still reopen it from the sidebar."
         case .conversationPlan: "The plan and ledger the host keeps for a conversation opened with a delegation brief: read the step open now, its revision and what it may write (your own read also gives the whole assignment ledger); report the open step blocked; ask its opener to review it; and, from the conversation that opened it, accept or amend a step, accept the whole assignment, cancel or fail it with a reason, or seal the member set of your own assignment. Every action carries the revision it is based on — the plan's for a step, the member's for an assignment, the group's for seal — and the host decides what each may do and admits every call: one it does not admit is refused."
+        case .conversationCompact: "Compact this conversation to free context space: the earlier messages become a summary you go on from, and the most recent stay as they are. It happens before your next step, after the calls you make with it; nothing of the user's changes, and it never asks. Call it at a good stopping point (a step finished, nothing half done) once the context is past half full, as a <\(ContextNote.tag)> note at the end of a tool's result suggests; at \(ContextNote.automaticPercent)% Apelin compacts on its own. Refused while the context is under \(AgentContextBudget.compactionFloor)% full or the conversation is too short to summarize."
         case .toolchainList: "List the toolchains set up on this device (id, Command Line Tools version, components, the newest SDK each reads, self-test results) and the releases Apelin can set up from Apple's catalog, each with its download size, requirements and why this device cannot take it, if so; and which toolchain this project binds."
         case .sdkList: "List the iPhoneOS SDKs registered on this device and the ones the enabled SDK sources offer, each with the registered toolchains that read it; and which SDK this project binds."
         case .toolchainSetup: "Set up a Command Line Tools release from apelin_toolchain_list on this device: Apple's package is downloaded, adapted, installed as a package and self-tested, importing a compatible SDK first if none is registered. Long; asks the user in Strict mode. Then bind it with apelin_project_set_environment."
@@ -340,6 +346,8 @@ public extension AgentToolName {
                     description: "What you say you produced, on review and blocked: your claim, recorded in the opener's ledger. It is not a check receipt — only the host's check is evidence. Omit or leave empty when there is nothing to report.",
                 ),
             ], required: ["action"])
+        case .conversationCompact:
+            Schema.object([:], required: [])
         case .gitSetAuthor:
             Schema.object([
                 "name": Schema.string("Author name; empty clears it."),

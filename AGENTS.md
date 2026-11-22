@@ -1779,6 +1779,10 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   when a run ends and once a compaction has ended: the composer shows it
   as a ring, whose tap offers `Compact Context…`. `summary` (2026-10-28),
   when compacted, is what the
+  messagesCompacted?, message?, summary?} (`AgentCompactionResult`;
+  `agentCompact` and the agent's apelin_conversation_compact record them —
+  kwwk's own compaction as the context fills is no event). `summary`
+  (2026-10-28), when compacted, is what the
   conversation goes on from as the reader reads it: the history and
   current-turn sections of kwwk's recap, unescaped, without its markup or
   its file ledger (`CompactionRecap`; a recap of another shape whole),
@@ -2329,6 +2333,52 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   whatever the approval mode says: a plan is not the approval mode. The
   prompt tells the agent when to take a plan and that a plan writes its
   steps with apelin_todo_write before it asks to build.
+  Compaction (owner, 2026-11-21; `Session/ModelLimits.swift`,
+  `AgentSession`, ApelinProtocol's `AgentContextBudget`): kwwk compacts
+  the conversation before any request that finds it past 75 % of the
+  model's window, as it measures it (`AgentContextCompactor.currentUsage`:
+  the system prompt, the tools and the messages, pending ones included);
+  the session passes the 75 % to `AgentAutoCompactOptions` itself
+  (`AgentContextBudget.automaticCompaction`) rather than leave it to kwwk's
+  default, and the window is the user's when they set one (Agent sign-in ▸
+  Model limits). The agent can compact sooner, at a stopping point of its
+  choosing: apelin_conversation_compact (in any chat, no arguments but the
+  reason) → no host request; a call inside a run cannot rewrite the
+  conversation it is part of, so the tool only asks, and the session
+  compacts at the run's next step, before its next request, through kwwk's
+  `betweenTurns` hook: `AgentContextCompactor.compactAgent` with the
+  session's compaction configuration (`NativeCompactionFallback`, native
+  where the provider can), as `agentCompact` does, recording
+  `compactionStarted` and `compactionFinished` (so the transcript shows its
+  Compacted row with the summary, inside the turn, a running summary
+  standing in under it at once: `ChatTranscript`), the journal's Compaction lines with
+  `trigger=tool`, and the compacted transcript for a reopened session.
+  Its answer says it happens before the next step; when it then compacts
+  nothing (too short, failed) a runtime aside tells the model so before
+  that step (kwwk's `aside`, a user message of source `runtime`, which the
+  session never takes for one of the user's queued messages). Refused,
+  before anything is asked, while the conversation is shorter than kwwk
+  compacts (four messages) or the context is under a quarter full
+  (`AgentContextBudget.compactionFloor`: it would lose detail and save
+  little). It never asks, in any mode, and is no preset the user could take
+  away (`ApprovalPolicy`, risk `writeProject`): it changes only the model's
+  working context, as automatic compaction does without asking. The nudge
+  (`ContextNote`): after each call, measured as kwwk measures it with the
+  call's result in, a context past 50 %, then 60 % and 70 %, ends that
+  result with one `<context-usage>` note — the context is N % full; at a
+  good stopping point consider apelin_conversation_compact; at 75 % Apelin
+  compacts it automatically —, each share once, forgotten when the context
+  falls below it again (a compaction, a larger window), and none past 75 %,
+  where the next request compacts anyway. It goes into the tool result the
+  model reads (kwwk's `afterToolCall`), so the transcript keeps it as sent
+  and no system prompt byte changes (Prompt caching). The app's
+  `toolResult` event and the journal's call line have the tool's output
+  alone, as the app's `prompt` has the text without `<system-state>`: the
+  note is Apelin's to the model, not the tool's answer, and the trace shows
+  what the tool did; the journal has a `Suggested call=… full=…%` line
+  instead. `# Working` says one line about the note and the tool, and that
+  the note is Apelin's though it comes in a tool's result. Tested by
+  `ContextLimitsTests`.
   Web pages (2026-10-29, `Tools/WebFetch.swift`, `HTMLText.swift`,
   `PublicHost.swift`), in any chat: apelin_web_fetch {url, offset?} → no
   host request: the worker fetches one public http or https page itself,
@@ -2568,7 +2618,8 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   Apelin keeps — its projects and templates, the packages it installs, the
   device, the screen, logs and crashes, toolchains and SDKs, other
   conversations, memory, skills, its git settings, a notification, the
-  feedback filed on Apelin — or reaches past the device (`apelin_web_fetch`,
+  feedback filed on Apelin, the conversation's own context
+  (`apelin_conversation_compact`) — or reaches past the device (`apelin_web_fetch`,
   `apelin_git_create_repository`, `apelin_git_create_issue`) is
   `apelin_<scope>_<verb>` (`apelin_project_build`, `apelin_package_install`,
   `apelin_device_respring`, `apelin_git_set_author`, `apelin_feedback_send`);
@@ -2673,6 +2724,52 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   optional settings, local-start filtering, missing credentials, blocked prompt
   providers and failure redaction; run it with the package suite on the CI toolchain.
   API-key model IDs need not occur in
+  sign-out clears them. Model limits (owner, 2026-11-21, issue #68:
+  relays, gateways and providers serve other windows than kwwk assumes):
+  an API-key account's rows in Models lead with the check, as Wi-Fi's do,
+  and end with a detail button (Token Limits, also the row's VoiceOver
+  action) that pushes `ModelLimitsController`, the model's context window
+  and maximum output tokens, each a whole number or empty (ApelinProtocol's
+  `AgentModelLimits`: a window of 1,024 to 10,000,000, an output of 1 to
+  1,000,000 and below the window, else nothing is saved; a window under
+  64,000, where Apelin's own instructions and tools, about 26,000 tokens,
+  start a chat at 40 % or more, an output over half the window or under
+  1,024 asks before Save). Empty is automatic, what a session resolves the
+  model with, which the
+  field shows as its placeholder: `agentModelList {limitsFor}` answers
+  `limits` for an API-key account's listed and asked models, each resolved
+  as a session does (`ProviderModels.automaticLimits`, through
+  `ProviderRegistration` from the stored key, no network): kwwk's catalog
+  row, else its registration's default for an unknown ID (an
+  OpenAI-compatible endpoint's 131,072 and 32,000 for every model), the
+  output the reply kwwk sends on its own (none on OpenRouter); unknown, it
+  says Automatic. `ModelLimitsStore` keeps them in the app's defaults by
+  `AgentProvider.rawValue` and model ID beside `EnabledModels`, each
+  model's entry read alone, non-secret, cleared on sign-out; a hidden model
+  keeps its own. The composer reads them with the model
+  (`ComposerModelSelection.limits`) and sends them as `modelLimits` on
+  `agentOpen` and `agentPrompt` (absent: automatic, so the console and an
+  older caller change nothing; an agent's message carries none, and a
+  conversation an agent opens starts with its opener's,
+  `SessionModelChoice`). The session applies them to kwwk's `Model` when
+  it resolves it and with each message, between runs, as model, effort and
+  tier (`AgentModelLimits.applied`, a value out of range left automatic,
+  `sanitized`): `contextWindow` is what the request budget, automatic
+  compaction at 75 % and the context notes measure against (Agent sessions
+  ▸ Compaction); `maxTokens` caps one reply, which every wire's encoder
+  sends as its own field (`OutputTokenPolicy`: Chat Completions'
+  `max_tokens` or `max_completion_tokens`, Responses' `max_output_tokens`,
+  Anthropic's and Gemini's), never above the window and on the OpenAI
+  wires never above kwwk's 64,000, and the request budget reserves exactly
+  it; on OpenRouter, where kwwk sends none of its own, the user's goes
+  (`compat.omitsAutomaticOutputLimit` off). The journal's Session lines
+  name the window and output and `limits=user`. The footer says a value
+  cannot exceed what the server allows. Subscriptions get none: kwwk's
+  catalog knows their models, no relay stands between, and Codex's wire
+  takes no output limit at all (`OutputTokenPolicy.supportsExplicitLimit`).
+  The chat picker is an uncached deferred context
+  menu reading enabled IDs only, and opens
+  Model Providers when there are none. API-key model IDs need not occur in
   kwwk's static catalog; OAuth IDs remain restricted to that provider's list.
   Each login is an `AgentProvider` case kept
   under one store id (`AgentProvider.storeID`), with kwwk's own flows:
@@ -4961,7 +5058,9 @@ untouched: the block only tells the model. Nothing that changes per message
 is in the system prompt (the project context is the first message's, the
 system state every message's, and the memory section carries no revision),
 so neither a Settings edit, a mode switch, midnight nor another chat's write
-costs a cache write. Anthropic's cache lives five minutes from the start of
+costs a cache write. Nor does the `<context-usage>` note: it ends a tool's
+result, which the transcript keeps as sent (Agent sessions ▸ Compaction).
+Anthropic's cache lives five minutes from the start of
 the request that last used it, OpenAI's five to ten of disuse (kwwk's loop
 pins `cacheRetention: nil`, so Anthropic's 1-hour TTL and OpenAI's 24-hour
 one are out of reach without wrapping `AgentOptions.streamFn`, an owner
@@ -4978,6 +5077,13 @@ the chat has a title, later messages may still propose a name while the project
 has its generated name; they never replace the chat title. Compaction runs
 automatically at 75 % of the window or through `agentCompact`; nothing is
 requested at reopen, where the transcript is read back (the
+completion (no tools, at most 3000 characters in and 160 tokens out) for the
+first message, for later ones until it names the chat (three that name
+nothing at most), and on every message while the project still has its
+generated name; compaction, automatic at 75 % of the window (the user's,
+when they set one), `agentCompact` or the agent's
+apelin_conversation_compact, which writes the prefix anew as any
+compaction does; nothing at reopen, where the transcript is read back (the
 tool-name migration is idempotent) and the next request finds the prefix the
 last one cached. Known in kwwk, not worked around:
 `ProviderImageBudget.clamp` drops the oldest image one at a time past a

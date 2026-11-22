@@ -59,6 +59,9 @@ actor ToolRunner {
     /// is decided, for the session's diagnostic journal.
     let journal: SessionJournal?
     private var notices = UserNotices()
+    /// apelin_conversation_compact's: asks the session to compact at the
+    /// run's next step, and answers what the model is told.
+    private var compaction: (@Sendable () async throws -> String)?
 
     /// The delegation contract this conversation was opened with, or nil.
     /// It names the assignment; the host's plan is the authority, read for
@@ -206,6 +209,11 @@ actor ToolRunner {
     /// A run ended: the next one may send its own notices.
     func turnEnded() {
         notices.turnEnded()
+    }
+
+    /// The session's answer to apelin_conversation_compact, set once it is open.
+    func setCompaction(_ handler: @escaping @Sendable () async throws -> String) {
+        compaction = handler
     }
 
     /// The session closes: the extensions it started go with it.
@@ -601,15 +609,16 @@ actor ToolRunner {
             try await record(.notice(title: notice.title, body: notice.body))
             return text(notices.sentMessage)
 
-        case .questionAsk:
-            return try await askQuestion(arguments, toolCallID: context.toolCallID, cancellation: cancellation)
-
-        case .runMode:
-            return try await changeRunMode(arguments, toolCallID: context.toolCallID, cancellation: cancellation)
-
         case .webSearch:
             let result = try await WebSearch.shared.search(arguments)
             return text(result.answer)
+
+        case .conversationCompact:
+            // No host request: the session compacts its own conversation, at
+            // the run's next step (`AgentSession.compactIfAsked`).
+            guard let compaction else { throw ToolDeniedError(message: "Compaction is unavailable.") }
+            return try await text(compaction())
+
         case .webFetch:
             // No host request either: the worker fetches the page itself,
             // as mobile, and answers its text.

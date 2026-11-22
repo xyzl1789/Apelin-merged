@@ -84,6 +84,26 @@ public enum AgentWorker {
                         reasoningEffort: prompt.reasoningEffort, serviceTier: prompt.serviceTier,
                         parameters: prompt.modelParameters ?? .init(), defaults: prompt.modelDefaults)
                 }
+                if let provider = prompt.provider {
+                    do {
+                        try await session.configure(
+                            provider: AgentWorker.provider(AgentOpenRequest(provider: provider, model: prompt.model)),
+                            thinking: .init(rawValue: prompt.reasoningEffort?.rawValue ?? "off") ?? .off,
+                            serviceTier: AgentWorker.serviceTier(prompt.serviceTier),
+                            modelLimits: prompt.modelLimits,
+                            credentials: KeychainCredentialSource(accessGroup: keychainAccessGroup),
+                        )
+                    } catch let error as ProviderResolutionError {
+                        throw AgentWorker.signInError(error)
+                    }
+                    await state.modelChoice.set(
+                        provider: provider,
+                        model: prompt.model,
+                        reasoningEffort: prompt.reasoningEffort,
+                        serviceTier: prompt.serviceTier,
+                        modelLimits: prompt.modelLimits,
+                    )
+                }
                 guard (prompt.attachments?.count ?? 0) <= 8 else {
                     throw ApelinError(.badRequest, "附件描述无效")
                 }
@@ -315,7 +335,7 @@ public enum AgentWorker {
             }
         case .agentModelList:
             await WorkerMain.serve(AgentModelListRequest.self, request) { query in
-                try await accounts.models(for: query.provider)
+                try await accounts.models(for: query.provider, limitsFor: query.limitsFor ?? [])
             }
         case .agentModelActivate:
             await WorkerMain.serve(AgentModelActivateRequest.self, request) { query in
@@ -496,6 +516,7 @@ actor WorkerState {
                     modelParameters: open.modelParameters ?? .init(),
                     modelDefaults: open.modelDefaults ?? .init(),
                     promptInjection: (open.promptInjection ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+                    modelLimits: open.modelLimits,
                     installRoot: context.assignment.installRoot,
                     hostRestarted: open.hostRestarted == true,
                     openerSessionID: open.openerSessionID,
@@ -535,6 +556,7 @@ actor WorkerState {
             reasoningEffort: open.reasoningEffort,
             serviceTier: open.serviceTier,
             modelParameters: open.modelParameters,
+            modelLimits: open.modelLimits,
         )
 
         await modelChoice.setDefaults(open.modelDefaults)

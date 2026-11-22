@@ -1,4 +1,5 @@
 import ApelinProtocol
+import struct ApelinProtocol.AgentModelLimits
 import struct ApelinToolCore.ToolManifestPolicy
 import Foundation
 import KWWKAgent
@@ -30,6 +31,9 @@ public struct AgentSessionConfiguration: Sendable {
     /// (`AgentSession.setPromptInjection`), and the model hears that in the
     /// message's `<system-state>` — this prompt keeps the bytes it opened with.
     public var promptInjection: String
+    /// The model's context window and largest reply as the user set them;
+    /// nil, or a field of it, is what the model resolves with.
+    public var modelLimits: AgentModelLimits?
     /// Hard cap on assistant turns per run; nil for none.
     public var maxTurns: Int?
     /// The install root the session host derived from its own path, which
@@ -77,6 +81,7 @@ public struct AgentSessionConfiguration: Sendable {
         modelParameters: AgentModelParameters = .init(),
         modelDefaults: AgentModelDefaults = .init(),
         promptInjection: String = "",
+        modelLimits: AgentModelLimits? = nil,
         maxTurns: Int? = nil,
         installRoot: String? = nil,
         systemState: SystemStateSource = .device,
@@ -99,6 +104,7 @@ public struct AgentSessionConfiguration: Sendable {
         self.modelParameters = modelParameters
         self.modelDefaults = modelDefaults
         self.promptInjection = promptInjection
+        self.modelLimits = modelLimits
         self.maxTurns = maxTurns
         self.installRoot = installRoot
         self.systemState = systemState

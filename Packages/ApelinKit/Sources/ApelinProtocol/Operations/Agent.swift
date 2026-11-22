@@ -529,6 +529,9 @@ public struct AgentOpenRequest: OperationRequest {
     /// The MCP servers from Settings at this session's open. Existing
     /// sessions keep their connections; a new session uses later edits.
     public var mcpServers: [MCPConnection]?
+    /// The model's context window and largest reply as the user set them
+    /// (`AgentModelLimits`); absent, or a field of it, is automatic.
+    public var modelLimits: AgentModelLimits?
     /// A first prompt, submitted as soon as the session is open.
     public var prompt: String?
     /// End the session (its task) when the first run finishes: `succeeded`
@@ -580,6 +583,7 @@ public struct AgentOpenRequest: OperationRequest {
         modelParameters: AgentModelParameters? = nil,
         promptInjection: String? = nil,
         mcpServers: [MCPConnection]? = nil,
+        modelLimits: AgentModelLimits? = nil,
         prompt: String? = nil,
         closeWhenFinished: Bool? = nil,
         title: String? = nil,
@@ -602,6 +606,7 @@ public struct AgentOpenRequest: OperationRequest {
         self.modelParameters = modelParameters
         self.promptInjection = promptInjection
         self.mcpServers = mcpServers
+        self.modelLimits = modelLimits
         self.prompt = prompt
         self.closeWhenFinished = closeWhenFinished
         self.title = title
@@ -668,6 +673,9 @@ public struct AgentPromptRequest: OperationRequest {
     /// The model's own figures for this choice, as the app's model settings
     /// have them: nil leaves what the model's record says.
     public var modelParameters: AgentModelParameters?
+    /// The model's limits as the user set them, read with the provider and
+    /// model as effort and tier are; absent is automatic.
+    public var modelLimits: AgentModelLimits?
     public var attachments: [AgentInputAttachment]?
     public var approvalMode: ApprovalMode?
     /// Ask Before Using the Screen (`ScreenConsent`), as the app has it now;
@@ -719,6 +727,7 @@ public struct AgentPromptRequest: OperationRequest {
         modelDefaults: AgentModelDefaults? = nil,
         reasoningEffort: AgentReasoningEffort? = nil,
         serviceTier: AgentServiceTier? = nil,
+        modelLimits: AgentModelLimits? = nil,
         approvalMode: ApprovalMode? = nil,
         asksBeforeScreen: Bool? = nil,
         runMode: AgentRunMode? = nil,
@@ -738,6 +747,7 @@ public struct AgentPromptRequest: OperationRequest {
         self.reasoningEffort = reasoningEffort
         self.serviceTier = serviceTier
         self.modelParameters = modelParameters
+        self.modelLimits = modelLimits
         self.attachments = attachments
         self.approvalMode = approvalMode
         self.asksBeforeScreen = asksBeforeScreen

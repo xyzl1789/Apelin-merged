@@ -943,6 +943,7 @@ final class ChatRuntime {
                 modelDefaults: Preferences.DefaultModels.wire,
                 reasoningEffort: selected?.effort,
                 serviceTier: selected?.tier,
+                modelLimits: selected?.limits,
                 approvalMode: AgentPermissions.mode,
                 asksBeforeScreen: AgentPermissions.asksBeforeScreen,
                 runMode: ComposerModeStore.mode(for: id).runMode,
@@ -1261,6 +1262,7 @@ final class ChatRuntime {
             modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,
             promptInjection: Preferences.PromptInjection.wire(for: selected?.model),
             mcpServers: Preferences.MCPServers.wire,
+            modelLimits: selected?.limits,
         )
         if request.temporaryID != nil {
             try DataFolder.app.makeLevels(to: DataFolder.app.root.appendingPathComponent("Temporary/" + id.uuidString))

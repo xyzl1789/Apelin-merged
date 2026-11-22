@@ -447,6 +447,11 @@ struct ChatTranscript {
                     // text after it is a reply of its own, under it
                     assistant = nil
                     add(ChatMessage(id: id, role: .compaction, text: payload?["summary"]?.stringValue ?? ""))
+                    // The agent's own compaction comes inside its turn,
+                    // which goes on under it at once.
+                    if isWorking {
+                        unanswered = id
+                    }
                 }
             case TaskEvent.stateKind:
                 if Self.endsTask(event) {
@@ -1047,6 +1052,7 @@ struct ChatTranscript {
         case .conversationRead: return String(localized: "Read a chat")
         case .conversationPlan: return String(localized: "Plan")
         case .conversationStop: return String(localized: "Stop a chat")
+        case .conversationCompact: return String(localized: "Compact the context")
         case .notificationSend: return String(localized: "Send a notification")
         case .questionAsk: return String(localized: "Ask a question")
         case .runMode: return String(localized: "Switch the run mode")
