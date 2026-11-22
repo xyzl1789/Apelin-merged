@@ -207,7 +207,7 @@ public enum CheckInService {
             guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
                 return Reply(status: 0, json: nil)
             }
-            return try await reply(method: method, url: url, headers: requestHeaders, body: body)
+            return try await reply(method: method, url: url, headers: requestHeaders ?? [:], body: body)
         }
         for item in growth.details where !item.succeeded {
             logger.info("成长中心待办：\(item.title, privacy: .public) — \(item.note, privacy: .public)")

@@ -388,6 +388,12 @@ public enum AgentWorker {
         wire.flatMap { ServiceTier(rawValue: $0.rawValue) }
     }
 
+    /// A provider with no saved sign-in is the reader's to fix in Settings,
+    /// not the agent's failure: the session waits for a credential.
+    static func signInError(_ error: ProviderResolutionError) -> ApelinError {
+        ApelinError(.denied, error.localizedDescription)
+    }
+
     /// The kwwk provider configuration for an open request. The first four
     /// keep their own cases (and need a model named, as they always have);
     /// every other provider uses its credential store id and the default
@@ -580,9 +586,9 @@ actor WorkerState {
             for await record in events {
                 await relay.relay(record.event, historical: record.seq <= boundary, at: record.date)
                 if record.seq > boundary, case let .finished(reason) = record.event {
-                    runActive = false
-                    stopWatch?.cancel()
-                    stopWatch = nil
+                    self?.runActive = false
+                    self?.stopWatch?.cancel()
+                    self?.stopWatch = nil
                     await relay.flush()
                     await self?.runFinished(reason)
                 }

@@ -22,7 +22,7 @@ enum GrowthCenter {
     }
 
     static func run(baseURL: URL, headers: [String: String],
-                    reply: (String, String, [String: Any]?, Data?) async throws -> CheckReply) async -> Outcome {
+                    reply: (String, String, [String: String]?, Data?) async throws -> CheckReply) async -> Outcome {
         var out = Outcome()
         let tasks = await tasksStep(baseURL: baseURL, headers: headers, reply: reply)
         out.details.append(contentsOf: tasks.details)
@@ -50,7 +50,7 @@ enum GrowthCenter {
     // MARK: - 任务
 
     private static func tasksStep(baseURL: URL, headers: [String: String],
-                                  reply: (String, String, [String: Any]?, Data?) async throws -> CheckReply) async -> Outcome {
+                                  reply: (String, String, [String: String]?, Data?) async throws -> CheckReply) async -> Outcome {
         var out = Outcome()
         guard let response = try? await reply("GET", "\(base)/tasks", headers, nil),
               response.status == 200, let json = response.json else {
@@ -111,8 +111,8 @@ enum GrowthCenter {
                 out.details.append(.init(title: title, succeeded: false, note: "任务已完成但领奖失败，下次自动签到再试"))
                 continue
             }
-            let credit = firstInt(claimed.json, keys: ["credit"]) ?? int(task["reward_credit"])
-            let energy = firstInt(claimed.json, keys: ["energy"]) ?? int(task["reward_energy"])
+            let credit = firstInt(claimed.json, keys: ["credit"]) ?? int(task["reward_credit"]) ?? 0
+            let energy = firstInt(claimed.json, keys: ["energy"]) ?? int(task["reward_energy"]) ?? 0
             out.credit += credit
             out.details.append(.init(title: title, succeeded: true,
                                      note: "任务奖励已领取：+\(credit) 积分，+\(energy) 能量"))
@@ -123,7 +123,7 @@ enum GrowthCenter {
     // MARK: - 断登补登
 
     private static func streakStep(baseURL: URL, headers: [String: String],
-                                   reply: (String, String, [String: Any]?, Data?) async throws -> CheckReply) async -> Outcome {
+                                   reply: (String, String, [String: String]?, Data?) async throws -> CheckReply) async -> Outcome {
         var out = Outcome()
         guard let streakResponse = try? await reply("GET", "\(base)/streak", headers, nil),
               streakResponse.status == 200, let streakJSON = streakResponse.json else {
@@ -192,7 +192,7 @@ enum GrowthCenter {
     // MARK: - 连登兑换
 
     private static func redeemStep(baseURL: URL, headers: [String: String],
-                                   reply: (String, String, [String: Any]?, Data?) async throws -> CheckReply) async -> Outcome {
+                                   reply: (String, String, [String: String]?, Data?) async throws -> CheckReply) async -> Outcome {
         var out = Outcome()
         guard let response = try? await reply("GET", "\(base)/redeem/summary", headers, nil),
               response.status == 200, let json = response.json else {
@@ -222,7 +222,7 @@ enum GrowthCenter {
                 out.details.append(.init(title: "连签兑换「\(label)」", succeeded: false,
                                          note: "连签天数还不够，未解锁"))
             } else if done.status == 200 {
-                let credit = firstInt(done.json, keys: ["credit_granted"])
+                let credit = firstInt(done.json, keys: ["credit_granted"]) ?? 0
                 out.credit += credit
                 out.details.append(.init(title: "连签兑换「\(label)」", succeeded: true,
                                          note: "兑换成功：+\(credit) 积分及附赠奖励"))
@@ -236,7 +236,7 @@ enum GrowthCenter {
     // MARK: - 盲盒
 
     private static func lotteryStep(baseURL: URL, headers: [String: String],
-                                    reply: (String, String, [String: Any]?, Data?) async throws -> CheckReply) async -> Outcome {
+                                    reply: (String, String, [String: String]?, Data?) async throws -> CheckReply) async -> Outcome {
         var out = Outcome()
         guard let response = try? await reply("GET", "\(base)/lottery/chances", headers, nil),
               response.status == 200, let json = response.json,
@@ -265,7 +265,7 @@ enum GrowthCenter {
     // MARK: - 旅行礼物
 
     private static func travelStep(baseURL: URL, headers: [String: String],
-                                   reply: (String, String, [String: Any]?, Data?) async throws -> CheckReply) async -> Outcome {
+                                   reply: (String, String, [String: String]?, Data?) async throws -> CheckReply) async -> Outcome {
         var out = Outcome()
         guard let response = try? await reply("GET", "\(base)/buddy/travel/status", headers, nil),
               response.status == 200, let json = response.json else { return out }
@@ -275,7 +275,7 @@ enum GrowthCenter {
         if state == "arrived", let record = data["record_id"] {
             if let claimed = try? await reply("POST", "\(base)/buddy/travel/claim", headers,
                                               bodyJSON(["record_id": record])), claimed.status == 200 {
-                let credit = firstInt(claimed.json, keys: ["reward_credit"])
+                let credit = firstInt(claimed.json, keys: ["reward_credit"]) ?? 0
                 out.credit += credit
                 out.details.append(.init(title: "旅行礼物", succeeded: true, note: "已领取旅行礼物：+\(credit) 积分"))
             } else {
@@ -306,7 +306,7 @@ enum GrowthCenter {
 
     /// 能量只用来在 Buddy 能量够时开一个（官方成长中心的最后一个动作）。
     private static func energyStep(baseURL: URL, headers: [String: String],
-                                   reply: (String, String, [String: Any]?, Data?) async throws -> CheckReply) async -> Outcome {
+                                   reply: (String, String, [String: String]?, Data?) async throws -> CheckReply) async -> Outcome {
         var out = Outcome()
         guard let response = try? await reply("GET", "\(base)/energy", headers, nil),
               response.status == 200,
