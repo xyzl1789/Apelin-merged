@@ -7,8 +7,9 @@ final class ChatTopBlurView: UIView {
         NSClassFromString("CABackdropLayer") ?? CALayer.self
     }
 
-    /// Conversation 画在哪张纸上，顶部模糊淡入它的颜色而不是应用的背景色。
-    var paper: ChatBackground.Paper? {
+    /// Conversation 画在哪张底上，顶部模糊取它的颜色：纸用自己的底色，读者
+    /// 的图片用顶部一条的颜色，没有则用应用原本的背景。
+    var background: ChatBackground = .none {
         didSet { updateFrost() }
     }
 
@@ -62,10 +63,20 @@ final class ChatTopBlurView: UIView {
     }
 
     @objc dynamic private func updateFrost() {
-        let color = paper.map {
-            ChatBackgroundView.base($0, traits: traitCollection).resolvedColor(with: traitCollection)
-        } ?? UIColor.pageBackground.resolvedColor(with: traitCollection)
-        frost.colors = [color.withAlphaComponent(1).cgColor, color.withAlphaComponent(0).cgColor]
+        let color: UIColor?
+        switch background {
+        case .none:
+            color = UIColor.pageBackground.resolvedColor(with: traitCollection)
+        case let .paper(paper):
+            color = ChatBackgroundView.base(paper, traits: traitCollection)
+                .resolvedColor(with: traitCollection)
+        case .image:
+            // 图片自身颜色的一半：顶栏属于图片，又仍能柔化从下面滚过的内容。
+            color = ChatBackgroundView.topTint()?.withAlphaComponent(0.55)
+        }
+        frost.colors = color.map {
+            [$0.cgColor, $0.withAlphaComponent(0).cgColor]
+        } ?? [UIColor.clear.cgColor, UIColor.clear.cgColor]
     }
 
     override func didMoveToWindow() {

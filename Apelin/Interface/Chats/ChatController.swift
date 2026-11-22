@@ -670,7 +670,7 @@ final class ChatController: UIViewController {
     @objc private func reloadBackground() {
         chatBackground.opacity = ChatBackground.opacity
         chatBackground.background = ChatBackground.current
-        topBlur.paper = ChatBackground.current.paper
+        topBlur.background = ChatBackground.current
     }
 
     override func viewDidLayoutSubviews() {

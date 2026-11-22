@@ -75,12 +75,6 @@ enum ChatBackground: Equatable {
         }
     }
 
-    /// 当前选的纸：顶部模糊淡入它自己的颜色。
-    var paper: Paper? {
-        if case let .paper(paper) = self { return paper }
-        return nil
-    }
-
     /// 读者图片存放的位置：应用数据目录里的 `Background/chat.jpg`。
     static var imageURL: URL {
         DataFolder.app.chatBackgroundImage

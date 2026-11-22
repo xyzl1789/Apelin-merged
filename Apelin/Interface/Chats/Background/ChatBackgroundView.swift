@@ -69,7 +69,7 @@ final class ChatBackgroundView: UIView {
     private static var cachedPicture: UIImage?
     private static var cachedStamp: Date?
 
-    private static func picture() -> UIImage? {
+    static func picture() -> UIImage? {
         let url = ChatBackground.imageURL
         let stamp = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
         if let stamp, stamp == cachedStamp, let cachedPicture {
@@ -111,5 +111,33 @@ final class ChatBackgroundView: UIView {
     /// 纸印在哪一种底色上：顶部模糊淡入它。
     static func base(_ paper: ChatBackground.Paper, traits: UITraitCollection) -> UIColor {
         PaperBackgroundView.base(paper, traits: traits)
+    }
+
+    /// 读者图片顶部一条的颜色，顶部模糊正是压在这一条上：取一个平均像素，
+    /// 让顶栏跟着图片走，而不是在图片上盖一张白纸或黑纸。
+    static func topTint() -> UIColor? {
+        guard let image = picture(), let cg = image.cgImage else { return nil }
+        let band = max(1, cg.height / 8)
+        guard let top = cg.cropping(to: CGRect(x: 0, y: 0, width: cg.width, height: band)) else {
+            return nil
+        }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        guard let context = CGContext(
+            data: &pixel,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .medium
+        context.draw(top, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return UIColor(
+            red: CGFloat(pixel[0]) / 255,
+            green: CGFloat(pixel[1]) / 255,
+            blue: CGFloat(pixel[2]) / 255,
+            alpha: 1
+        )
     }
 }
