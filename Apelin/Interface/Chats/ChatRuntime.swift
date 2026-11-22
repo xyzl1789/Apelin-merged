@@ -507,33 +507,47 @@ final class ChatRuntime {
 
     private func prepareEvents(_ id: UUID) async throws {
         guard unloadedEvents.contains(id), records[id] != nil else { return }
-        let pending: Task<[TaskEvent], Error>
-        if let existing = eventLoads[id] {
-            pending = existing
-        } else {
-            let folder = DataFolder.app.root.appendingPathComponent("Chats")
-            pending = Task.detached(priority: .utility) {
-                try Task.checkCancellation()
-                return try ChatEventsFile.read(id, in: folder)
-            }
-            eventLoads[id] = pending
+        let load = eventLoads[id] ?? startEventLoad(id)
+        _ = try await load.value
+    }
+
+    /// 读一盘 `id` 的事件并装进内存，这一次读自己活到读完。
+    ///
+    /// 打开它的那次 `loadHistory` 会随读者切走而被取消，而读盘本身不该
+    /// 跟着白费：取消的只是「等的人」，六十多兆的旧历史仍要读完、结果
+    /// 仍要装进去。此前结果是在等待方的 `await` 之后才写入的，读者一切
+    /// 走，那一读就成了空转，切回来还得从头再读一遍——这正是「要切换
+    /// 会话才刷出来」的由来。
+    private func startEventLoad(_ id: UUID) -> Task<[TaskEvent], Error> {
+        let folder = DataFolder.app.root.appendingPathComponent("Chats")
+        let load = Task { [weak self] () throws -> [TaskEvent] in
+            defer { self?.eventLoads[id] = nil }
+            // 读者正等着这一页：这一读不排到后台的其它工作后面去。
+            let events = try await Task.detached(priority: .userInitiated) {
+                try ChatEventsFile.read(id, in: folder)
+            }.value
+            await self?.installEvents(events, for: id)
+            return events
         }
-        do {
-            let events = try await pending.value
-            if unloadedEvents.contains(id), records[id] != nil {
-                records[id]?.events = events
-                eventCounts[id] = events.count
-                unloadedEvents.remove(id)
-            }
-            // 文件里到底有多少条，只有读过的这一处知道：启动时用的是头里记的
-            // 数，头落后于文件时下一次保存就会从头里那个数往后追加，把文件里
-            // 已有的行再写一遍（这正是历史长成好几份的原因）。
-            await store.note(eventsOnDisk: id, count: events.count)
-            eventLoads[id] = nil
-        } catch {
-            eventLoads[id] = nil
-            throw error
+        eventLoads[id] = load
+        return load
+    }
+
+    /// 把读到的事件装进 `id`：内存里的记录、条数，以及磁盘上真实的条数。
+    /// 装好了才通知页面重画，免得历史已在内存里却没人把它画出来。
+    private func installEvents(_ events: [TaskEvent], for id: UUID) async {
+        let installing = unloadedEvents.contains(id) && records[id] != nil
+        if installing {
+            records[id]?.events = events
+            eventCounts[id] = events.count
+            unloadedEvents.remove(id)
         }
+        // 文件里到底有多少条，只有读过的这一处知道：启动时用的是头里记的
+        // 数，头落后于文件时下一次保存就会从头里那个数往后追加，把文件里
+        // 已有的行再写一遍（这正是历史长成好几份的原因）。
+        await store.note(eventsOnDisk: id, count: events.count)
+        // 启动时那次预读（`sending != nil` 的会话）还在装载列表，页面无从重画。
+        if installing, isLoaded { onChange?() }
     }
 
     /// 尚未准备好的页面不在绘制回调里同步读取历史；加载由 loadHistory/follow 完成。
