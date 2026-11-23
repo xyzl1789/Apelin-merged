@@ -152711,85 +152711,85 @@
         }
       }
     },
-    "A provider that cannot report a balance is not shown; unavailable is not zero.": {
+    "Balances read come first, zero balances next, and providers that cannot report one last; unavailable is not zero.": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法查询余额的服务商不显示；查不到不等于余额为 0。"
+            "value": "查到的余额排在最上，零余额其次，查不到余额的服务商排最后；查不到不等于余额为 0。"
           }
         }
       }

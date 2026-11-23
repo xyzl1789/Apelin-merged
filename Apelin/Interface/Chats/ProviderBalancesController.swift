@@ -5,8 +5,9 @@ import UIKit
 /// 点击余额徽章后的详情页：每个能查询余额的服务商一张卡片——服务商名、大字
 /// 余额与币种，底部一行小字左边是这条自己的查询时间，站点地址推到这一行最右端
 /// （如 api.deepseek.com）；查询失败的那条以橙色写出原因，站点照旧在最右。列表
-/// 从第一张卡开始排，过期的那条排在最前，其余按查询时间从新到旧。查过的余额永远
-/// 显示上次的数值（「暂无」只出现在真的一条余额都没有、也从没查到过的时候）。
+/// 从第一张卡开始排：查到的非零余额在最上，查到的零余额其次，查询失败（不提供
+/// 或读不到余额）的全部沉底，同一层内按查询时间从新到旧。查过的余额永远显示
+/// 上次的数值（「暂无」只出现在真的一条余额都没有、也从没查到过的时候）。
 final class ProviderBalancesController: UITableViewController {
     /// 页内正在画的行，已按排序规则排好。
     private var balances: [ProviderBalance] = []
@@ -32,11 +33,33 @@ final class ProviderBalancesController: UITableViewController {
         return timeFormatter.string(from: date)
     }
 
-    /// 过期（本次查询失败）的排最前，其余按查询时间从新到旧：一进页面
-    /// 先看到的是需要处理的那条，然后是刚查过的。
+    /// 一条余额在列表里的层级：查到的非零余额在最上，查到的零余额其次，
+    /// 查不到余额的（查询失败、平台不提供）全部沉底。
+    private enum Rank: Int {
+        case funded
+        case zero
+        case unavailable
+    }
+
+    private static func rank(of balance: ProviderBalance) -> Rank {
+        if balance.stale { return .unavailable }
+        guard let value = decimalAmount(balance.amount) else { return .unavailable }
+        return value == Decimal.zero ? .zero : .funded
+    }
+
+    /// 「0」「0.00」「1,234.50」都是金额文本；解析不出数值的算查不到余额。
+    private static func decimalAmount(_ text: String) -> Decimal? {
+        let kept = text.filter { $0.isASCII && ($0.isNumber || $0 == "." || $0 == "-") }
+        guard kept.contains(where: \.isNumber) else { return nil }
+        return Decimal(string: kept, locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    /// 先按层级，同一层内按查询时间从新到旧。
     private static func sorted(_ balances: [ProviderBalance]) -> [ProviderBalance] {
         balances.sorted { left, right in
-            if left.stale != right.stale { return left.stale }
+            let leftRank = rank(of: left)
+            let rightRank = rank(of: right)
+            if leftRank != rightRank { return leftRank.rawValue < rightRank.rawValue }
             return left.updatedAt > right.updatedAt
         }
     }
@@ -149,7 +172,9 @@ final class ProviderBalancesController: UITableViewController {
     }
 
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        balances.isEmpty ? nil : String(localized: "A provider that cannot report a balance is not shown; unavailable is not zero.")
+        balances.isEmpty ? nil : String(
+            localized: "Balances read come first, zero balances next, and providers that cannot report one last; unavailable is not zero.",
+        )
     }
 }
 
