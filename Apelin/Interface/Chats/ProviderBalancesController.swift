@@ -12,9 +12,6 @@ final class ProviderBalancesController: UITableViewController {
     private var balances: [ProviderBalance] = []
     private var refreshing = false
 
-    private let emptyContainer = UIView()
-    private let emptyCard = ProviderBalanceEmptyCard()
-
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .none
@@ -72,7 +69,10 @@ final class ProviderBalancesController: UITableViewController {
             ProviderBalanceCardCell.self,
             forCellReuseIdentifier: ProviderBalanceCardCell.reuseIdentifier,
         )
-        buildEmptyState()
+        tableView.register(
+            ProviderBalanceEmptyCell.self,
+            forCellReuseIdentifier: ProviderBalanceEmptyCell.reuseIdentifier,
+        )
         apply(ProviderBalanceStore.shared.balances)
         refresh()
     }
@@ -121,22 +121,10 @@ final class ProviderBalancesController: UITableViewController {
         }
     }
 
-    /// 换一份数据重画：排好序、决定空态，再整表刷新。
+    /// 换一份数据重画：排好序，再整表刷新。
     private func apply(_ next: [ProviderBalance]) {
         balances = Self.sorted(next)
-        emptyContainer.isHidden = !balances.isEmpty
         tableView.reloadData()
-    }
-
-    private func buildEmptyState() {
-        emptyContainer.addSubview(emptyCard)
-        emptyCard.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            emptyCard.topAnchor.constraint(equalTo: emptyContainer.topAnchor, constant: 16),
-            emptyCard.leadingAnchor.constraint(equalTo: emptyContainer.leadingAnchor, constant: 16),
-            emptyCard.trailingAnchor.constraint(equalTo: emptyContainer.trailingAnchor, constant: -16),
-        ])
-        tableView.backgroundView = emptyContainer
     }
 
     // MARK: - Table
@@ -144,10 +132,14 @@ final class ProviderBalancesController: UITableViewController {
     override func numberOfSections(in tableView: UITableView) -> Int { 1 }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        balances.count
+        max(1, balances.count)
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        // 空态也参与列表布局，和正常余额行一样避开导航栏。
+        if balances.isEmpty {
+            return tableView.dequeueReusableCell(withIdentifier: ProviderBalanceEmptyCell.reuseIdentifier, for: indexPath)
+        }
         let cell = tableView.dequeueReusableCell(
             withIdentifier: ProviderBalanceCardCell.reuseIdentifier,
             for: indexPath,
@@ -305,15 +297,25 @@ final class ProviderBalanceCardCell: UITableViewCell {
 
 /// 一条余额都没有时的空态卡：不是「余额为 0」，是没有任何服务商支持
 /// 或查到过余额。
-final class ProviderBalanceEmptyCard: UIView {
+final class ProviderBalanceEmptyCell: UITableViewCell {
+    static let reuseIdentifier = "ProviderBalanceEmpty"
+
+    private let card = UIView()
     private let titleLabel = UILabel()
     private let detailLabel = UILabel()
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .secondarySystemGroupedBackground
-        layer.cornerRadius = 14
-        layer.cornerCurve = .continuous
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        backgroundColor = .clear
+        contentView.backgroundColor = .clear
+        selectionStyle = .none
+
+        card.backgroundColor = .secondarySystemGroupedBackground
+        card.layer.cornerRadius = 14
+        card.layer.cornerCurve = .continuous
+        card.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(card)
+
         titleLabel.font = .preferredFont(forTextStyle: .headline)
         titleLabel.text = String(localized: "No balance to show")
         detailLabel.font = .preferredFont(forTextStyle: .footnote)
@@ -325,12 +327,16 @@ final class ProviderBalanceEmptyCard: UIView {
             $0.spacing = 6
             $0.translatesAutoresizingMaskIntoConstraints = false
         }
-        addSubview(stack)
+        card.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 16),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16),
+            card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
+            card.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -6),
+            card.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 16),
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -16),
         ])
         isAccessibilityElement = true
         accessibilityTraits = .staticText
@@ -340,6 +346,6 @@ final class ProviderBalanceEmptyCard: UIView {
 
     @available(*, unavailable)
     required init?(coder _: NSCoder) {
-        fatalError("Use init(frame:)")
+        fatalError("Use init(style:reuseIdentifier:)")
     }
 }
