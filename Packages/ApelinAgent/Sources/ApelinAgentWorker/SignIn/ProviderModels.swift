@@ -254,9 +254,17 @@ enum ProviderModels {
         let defaultURL = provider.keyFields.first { $0.field == .baseURL }?.defaultValue
             ?? (provider == .openRouter ? "https://openrouter.ai/api/v1" : nil)
         guard let base = configured ?? defaultURL, var url = URLComponents(string: base) else { return nil }
+        let azure = provider.kind == .openAICompatible
+            && ProviderRegistration.extra(AgentSignInField.azure.rawValue, in: credentials) == "true"
+        if azure {
+            guard let endpoint = ProviderRegistration.azureEndpoint(base, format: nil),
+                  let components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)
+            else { return nil }
+            url = components
+        }
         // 自建/中转端点遵守 appendV1Suffix（默认开）：用户只填域名时也拼 /v1，
         // 关掉则按填写的地址原样访问。与会话请求共用同一套规范逻辑。
-        if provider.kind == .openAICompatible,
+        if provider.kind == .openAICompatible, !azure,
            let normalized = ProviderRegistration.appendingV1(
                base,
                enabled: ProviderRegistration.extra(AgentSignInField.appendV1.rawValue, in: credentials) != "false",
@@ -265,7 +273,9 @@ enum ProviderModels {
         {
             url = components
         }
-        if url.host?.lowercased() == "api.deepseek.com" {
+        if azure {
+            // Azure 的路径与查询串已由共用端点函数处理。
+        } else if url.host?.lowercased() == "api.deepseek.com" {
             url.path = "/models"
         } else if provider == .anthropic {
             let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -294,12 +304,10 @@ enum ProviderModels {
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let ua = trimmed.isEmpty ? CompatibleEndpointUserAgent.default : trimmed
             request.setValue(ua, forHTTPHeaderField: "User-Agent")
-            // Azure 用 api-key 头传密钥。
-            if ProviderRegistration.extra(AgentSignInField.azure.rawValue, in: credentials) == "true" {
-                request.setValue(credentials.access, forHTTPHeaderField: "api-key")
-            }
         }
-        if provider == .anthropic, !isDeepSeek(credentials) {
+        if azure {
+            request.setValue(credentials.access, forHTTPHeaderField: "api-key")
+        } else if provider == .anthropic, !isDeepSeek(credentials) {
             request.setValue(credentials.access, forHTTPHeaderField: "x-api-key")
             request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         } else if provider == .google {

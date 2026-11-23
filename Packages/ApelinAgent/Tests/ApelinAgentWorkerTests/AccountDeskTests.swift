@@ -800,6 +800,47 @@ struct AccountDeskTests {
     }
 
     @Test
+    func `Azure 的端点校验、模型发现与两种传输使用同一版本和鉴权`() async throws {
+        let base = "https://sample.openai.azure.com/openai/deployments/example/chat/completions?api-version=2025-04-01-preview"
+        let fields: [AgentSignInField: String] = [.apiKey: "test-key", .baseURL: base, .defaultModel: "example", .azure: "true"]
+        var plainFields = fields
+        plainFields[.azure] = "false"
+        #expect(throws: ApelinError.self) { try AccountDesk.validated(plainFields, for: .openAICompatible) }
+        var unknownQuery = fields
+        unknownQuery[.baseURL] = base + "&unknown=yes"
+        #expect(throws: ApelinError.self) { try AccountDesk.validated(unknownQuery, for: .openAICompatible) }
+
+        for format in AgentAPIFormat.allCases {
+            var values = fields
+            values[.apiFormat] = format.rawValue
+            let accepted = try AccountDesk.validated(values, for: .openAICompatible)
+            #expect(accepted[.baseURL] == base)
+            let credentials = AccountDesk.apiKeyCredentials(accepted)
+            let discovery = try #require(ProviderModels.modelRequest(.openAICompatible, credentials: credentials))
+            #expect(discovery.url?.path == "/openai/models")
+            #expect(discovery.url?.query == "api-version=2025-04-01-preview")
+            #expect(discovery.value(forHTTPHeaderField: "api-key") == "test-key")
+            #expect(discovery.value(forHTTPHeaderField: "Authorization") == nil)
+
+            let storeID = "openai-compatible"
+            let manager = OAuthManager(source: DeliveredCredentialSource([storeID: credentials]))
+            let resolved = try #require(try await ProviderRegistration.resolve(storeID: storeID, manager: manager))
+            #expect(resolved.model.api == format.rawValue)
+            #expect(await APIRegistry.shared.provider(scope: resolved.model.provider, api: resolved.model.api) != nil)
+            let auth = try #require(try await resolved.authResolver?(resolved.model, nil))
+            guard case .apiKeyHeader("api-key") = auth.scheme else {
+                Issue.record("Azure 应使用 api-key，而不是 Bearer 鉴权")
+                continue
+            }
+            #expect(auth.token == "test-key")
+            let url = try #require(ProviderRegistration.azureEndpoint(resolved.model.baseURL, format: format, deployment: "example"))
+            let path = format == .chatCompletions ? "/openai/deployments/example/chat/completions" : "/openai/responses"
+            #expect(url.path == path)
+            #expect(url.query == "api-version=2025-04-01-preview")
+        }
+    }
+
+    @Test
     func `the interface format is validated, stored and restored for an OpenAI-compatible endpoint` async throws {
         let store = DeliveredCredentialSource()
         let desk = AccountDesk(store: store, login: Self.neverCalled, listener: Self.silent, verifyKey: { _, _, _ in })

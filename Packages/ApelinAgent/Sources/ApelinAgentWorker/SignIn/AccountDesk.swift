@@ -554,6 +554,8 @@ public actor AccountDesk {
         for field in values.keys where !fields.contains(where: { $0.field == field }) {
             throw ApelinError(.badRequest, "\(provider.rawValue) does not ask for \(field.rawValue)")
         }
+        let azure = CredentialProviderID.isOpenAICompatible(provider.storeID)
+            && values[.azure]?.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
         var accepted: [AgentSignInField: String] = [:]
         for field in fields {
             let value = (values[field.field] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -572,7 +574,8 @@ public actor AccountDesk {
                 guard value.count <= 2048, let url = URLComponents(string: value),
                       let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
                       url.host?.isEmpty == false, url.user == nil, url.password == nil,
-                      url.query == nil, url.fragment == nil
+                      url.fragment == nil,
+                      (azure ? (scheme == "https" && Self.acceptsAzureQuery(url)) : url.query == nil)
                 else {
                     throw ApelinError(.badRequest, "请输入有效的 HTTP 或 HTTPS 地址。")
                 }
@@ -605,6 +608,15 @@ public actor AccountDesk {
             accepted[field.field] = value
         }
         return accepted
+    }
+
+    private static func acceptsAzureQuery(_ url: URLComponents) -> Bool {
+        guard url.query != nil else { return true }
+        guard let items = url.queryItems, items.count == 1, let version = items.first,
+              version.name == "api-version", let value = version.value, !value.isEmpty
+        else { return false }
+        let allowed = CharacterSet(charactersIn: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-.")
+        return value.count <= 64 && value.unicodeScalars.allSatisfy { allowed.contains($0) }
     }
 
     /// The refusal for an empty required field, which names it.

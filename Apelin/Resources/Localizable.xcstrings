@@ -1,6 +1,158 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Provider Note" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ملاحظة عن مزوّد الخدمة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anbieternotiz"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nota del proveedor"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Note du fournisseur"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nota sul provider"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プロバイダーのメモ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공급자 메모"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Observação do provedor"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заметка о провайдере"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ghi chú nhà cung cấp"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务商备注"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服務商備註"
+          }
+        }
+      }
+    },
+    "Use Azure OpenAI authentication (api-key header). Paste the full Azure endpoint above in API Base, including the ?api-version=… query parameter. Both API formats are supported." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "استخدم مصادقة Azure OpenAI (ترويسة api-key). ألصق نقطة نهاية Azure الكاملة في حقل عنوان API أعلاه، بما في ذلك معلمة الاستعلام ?api-version=…. كلا تنسيقي API مدعومان."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwendet die Azure OpenAI-Authentifizierung (Header api-key). Füge oben als API-Basis den vollständigen Azure-Endpunkt mit dem Abfrageparameter ?api-version=… ein. Beide API-Formate werden unterstützt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa la autenticación de Azure OpenAI (cabecera api-key). Pega arriba, en la URL base de la API, el endpoint completo de Azure con el parámetro de consulta ?api-version=…. Se admiten ambos formatos de API."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utilise l’authentification Azure OpenAI (en-tête api-key). Collez le point de terminaison Azure complet dans l’adresse API ci-dessus, avec le paramètre de requête ?api-version=…. Les deux formats d’API sont pris en charge."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa l’autenticazione Azure OpenAI (intestazione api-key). Incolla l’endpoint Azure completo nell’indirizzo API qui sopra, incluso il parametro di query ?api-version=…. Sono supportati entrambi i formati API."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Azure OpenAI 認証（api-key ヘッダー）を使います。上の API ベース URL に、クエリパラメータ ?api-version=… を含む完全な Azure エンドポイントを貼り付けてください。どちらの API 形式にも対応しています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Azure OpenAI 인증(api-key 헤더)을 사용합니다. 위 API 기본 주소에 ?api-version=… 쿼리 매개변수를 포함한 전체 Azure 엔드포인트를 붙여 넣으세요. 두 API 형식을 모두 지원합니다."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa a autenticação do Azure OpenAI (cabeçalho api-key). Cole o endpoint completo do Azure no endereço base da API acima, incluindo o parâmetro de consulta ?api-version=…. Os dois formatos de API são compatíveis."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Используется аутентификация Azure OpenAI (заголовок api-key). Вставьте полный адрес Azure в поле базового URL API выше, включая параметр запроса ?api-version=…. Поддерживаются оба формата API."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sử dụng xác thực Azure OpenAI (tiêu đề api-key). Dán điểm cuối Azure đầy đủ vào địa chỉ API ở trên, bao gồm tham số truy vấn ?api-version=…. Hỗ trợ cả hai định dạng API."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Azure OpenAI 鉴权（api-key 请求头）。请在上方「API 地址」中粘贴完整的 Azure 端点，包含 ?api-version=… 查询参数。两种 API 格式均可用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Azure OpenAI 驗證（api-key 請求標頭）。請在上方「API 位址」中貼上完整的 Azure 端點，包含 ?api-version=… 查詢參數。兩種 API 格式皆可使用。"
+          }
+        }
+      }
+    },
     "A thought in hand, waiting to set out." : {
       "extractionState" : "manual",
       "localizations" : {

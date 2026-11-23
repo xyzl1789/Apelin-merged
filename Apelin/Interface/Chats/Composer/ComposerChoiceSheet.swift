@@ -30,6 +30,7 @@ final class ComposerChoiceSheet: UIViewController {
     /// Choices under a heading of their own, such as one provider's models.
     struct Group {
         var title: String?
+        var note: String? = nil
         var choices: [Choice]
     }
 
@@ -165,6 +166,16 @@ final class ComposerChoiceSheet: UIViewController {
                 }
                 stack.addArrangedSubview(label)
                 stack.setCustomSpacing(4, after: label)
+                if let text = group.note, !text.isEmpty {
+                    let note = UILabel()
+                    note.text = text
+                    note.font = .preferredFont(forTextStyle: .footnote)
+                    note.adjustsFontForContentSizeCategory = true
+                    note.textColor = .secondaryLabel
+                    note.numberOfLines = 0
+                    stack.addArrangedSubview(note)
+                    stack.setCustomSpacing(6, after: note)
+                }
             }
             for choice in group.choices {
                 let row = ChoiceRow(

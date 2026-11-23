@@ -1428,6 +1428,7 @@ final class ChatController: UIViewController {
             guard let ids = models[provider.rawValue], !ids.isEmpty else { return nil }
             return ComposerChoiceSheet.Group(
                 title: provider.displayName,
+                note: Preferences.ProviderNotes.note(for: provider),
                 choices: ids.map { model in
                     ComposerChoiceSheet.Choice(
                         title: model,
@@ -1518,6 +1519,7 @@ final class ChatController: UIViewController {
         return accounts.map { account in
             ComposerChoiceSheet.Group(
                 title: account.account ?? account.provider.displayName,
+                note: Preferences.ProviderNotes.note(for: account.provider),
                 choices: (account.models ?? []).map { model in
                     ComposerChoiceSheet.Choice(
                         // The name the catalog gives it, with the provider's own

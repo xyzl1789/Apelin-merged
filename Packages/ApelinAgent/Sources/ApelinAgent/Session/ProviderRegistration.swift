@@ -66,7 +66,9 @@ public enum ProviderRegistration {
         {
             format = chosen
         }
-        if CredentialProviderID.isOpenAICompatible(storeID), format == .responses {
+        let compatible = CredentialProviderID.isOpenAICompatible(storeID)
+        let azure = compatible && ProviderRegistration.extra(AgentSignInField.azure.rawValue, in: credentials) == "true"
+        if compatible, !azure, format == .responses {
             // kwwk 的 Responses 传输只把 `StreamOptions.headers` 带进普通流式
             // 请求，模型自身的头会被丢掉；中转站按 User-Agent 白名单放行，
             // 所以这里包一层把模型头补进去，否则站点回“仅支持编程客户端”。
@@ -92,19 +94,35 @@ public enum ProviderRegistration {
             }
             let customUA = ProviderRegistration.extra(AgentSignInField.customUserAgent.rawValue, in: credentials)
             model = CompatibleEndpointUserAgent.applying(to: model, customUserAgent: customUA)
-            // Azure OpenAI 用 `api-key` 头传密钥；kwwk 传输层原样应用
-            // model.headers，因此直接设置真实值，Authorization 头由传输层
-            // 按 Bearer 追加，Azure 会忽略它。
-            if ProviderRegistration.extra(AgentSignInField.azure.rawValue, in: credentials) == "true" {
-                var headers = model.headers ?? [:]
-                headers["api-key"] = credentials.access
-                model.headers = headers
-            }
-            // 默认自动附加 /v1（Minis 的 appendV1Suffix）：用户只填域名时
-            // 也拼出 .../v1。关掉时按用户填写的地址原样使用。kwwk 的
-            // Chat Completions/Responses 传输从 model.baseURL 拼请求路径。
-            if let base = ProviderRegistration.extra(AgentSignInField.baseURL.rawValue, in: credentials),
-               let normalized = ProviderRegistration.appendingV1(base, enabled: ProviderRegistration.extra(AgentSignInField.appendV1.rawValue, in: credentials) != "false")
+            if azure {
+                guard let base = extra(AgentSignInField.baseURL.rawValue, in: credentials),
+                      let endpoint = azureEndpoint(base, format: format, deployment: model.id)
+                else { return nil }
+                model.baseURL = base
+                model.api = format.rawValue
+                // Azure 和普通兼容账号的路径拼接不同，不能覆盖共享的传输注册。
+                model.provider += "-azure-\(storeID)"
+                switch format {
+                case .chatCompletions:
+                    await APIRegistry.shared.register(OpenAICompletionsProvider(
+                        defaultBaseURL: endpoint,
+                        urlBuilder: { model, _, fallback in
+                            azureEndpoint(model.baseURL, format: .chatCompletions, deployment: model.id) ?? fallback
+                        },
+                    ), scope: model.provider)
+                case .responses:
+                    await APIRegistry.shared.register(ResponsesProviderWithModelHeaders(inner: OpenAIResponsesProvider(
+                        webSocketClient: nil,
+                        defaultBaseURL: endpoint,
+                        urlBuilder: { model, _, fallback in
+                            azureEndpoint(model.baseURL, format: .responses, deployment: model.id) ?? fallback
+                        },
+                    )), scope: model.provider)
+                }
+            } else if let base = ProviderRegistration.extra(AgentSignInField.baseURL.rawValue, in: credentials),
+                      let normalized = ProviderRegistration.appendingV1(
+                          base, enabled: ProviderRegistration.extra(AgentSignInField.appendV1.rawValue, in: credentials) != "false"
+                      )
             {
                 model.baseURL = normalized
             }
@@ -123,10 +141,46 @@ public enum ProviderRegistration {
         return ResolvedAuth(
             model: model,
             modelLabel: resolved.modelLabel,
-            authResolver: { _, _ in ResolvedProviderAuth(token: credentials.access, scheme: .bearer) },
+            authResolver: { _, _ in
+                ResolvedProviderAuth(token: credentials.access, scheme: azure ? .apiKeyHeader("api-key") : .bearer)
+            },
             providerSlots: resolved.providerSlots,
             authResolvers: resolved.authResolvers,
         )
+    }
+
+    /// 只重建 Azure 的路径，保留 `api-version` 等原有查询参数。
+    public static func azureEndpoint(_ base: String, format: AgentAPIFormat?, deployment: String = "") -> URL? {
+        guard var url = URLComponents(string: base), url.scheme?.lowercased() == "https",
+              url.host?.isEmpty == false, url.user == nil, url.password == nil, url.fragment == nil
+        else { return nil }
+        var path = url.percentEncodedPath.split(separator: "/").map(String.init)
+        for suffix in [["chat", "completions"], ["responses"], ["models"]] where path.suffix(suffix.count).elementsEqual(suffix) {
+            path.removeLast(suffix.count)
+            break
+        }
+        let existingDeployment: String?
+        if let index = path.lastIndex(of: "deployments"), index > 0, path[index - 1] == "openai" {
+            existingDeployment = path.dropFirst(index + 1).first
+            path.removeSubrange(index...)
+        } else {
+            existingDeployment = nil
+        }
+        if path.isEmpty { path = ["openai"] }
+        switch format {
+        case .chatCompletions:
+            if path.last == "openai" {
+                guard let encodedDeployment = existingDeployment ?? deployment.addingPercentEncoding(withAllowedCharacters: CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")),
+                      !encodedDeployment.isEmpty, encodedDeployment != ".", encodedDeployment != ".."
+                else { return nil }
+                path += ["deployments", encodedDeployment]
+            }
+            path += ["chat", "completions"]
+        case .responses: path.append("responses")
+        case nil: path.append("models")
+        }
+        url.percentEncodedPath = "/" + path.joined(separator: "/")
+        return url.url
     }
 
     /// Reads a non-empty string extra, the same rule DeepSeek uses.

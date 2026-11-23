@@ -37,11 +37,11 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     }
 
     private enum Row: Equatable {
-        case account(AgentAccount)
+        case account(AgentAccount, note: String?)
         case status(Status)
         var id: String {
             switch self {
-            case let .account(account): account.provider.rawValue
+            case let .account(account, _): account.provider.rawValue
             case .status: "status"
             }
         }
@@ -53,7 +53,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     ) { [weak self] _, _, row in
         guard let self else { return nil }
         switch row {
-        case let .account(account): return accountCell(account)
+        case let .account(account, note): return accountCell(account, note: note)
         case let .status(status): return statusCell(status)
         }
     }
@@ -149,14 +149,18 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             let shown = query.isEmpty
                 ? accounts
                 : SearchScorer.sorted(accounts, query: query) {
-                    "\($0.provider.displayName) \($0.account ?? "")"
+                    "\($0.provider.displayName) \($0.account ?? "") \(Preferences.ProviderNotes.note(for: $0.provider) ?? "")"
                 }
             let groups: [(Group, [AgentAccount])] = [
                 (.signedIn, shown.filter(\.signedIn)),
                 (.accounts, shown.filter { !$0.signedIn && $0.method != .apiKey }),
                 (.keys, shown.filter { !$0.signedIn && $0.method == .apiKey }),
             ]
-            sections = groups.filter { !$0.1.isEmpty }.map { (.group($0.0), $0.1.map(Row.account)) }
+            sections = groups.filter { !$0.1.isEmpty }.map { group, accounts in
+                (.group(group), accounts.map { account in
+                    .account(account, note: Preferences.ProviderNotes.note(for: account.provider))
+                })
+            }
             if sections.isEmpty {
                 sections = [(.status, [.status(.noResults)])]
             }
@@ -167,7 +171,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     // MARK: - Table
 
     private func account(at indexPath: IndexPath) -> AgentAccount? {
-        guard case let .account(account)? = dataSource.value(at: indexPath) else { return nil }
+        guard case let .account(account, _)? = dataSource.value(at: indexPath) else { return nil }
         return account
     }
 
@@ -199,14 +203,15 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
 
     /// The provider's mark and name on one line; signed in, who as under the
     /// name and a `…` menu at the end.
-    private func accountCell(_ account: AgentAccount) -> UITableViewCell {
+    private func accountCell(_ account: AgentAccount, note: String?) -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
         var content: UIListContentConfiguration
         if account.signedIn {
             content = .stackedValueCell()
-            content.secondaryText = Self.signedInLine(account)
+            let status = Self.signedInLine(account)
+            content.secondaryText = note.map { status + "\n" + $0 } ?? status
             content.secondaryTextProperties.color = .secondaryLabel
-            content.secondaryTextProperties.numberOfLines = 1
+            content.secondaryTextProperties.numberOfLines = note == nil ? 1 : 0
 
             cell.accessoryView = menuButton(account)
             cell.selectionStyle = .none
@@ -246,7 +251,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     }
 
     private func accountActions(_ account: AgentAccount) -> [UIMenuElement] {
-        [
+        var actions: [UIMenuElement] = [
             UIAction(
                 title: String(localized: "Edit"),
                 image: UIImage(systemName: account.isAPIKeyAccount ? "pencil" : "arrow.clockwise"),
@@ -275,6 +280,29 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
                 },
             ]),
         ]
+        if !account.isAPIKeyAccount {
+            actions.insert(UIAction(title: String(localized: "Provider Note"), image: UIImage(systemName: "note.text")) { [weak self] _ in
+                self?.editNote(for: account.provider)
+            }, at: 1)
+        }
+        return actions
+    }
+
+    private func editNote(for provider: AgentProvider) {
+        let title = String(localized: "Provider Note")
+        let alert = UIAlertController(title: title, message: nil, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.text = Preferences.ProviderNotes.note(for: provider)
+            field.accessibilityLabel = title
+            field.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(UIAlertAction(title: String(localized: "Save"), style: .default) { [weak self, weak alert] _ in
+            guard let field = alert?.textFields?.first else { return }
+            Preferences.ProviderNotes.save(field.text ?? "", for: provider)
+            self?.regroup()
+        })
+        present(alert, animated: true)
     }
 
     override func tableView(_: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
@@ -329,6 +357,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             do {
                 try await ApelinService.app.agentSignOut(provider: provider)
                 EnabledModels.remove(for: provider)
+                Preferences.ProviderNotes.save("", for: provider)
                 self?.load()
             } catch {
                 self?.presentNotice(title: "Unable to Sign Out", message: error.readableMessage)

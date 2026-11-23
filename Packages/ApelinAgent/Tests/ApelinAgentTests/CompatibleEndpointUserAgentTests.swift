@@ -33,6 +33,17 @@ struct CompatibleEndpointUserAgentTests {
     }
 
     @Test
+    func `Azure v1 端点保留已有路径，旧版 Chat Completions 可从模型 ID 补部署名`() {
+        let v1 = "https://azure.example.invalid/openai/v1"
+        #expect(ProviderRegistration.azureEndpoint(v1, format: .chatCompletions)?.path == "/openai/v1/chat/completions")
+        #expect(ProviderRegistration.azureEndpoint(v1, format: .responses)?.path == "/openai/v1/responses")
+        let legacy = "https://azure.example.invalid/openai?api-version=2025-04-01-preview"
+        #expect(ProviderRegistration.azureEndpoint(legacy, format: .chatCompletions, deployment: "test-deploy")?.path
+            == "/openai/deployments/test-deploy/chat/completions")
+        #expect(ProviderRegistration.azureEndpoint("http://azure.example.invalid", format: .responses) == nil)
+    }
+
+    @Test
     func `appendV1 去尾部斜杠与重复 v1 并保留查询串`() {
         #expect(ProviderRegistration.appendingV1("https://x.com", enabled: true) == "https://x.com/v1")
         #expect(ProviderRegistration.appendingV1("https://x.com/", enabled: true) == "https://x.com/v1")
