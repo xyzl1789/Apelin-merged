@@ -130,12 +130,12 @@ private final class AttachmentCell: UICollectionViewCell {
     }
 
     func show(_ item: ComposerAttachment) {
-        imageView.image = item.isImage ? UIImage(data: item.data) : nil
+        imageView.image = item.isImage ? MessageAttachmentPreviews.shared.image(for: item) : nil
         nameLabel.text = item.isImage ? nil : item.name
         textLabel.text = item.isImage
             ? nil
             : item.text.map { String($0.replacingOccurrences(of: "\n", with: " ").prefix(500)) }
-            ?? ByteCountFormatter.string(fromByteCount: Int64(item.data.count), countStyle: .file)
+            ?? ByteCountFormatter.string(fromByteCount: Int64(item.byteCount), countStyle: .file)
         accessibilityLabel = item.name
         accessibilityHint = String(localized: "Opens the attachment preview.")
         accessibilityCustomActions = [UIAccessibilityCustomAction(

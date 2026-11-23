@@ -397,6 +397,7 @@ actor ChatStore {
         guard let directoryPath = CanonicalPath.resolve(directory.path) else { throw CocoaError(.fileReadNoSuchFile) }
         restoreReadable(in: directory)
         var loaded = Loaded()
+        var allHeadsReadable = true
         for url in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             where url.pathExtension == "json"
         {
@@ -406,7 +407,7 @@ actor ChatStore {
             else { continue }
             // A file that cannot be opened now (before the first unlock, say)
             // is only skipped: it is read again next launch, never moved.
-            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { continue }
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { allHeadsReadable = false; continue }
             do {
                 let (record, count) = try read(id: id, data: data, in: directory, readingEvents: readingEvents)
                 loaded.records.append(record)
@@ -415,6 +416,27 @@ actor ChatStore {
                 loaded.unreadable.append((url.lastPathComponent, error))
                 setAside(url, in: directory)
             }
+        }
+        // 所有会话头都能读时，回收没有被任何草稿引用的附件副本：中断的
+        // 复制会在数据文件夹留下一个没有索引的 UUID。
+        if allHeadsReadable, loaded.unreadable.isEmpty {
+            let aside = directory.appendingPathComponent("Unreadable")
+            var metadata = stat()
+            if lstat(aside.path, &metadata) != 0, errno == ENOENT {
+                let storage = directory.appendingPathComponent("AttachmentFiles")
+                if CanonicalPath.resolve(storage.path) == directoryPath + "/AttachmentFiles" {
+                    let keep = Set(loaded.records.flatMap { ([$0.draft] + ($0.sending ?? [])).flatMap(\.attachments).compactMap(\.storedFile) })
+                    for name in (try? FileManager.default.contentsOfDirectory(atPath: storage.path)) ?? [] {
+                        if let key = UUID(uuidString: name), !keep.contains(key) {
+                            unlink(storage.appendingPathComponent(name).path)
+                        }
+                    }
+                }
+            }
+        }
+        // 会话头是回执：一旦草稿入档，就把分享收件箱里的原文件清掉。
+        for record in loaded.records {
+            ShareInbox.acknowledge(([record.draft] + (record.sending ?? [])).flatMap(\.attachments))
         }
         return loaded
     }
@@ -544,6 +566,7 @@ actor ChatStore {
         }
         let head = Head(record)
         try write(eventCount.map(head.counting) ?? head, into: directory)
+        ShareInbox.acknowledge(record.draft.attachments + (record.sending ?? []).flatMap(\.attachments))
         if writesEvents { written[id] = record.events.count }
         revisions[id] = revision
     }

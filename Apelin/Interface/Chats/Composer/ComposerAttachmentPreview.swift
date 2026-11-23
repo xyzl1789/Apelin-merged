@@ -24,14 +24,14 @@ final class ComposerAttachmentPreview: QLPreviewController, QLPreviewControllerD
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 var name = (attachment.name as NSString).lastPathComponent
                 if attachment.isImage, (name as NSString).pathExtension.isEmpty,
-                   let source = CGImageSourceCreateWithData(attachment.data as CFData, nil),
+                   let source = attachment.imageSource(),
                    let type = CGImageSourceGetType(source),
                    let suffix = UTType(type as String)?.preferredFilenameExtension
                 {
                     name += "." + suffix
                 }
                 let file = folder.appendingPathComponent(name)
-                try attachment.data.write(to: file, options: .atomic)
+                try attachment.export(to: file)
                 return file
             }
         } catch {

@@ -103,6 +103,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     @objc dynamic var window: UIWindow?
 
+    @objc dynamic func sceneDidBecomeActive(_: UIScene) {
+        (window?.rootViewController as? RootInterfaceController)?.checkShareInbox()
+    }
+
     @objc dynamic func scene(
         _ scene: UIScene,
         willConnectTo _: UISceneSession,
@@ -112,27 +116,34 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let window = UIWindow(windowScene: scene)
         window.tintColor = AppAccent.windowTint
         AppAppearance.apply(to: window)
-        window.rootViewController = RootInterfaceController()
+        let root = RootInterfaceController()
+        let urls = connectionOptions.urlContexts.map(\.url)
+        // 在视图恢复上次会话之前先把附件排进队列。
+        root.attachFiles(urls.filter(Self.isAttachment).sorted { $0.absoluteString < $1.absoluteString })
+        window.rootViewController = root
         window.makeKeyAndVisible()
         self.window = window
-        // A cold launch by Open in Apelin or an `apelin://` link: the URL
-        // comes with the scene. Opened on the next turn, once the root is on
-        // screen to present from.
-        DispatchQueue.main.async { [weak self] in self?.openURLs(connectionOptions.urlContexts, in: scene) }
+        // 冷启动的「在 Apelin 中打开」或 `apelin://` 链接随场景到达，
+        // 下一轮再打开，此时根控制器已在屏幕上可以弹出。
+        DispatchQueue.main.async { [weak self] in self?.openSpecialURL(in: urls, scene: scene) }
     }
 
-    /// Open in Apelin, or an `apelin://` link, while the app runs.
+    /// App 运行时收到「在 Apelin 中打开」或 `apelin://` 链接。
     @objc dynamic func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
         guard let scene = scene as? UIWindowScene else { return }
-        openURLs(contexts, in: scene)
+        let urls = contexts.map(\.url).sorted { $0.absoluteString < $1.absoluteString }
+        (window?.rootViewController as? RootInterfaceController)?.attachFiles(urls.filter(Self.isAttachment))
+        openSpecialURL(in: urls, scene: scene)
     }
 
-    /// An `apelin://` link goes to its conversation or project
-    /// (`ApelinLinkRouter`); anything else is a transfer file, and the
-    /// opener refuses what is not one with a notice. One at a time: a
-    /// second sheet could not be presented over the first.
-    @objc private dynamic func openURLs(_ contexts: Set<UIOpenURLContext>, in scene: UIWindowScene) {
-        guard let context = contexts.first, !ApelinLinkRouter.open(context.url, in: scene) else { return }
-        TransferOpener.open(context.url, in: scene)
+    /// 普通文件是聊天附件；toolchain / SDK / project / transfer 包走各自入口。
+    private static func isAttachment(_ url: URL) -> Bool {
+        url.isFileURL && TransferKind(fileName: url.lastPathComponent) == nil
+    }
+
+    private func openSpecialURL(in urls: [URL], scene: UIWindowScene) {
+        if let special = urls.first(where: { !Self.isAttachment($0) }), !ApelinLinkRouter.open(special, in: scene) {
+            TransferOpener.open(special, in: scene)
+        }
     }
 }

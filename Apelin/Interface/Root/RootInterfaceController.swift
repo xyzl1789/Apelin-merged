@@ -28,6 +28,36 @@ final class RootInterfaceController: UIViewController {
         chatRuntime
     }
     @objc private dynamic var restoredChat = false
+    private var pendingFiles: [URL] = []
+    private var pendingInbox: [ShareInbox.Item] = []
+
+    /// 系统分享收件箱在冷启动、回到前台时读取。
+    func checkShareInbox() {
+        pendingInbox = ShareInbox.items()
+        if !pendingInbox.isEmpty { restoreChatIfReady() }
+    }
+
+    /// 「打开方式」送来的文件先排队，等会话恢复后投入当前草稿。
+    func attachFiles(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        pendingFiles += urls
+        restoreChatIfReady()
+    }
+
+    private func deliverPendingFiles() {
+        guard restoredChat, !pendingFiles.isEmpty || !pendingInbox.isEmpty else { return }
+        let urls = pendingFiles
+        let items = pendingInbox
+        pendingInbox.removeAll()
+        pendingFiles.removeAll()
+        if let current = chatController.chat, chatRuntime.summary(current.id) != nil {
+            open(current, picked: true)
+        } else {
+            sidebar.startNewChat()
+        }
+        if !urls.isEmpty { chatController.attachFiles(urls) }
+        if !items.isEmpty { chatController.attachInbox(items) }
+    }
     /// 启动时锁存，后续手动打开设置的新标记不能改变本次恢复决策。
     private let previousOpeningInterrupted = ChatOpeningRecovery.pending()
     @objc private dynamic var opensChatAfterWelcome = false
@@ -142,6 +172,7 @@ final class RootInterfaceController: UIViewController {
     /// wait for the sidebar's saved project, rather than racing it into General.
     @objc private dynamic func restoreChatIfReady() {
         guard !WelcomeFlow.shouldPresent, chatRuntime.isLoaded, !isResolvingLink else { return }
+        defer { deliverPendingFiles() }
         if let link = pendingLink {
             pendingLink = nil
             open(link)
@@ -159,7 +190,7 @@ final class RootInterfaceController: UIViewController {
         }
         // What the reader chose in Settings ▸ Chat decides between the
         // conversation they were last in and a new one.
-        if Preferences.launch == .newChat {
+        if Preferences.launch == .newChat, pendingFiles.isEmpty, pendingInbox.isEmpty {
             guard sidebar.hasLoadedProjects else { return }
             restoredChat = true
             sidebar.startNewChat(picked: false)

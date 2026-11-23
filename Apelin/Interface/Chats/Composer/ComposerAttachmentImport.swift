@@ -3,6 +3,7 @@
 
 import ApelinCore
 import ApelinProtocol
+import ImageIO
 import PDFKit
 import PhotosUI
 import ScrubberKit
@@ -17,6 +18,9 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
 {
     @objc dynamic private weak var presenter: UIViewController?
     private let receive: (ComposerAttachment) -> Void
+
+    /// 外部入口（分享、打开方式）已备好的附件直接进入草稿，不走选择器回调。
+    func accept(_ item: ComposerAttachment) { receive(item) }
 
     init(presenter: UIViewController, receive: @escaping (ComposerAttachment) -> Void) {
         self.presenter = presenter
@@ -48,7 +52,7 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
     }
 
     @objc dynamic func files() {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item])
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.data], asCopy: true)
         picker.allowsMultipleSelection = true
         picker.delegate = self
         presenter?.present(picker, animated: true)
@@ -81,6 +85,11 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
     }
 
     @objc dynamic func documentPicker(_: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        importFiles(urls)
+    }
+
+    /// 系统分享、打开方式与文件选择器共用的入草稿路径。
+    func importFiles(_ urls: [URL]) {
         Task { @MainActor [self] in
             for url in urls {
                 do {
@@ -91,7 +100,14 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
                                 url.stopAccessingSecurityScopedResource()
                             }
                         }
-                        return try Self.readAttachment(at: url, name: url.lastPathComponent)
+                        var coordinationError: NSError?
+                        var result: Result<ComposerAttachment, Error>?
+                        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { local in
+                            result = Result { try Self.readAttachment(at: local, name: url.lastPathComponent) }
+                        }
+                        if let coordinationError { throw coordinationError }
+                        guard let result else { throw CocoaError(.fileReadUnknown) }
+                        return try result.get()
                     }.value
                     receive(attachment)
                 } catch {
@@ -120,12 +136,7 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
                 }
                 Task { @MainActor in
                     do {
-                        let attachment = try read.get()
-                        if attachment.isImage, let image = UIImage(data: attachment.data) {
-                            importImage(image)
-                        } else {
-                            receive(attachment)
-                        }
+                        receive(try read.get())
                     } catch {
                         presenter?.presentNotice(title: "Unable to Import File", message: error.readableMessage)
                     }
@@ -136,39 +147,65 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
 
     /// `url` as an attachment named `name`: a regular file of at most 50 MB,
     /// read by its canonical path, an image or else text (a PDF's own).
-    nonisolated static func readAttachment(at url: URL, name: String) throws -> ComposerAttachment {
+    /// 附件的来源。分享收件箱保留其 UUID 作为收据；历史记录里的文件是本地的。
+    enum Origin {
+        case provider, history, shareInbox(UUID)
+    }
+
+    /// 只把一小段预览放进草稿 JSON；文件本体复制到数据文件夹，UUID 是唯一索引。
+    nonisolated static func readAttachment(
+        at url: URL,
+        name: String,
+        origin: Origin = .provider,
+        mimeType: String? = nil,
+    ) throws -> ComposerAttachment {
         guard let path = CanonicalPath.resolve(url.path) else {
             throw ApelinError(.badRequest, String(localized: "The selected file could not be read."))
         }
         let source = URL(fileURLWithPath: path)
         let values = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-        guard values.isRegularFile == true, let size = values.fileSize, size <= 50 * 1024 * 1024 else {
-            throw ApelinError(
-                .badRequest,
-                String(localized: "Choose a regular file smaller than 50 MB."),
-            )
+        guard values.isRegularFile == true, let size = values.fileSize else {
+            throw CocoaError(.fileReadUnsupportedScheme)
         }
-        let data = try Data(contentsOf: source)
-        guard data.count <= 50 * 1024 * 1024 else {
-            throw ApelinError(.badRequest, String(localized: "Choose a file smaller than 50 MB."))
+        let key: UUID
+        if case let .shareInbox(id) = origin { key = id } else { key = UUID() }
+        try DataFolder.app.makeLevels(to: ComposerAttachment.storage)
+        let dest = ComposerAttachment.storage.appendingPathComponent(key.uuidString)
+        // 中断的复制留下一个没有引用的 UUID，冷启动时由存储层回收。
+        let stage = ComposerAttachment.storage.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: stage) }
+        // 历史文件不可变且在本地，硬链接即可；收件箱与提供者的文件一律复制。
+        switch origin {
+        case .history where link(source.path, stage.path) == 0: break
+        default: try FileManager.default.copyItem(at: source, to: stage)
         }
-        let image = UIImage(data: data) != nil
-        let text = source.pathExtension.lowercased() == "pdf"
-            ? PDFDocument(data: data)?.string
-            : String(data: data, encoding: .utf8)
+        let type = mimeType.flatMap { UTType(mimeType: $0) }
+            ?? UTType(filenameExtension: (name as NSString).pathExtension)
+            ?? CGImageSourceCreateWithURL(stage as CFURL, nil)
+                .flatMap(CGImageSourceGetType).flatMap { UTType($0 as String) }
+        let handle = try FileHandle(forReadingFrom: stage)
+        defer { try? handle.close() }
+        let prefix = try handle.read(upToCount: 8192) ?? Data()
+        let image = type?.conforms(to: .image) == true
+        let text = image || prefix.contains(0) ? nil : String(data: prefix, encoding: .utf8)
+        guard rename(stage.path, dest.path) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
         return ComposerAttachment(
             name: name,
-            data: data,
-            text: image ? nil : text,
+            text: text,
             isImage: image,
+            storedFile: key,
+            storedBytes: size,
+            mimeType: type?.preferredMIMEType,
         )
     }
 
     @objc dynamic func importImage(_ image: UIImage) {
-        guard let data = image.jpegData(compressionQuality: 0.85), data.count <= 50 * 1024 * 1024 else {
+        guard let data = image.jpegData(compressionQuality: 0.85) else {
             presenter?.presentNotice(
                 title: "Unable to Import Image",
-                message: String(localized: "Choose an image smaller than 50 MB."),
+                message: String(localized: "The image could not be read."),
             )
             return
         }
@@ -256,6 +293,31 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
             } catch {
                 presenter.presentNotice(title: "Unable to Capture Webpage", message: error.readableMessage)
             }
+        }
+    }
+}
+
+extension ComposerAttachment {
+    /// 导入文件的磁盘副本，按 UUID 存放在数据文件夹里。
+    static var storage: URL {
+        DataFolder.app.root.appendingPathComponent("Chats/AttachmentFiles", isDirectory: true)
+    }
+
+    var fileURL: URL? { storedFile.map { Self.storage.appendingPathComponent($0.uuidString) } }
+
+    /// 磁盘副本与旧草稿的内联数据都能取图片源。
+    func imageSource() -> CGImageSource? {
+        if let fileURL { return CGImageSourceCreateWithURL(fileURL as CFURL, nil) }
+        return CGImageSourceCreateWithData(data as CFData, nil)
+    }
+
+    /// 导出到预览 / Quick Look 的临时位置，优先硬链接，失败再复制。
+    func export(to url: URL) throws {
+        if let fileURL {
+            do { try FileManager.default.linkItem(at: fileURL, to: url) }
+            catch { try FileManager.default.copyItem(at: fileURL, to: url) }
+        } else {
+            try data.write(to: url, options: .atomic)
         }
     }
 }

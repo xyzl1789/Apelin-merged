@@ -41,7 +41,7 @@ final class MessageAttachmentPreviews {
             return result
         }
         let result: Result
-        if let source = CGImageSourceCreateWithData(attachment.data as CFData, nil),
+        if let source = attachment.imageSource(),
            let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                kCGImageSourceCreateThumbnailFromImageAlways: true,
                kCGImageSourceThumbnailMaxPixelSize: 1080,
@@ -49,8 +49,8 @@ final class MessageAttachmentPreviews {
            ] as CFDictionary)
         {
             result = Result(UIImage(cgImage: thumbnail), pixelSize: Self.uprightPixelSize(source))
-        } else if attachment.data.starts(with: Data("%PDF".utf8)),
-                  let page = PDFDocument(data: attachment.data)?.page(at: 0)
+        } else if attachment.mimeType == "application/pdf" || attachment.data.starts(with: Data("%PDF".utf8)),
+                  let page = (attachment.fileURL.flatMap { PDFDocument(url: $0) } ?? PDFDocument(data: attachment.data))?.page(at: 0)
         {
             result = Result(page.thumbnail(of: CGSize(width: 540, height: 720), for: .mediaBox))
         } else {
@@ -97,7 +97,7 @@ final class MessageAttachmentPreviews {
         let file = directory.appendingPathComponent((attachment.name as NSString).lastPathComponent)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try attachment.data.write(to: file, options: .atomic)
+            try attachment.export(to: file)
         } catch {
             try? FileManager.default.removeItem(at: directory)
             DispatchQueue.main.async { [self] in finish(nil, for: attachment.id) }

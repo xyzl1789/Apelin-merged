@@ -107,26 +107,12 @@ public enum AgentWorker {
                 guard (prompt.attachments?.count ?? 0) <= 8 else {
                     throw ApelinError(.badRequest, "附件描述无效")
                 }
-                let limit = AgentSession.maximumAttachmentBytes
-                let files = try (prompt.attachments ?? []).map { attachment -> (name: String, mimeType: String, data: Data) in
+                let files = try (prompt.attachments ?? []).map { attachment -> (name: String, mimeType: String, descriptor: OwnedDescriptor) in
                     guard request.descriptors.indices.contains(attachment.descriptor.index) else {
                         throw ApelinError(.badRequest, "附件描述无效")
                     }
                     let descriptor = request.descriptors[attachment.descriptor.index]
-                    var info = stat()
-                    guard fstat(descriptor.rawValue, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
-                          info.st_size >= 0, info.st_size <= off_t(limit)
-                    else {
-                        throw ApelinError(
-                            .badRequest,
-                            "attachments must be regular files no larger than \(limit >> 20) MB",
-                        )
-                    }
-                    let handle = FileHandle(fileDescriptor: descriptor.rawValue, closeOnDealloc: false)
-                    try handle.seek(toOffset: 0)
-                    let data = try handle.read(upToCount: limit + 1) ?? Data()
-                    guard data.count <= limit else { throw ApelinError(.badRequest, "附件过大") }
-                    return (attachment.name, attachment.mimeType, data)
+                    return (attachment.name, attachment.mimeType, descriptor)
                 }
                 // A queued reader choice owns its auxiliary defaults too;
                 // do not change compression/image settings of the active run.
@@ -141,7 +127,7 @@ public enum AgentWorker {
                 // keeps (the sender the host named stays). A report never
                 // names this chat and never wakes a stopped queue — both are
                 // the session's to decide (`AgentSession.prompt`).
-                try await session.prompt(prompt.text, messageID: prompt.messageID, files: files, from: sender, source: prompt.source, delivery: prompt.delivery ?? .queue, modelChoice: choice, reports: prompt.reports)
+                try await session.prompt(prompt.text, messageID: prompt.messageID, fileDescriptors: files, from: sender, source: prompt.source, delivery: prompt.delivery ?? .queue, modelChoice: choice, reports: prompt.reports)
                 // Only the app's own message names the chat: a host account
                 // message, even one carrying no turn, never does.
                 if prompt.reports == nil {

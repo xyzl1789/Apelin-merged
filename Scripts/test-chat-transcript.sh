@@ -44,6 +44,7 @@ sources=(
     "$root/Apelin/Interface/Chats/ChatTranscriptCache.swift"
     "$root/Apelin/Interface/Chats/ModelSwitchFit.swift"
     "$root/Apelin/Interface/Chats/ChatStore.swift"
+    "$root/Apelin/Application/ShareInbox.swift"
     "$root/Apelin/Interface/Chats/ChatFork.swift"
     "$root/Apelin/Interface/Chats/ChatAdoption.swift"
     "$root/Apelin/Interface/Chats/DroppedMessages.swift"

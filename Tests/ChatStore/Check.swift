@@ -20,11 +20,19 @@ func checkChatStore(_ scratch: URL, check: (Bool, String) -> Void) async throws 
     let legacyID = UUID()
     var legacy = ChatRecord(summary: .untitled(lastInteraction: Date(), projectName: nil))
     legacy.summary.id = legacyID
+    let key = UUID(), unused = UUID()
+    let attachmentFiles = chats.appendingPathComponent("AttachmentFiles")
+    try FileManager.default.createDirectory(at: attachmentFiles, withIntermediateDirectories: false)
+    for id in [key, unused] { try Data([21]).write(to: attachmentFiles.appendingPathComponent(id.uuidString)) }
+    legacy.draft.attachments = [ComposerAttachment(name: "draft.bin", storedFile: key, storedBytes: 1)]
     legacy.events = [event(1), event(2)]
     try JSONEncoder().encode(legacy).write(to: recordURL(legacyID))
     var store = ChatStore(folder: folder)
     var loaded = try await store.load()
     check(loaded.records.count == 1 && loaded.unreadable.isEmpty, "a legacy record loads")
+    check(loaded.records.first?.draft.attachments.first?.storedFile == key, "the attachment survives restart")
+    check(try Data(contentsOf: attachmentFiles.appendingPathComponent(key.uuidString)) == Data([21]), "the referenced file survives cleanup")
+    check(!FileManager.default.fileExists(atPath: attachmentFiles.appendingPathComponent(unused.uuidString).path), "orphan attachments are reclaimed")
     check(loaded.records.first?.events.map(\.seq.rawValue) == [1, 2], "its events come back in order")
     check(FileManager.default.fileExists(atPath: eventsURL(legacyID).path), "the split wrote the events file")
     let headText = String(decoding: try Data(contentsOf: recordURL(legacyID)), as: UTF8.self)

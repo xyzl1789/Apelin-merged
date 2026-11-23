@@ -127,6 +127,7 @@ final class ChatController: UIViewController {
     private static let modelLogger = Logger(subsystem: "wiki.qaq.apelin", category: "ModelPicker")
     private var selectionCheck: Task<Void, Never>?
     private var attachmentImport: ComposerAttachmentImport?
+    private var importingShareIDs = Set<UUID>()
     private var skillsLoaded = false
     private var skillsLoading = false
     /// The rewrite in flight, so a second tap stops it rather than racing it.
@@ -2092,6 +2093,32 @@ extension ChatController: ComposerView.Delegate {
         importer()?.drop(providers)
     }
 
+    /// 系统「打开方式」送来的文件直接进入当前草稿。
+    func attachFiles(_ urls: [URL]) {
+        importer(external: true)?.importFiles(urls)
+    }
+
+    /// 系统分享收件箱：按 UUID 去重，草稿入档后由存储层回执清理。
+    func attachInbox(_ items: [ShareInbox.Item]) {
+        guard let importer = importer(external: true) else { return }
+        let known = Set(runtime.records.values.flatMap { ([$0.draft] + ($0.sending ?? [])).flatMap(\.attachments).compactMap(\.storedFile) })
+        let items = items.filter { !known.contains($0.id) && importingShareIDs.insert($0.id).inserted }
+        Task { [weak self] in
+            guard let self else { return }
+            for item in items {
+                defer { importingShareIDs.remove(item.id) }
+                guard FileManager.default.fileExists(atPath: item.url.path) else { continue }
+                do {
+                    var attachment = try await Task.detached(priority: .userInitiated) {
+                        try ComposerAttachmentImport.readAttachment(at: item.url, name: item.url.lastPathComponent, origin: .shareInbox(item.id))
+                    }.value
+                    attachment.shareBatch = item.batch
+                    importer.accept(attachment)
+                } catch { presentNotice(title: "Unable to Import File", message: error.readableMessage) }
+            }
+        }
+    }
+
     func onComposerPreviewAttachment(_ attachment: ComposerAttachment) {
         do { try present(ComposerAttachmentPreview(attachment: attachment), animated: true) }
         catch { presentNotice(title: "Unable to Preview Attachment", message: error.readableMessage) }
@@ -2119,8 +2146,8 @@ extension ChatController: ComposerView.Delegate {
         }
     }
 
-    private func importer() -> ComposerAttachmentImport? {
-        guard let chat, presentedViewController == nil else { return nil }
+    private func importer(external: Bool = false) -> ComposerAttachmentImport? {
+        guard let chat, external || presentedViewController == nil else { return nil }
         let draftID = composer.draft.id
         let importer = ComposerAttachmentImport(presenter: self) { [weak self] item in
             guard let self else { return }
@@ -2131,7 +2158,7 @@ extension ChatController: ComposerView.Delegate {
                 runtime.saveDraft(draft, for: chat.id)
             }
         }
-        attachmentImport = importer
+        if !external { attachmentImport = importer }
         return importer
     }
 }

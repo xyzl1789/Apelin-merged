@@ -51,6 +51,16 @@
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
+			<string>Chat Attachment</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array><string>public.data</string></array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
 			<string>Apelin Toolchain</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
