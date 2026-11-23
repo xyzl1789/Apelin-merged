@@ -118,7 +118,14 @@ final class ChatTopBlurView: UIView {
             // 图片自身颜色的八成：顶栏属于图片，又仍能柔化从下面滚过的内容。
             color = ChatBackgroundView.topTint()?.withAlphaComponent(0.8)
         }
-        if material != nil {
+        // 默认背景用回原本不透明的实色顶栏；只有读者设了纸或图片，
+        // 才让顶栏透成磨砂，好把自定义背景露出来。
+        let translucent = background != .none
+        material?.isHidden = !translucent
+        veil?.isHidden = !translucent
+        // iOS 26 走的是 backdrop 的 variableBlur，默认时一并隐藏，露出实色。
+        backdrop.isHidden = !translucent
+        if translucent, material != nil {
             // 系统磨砂已经带着自己的颜色；它下面的 frost 会是第二层不透明
             // 的纸。改为在磨砂之上画本页的颜色，并把下面的 frost 清空。
             frost.colors = [UIColor.clear.cgColor, UIColor.clear.cgColor]
