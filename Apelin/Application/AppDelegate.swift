@@ -1,5 +1,6 @@
 import AlertController
 import ApelinCore
+import ApelinProtocol
 import UIKit
 
 /// Not `@main`: `main.swift` clears saved scenes before `UIApplicationMain`.
