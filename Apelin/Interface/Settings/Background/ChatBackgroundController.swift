@@ -18,6 +18,7 @@ final class ChatBackgroundController: TableController {
     private enum Row: Hashable {
         case none
         case paper(ChatBackground.Paper)
+        case image
         case choose
         case opacity
         case remove
@@ -44,7 +45,7 @@ final class ChatBackgroundController: TableController {
 
     init() {
         super.init(style: .insetGrouped)
-        title = String(localized: "Chat Background")
+        title = String(localized: "Theme")
     }
 
     @available(*, unavailable)
@@ -57,7 +58,7 @@ final class ChatBackgroundController: TableController {
         navigationItem.backButtonDisplayMode = .minimal
         dataSource.headerTitle = { section in
             switch section {
-            case .papers: String(localized: "Papers")
+            case .papers: String(localized: "Chat Background")
             case .bubbles: String(localized: "Bubbles")
             case .plain, .picture: nil
             }
@@ -104,19 +105,27 @@ final class ChatBackgroundController: TableController {
                 )
             }),
         ]
-        var picture: [RowContent] = [
-            RowContent(
-                row: .choose,
-                title: ChatBackground.hasImage
-                    ? String(localized: "Replace Image")
-                    : String(localized: "Choose Image"),
+        var picture: [RowContent] = []
+        if ChatBackground.hasImage {
+            picture.append(RowContent(
+                row: .image,
+                title: String(localized: "Image"),
                 detail: nil,
-                selected: false,
-                preview: ChatBackground.hasImage
-                    ? ChatBackgroundView.picturePreview(size: CGSize(width: 44, height: 44))
-                    : nil,
-            ),
-        ]
+                selected: current == .image,
+                preview: ChatBackgroundView.picturePreview(size: CGSize(width: 44, height: 44)),
+            ))
+        }
+        picture.append(RowContent(
+            row: .choose,
+            title: ChatBackground.hasImage
+                ? String(localized: "Replace Image")
+                : String(localized: "Choose Image"),
+            detail: nil,
+            selected: false,
+            preview: ChatBackground.hasImage
+                ? ChatBackgroundView.picturePreview(size: CGSize(width: 44, height: 44))
+                : nil,
+        ))
         if ChatBackground.hasImage {
             picture.append(RowContent(
                 row: .opacity,
@@ -164,7 +173,7 @@ final class ChatBackgroundController: TableController {
         }
         cell.contentConfiguration = content
         switch value.row {
-        case .none, .paper, .bubble:
+        case .none, .paper, .image, .bubble:
             cell.accessoryType = value.selected ? .checkmark : .none
             cell.selectionStyle = .default
             cell.accessibilityTraits = value.selected ? [.button, .selected] : [.button]
@@ -192,6 +201,9 @@ final class ChatBackgroundController: TableController {
         case let .paper(paper):
             ChatBackground.current = .paper(paper)
             updateRows()
+        case .image:
+            ChatBackground.current = .image
+            updateRows()
         case .choose:
             choosePicture()
         case .opacity:
@@ -206,8 +218,12 @@ final class ChatBackgroundController: TableController {
                 self.updateRows()
             })
         case let .bubble(style):
-            ChatBubbleStyle.current = style
-            updateRows()
+            if style == .custom {
+                chooseBubbleColor()
+            } else {
+                ChatBubbleStyle.current = style
+                updateRows()
+            }
         case .remove:
             confirmRemoval()
         }
@@ -225,6 +241,14 @@ final class ChatBackgroundController: TableController {
         configuration.selectionLimit = 1
         let picker = PHPickerViewController(configuration: configuration)
         picker.delegate = self
+        present(picker, animated: true)
+    }
+
+    private func chooseBubbleColor() {
+        let picker = UIColorPickerViewController()
+        picker.delegate = self
+        picker.selectedColor = ChatBubbleStyle.customColor
+        picker.supportsAlpha = false
         present(picker, animated: true)
     }
 
@@ -326,5 +350,17 @@ extension ChatBackgroundController: PHPickerViewControllerDelegate {
                 }
             }
         }
+    }
+}
+
+extension ChatBackgroundController: UIColorPickerViewControllerDelegate {
+    func colorPickerViewControllerDidSelectColor(_ viewController: UIColorPickerViewController) {
+        ChatBubbleStyle.customColor = viewController.selectedColor
+        ChatBubbleStyle.current = .custom
+        updateRows()
+    }
+
+    func colorPickerViewControllerDidFinish(_: UIColorPickerViewController) {
+        updateRows()
     }
 }

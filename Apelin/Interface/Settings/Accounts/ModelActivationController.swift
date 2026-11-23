@@ -42,15 +42,9 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
         super.viewDidLoad()
         title = String(localized: "Enable Models")
         navigationItem.largeTitleDisplayMode = .never
-        let menu = usesAPIKey
-            ? UIMenu(children: [UIAction(title: String(localized: "Save Without Verification")) { [weak self] _ in
-                self?.save(verify: false)
-            }])
-            : nil
         let save = UIBarButtonItem(
             title: String(localized: "Save"),
             primaryAction: UIAction { [weak self] _ in self?.save() },
-            menu: menu,
         )
         if usesAPIKey {
             let add = UIBarButtonItem(
@@ -283,9 +277,11 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
         present(alert, animated: true)
     }
 
-    @objc private dynamic func save(verify: Bool = true) {
+    @objc private dynamic func save() {
         guard !saving else { return }
-        guard usesAPIKey && verify || account.provider == .githubCopilot,
+        // API Key 的模型选择只是本机偏好，服务端不认识这些模型名也不影响写入。
+        // 只有 Copilot OAuth 需要向服务端申请启用所选模型。
+        guard !usesAPIKey, account.provider == .githubCopilot,
               !selected.isEmpty
         else { finishSaving(); return }
         saving = true
@@ -303,8 +299,7 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
             }
             do {
                 try await ProviderProgress.run(
-                    title: usesAPIKey ? "Verifying Models" : "Enabling Models",
-                    message: "Waiting for a response from each selected model…",
+                    title: "Enabling Models",
                     from: self,
                     cancel: { [weak self] in
                         if let handle = self?.verification {
@@ -343,7 +338,7 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
                 finishSaving()
             } catch {
                 if !(error is CancellationError) {
-                    presentNotice(title: "Unable to Verify Models", message: error.readableMessage)
+                    presentNotice(title: "Unable to Save", message: error.readableMessage)
                 }
             }
         }

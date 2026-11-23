@@ -61,6 +61,7 @@ final class MessageAccentGradientView: UIView {
         let skin = ChatBubbleStyle.current.colours(
             dark: traitCollection.userInterfaceStyle == .dark,
             accent: tintColor.resolvedColor(with: traitCollection),
+            custom: ChatBubbleStyle.customColor,
         )
         gradient.colors = skin.fill.map(\.cgColor)
         // 来自其他渠道的消息保留绿边，不论底色是什么：边说的是消息从哪里来。

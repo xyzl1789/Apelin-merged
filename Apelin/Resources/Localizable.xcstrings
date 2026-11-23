@@ -168263,6 +168263,23 @@
         }
       }
     },
+    "Custom Color": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom Color"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自定义颜色"
+          }
+        }
+      }
+    },
     "Ink Wash": {
       "extractionState": "manual",
       "localizations": {
@@ -191064,5 +191081,22 @@
       }
     }
   },
+    "Theme": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Theme"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主题"
+          }
+        }
+      }
+    },
   "version": "1.0"
 }

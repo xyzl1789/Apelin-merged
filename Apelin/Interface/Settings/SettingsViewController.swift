@@ -401,7 +401,7 @@ final class ChatPreferencesController: TableController {
         case .launch: content.text = String(localized: "On Launch")
         case .returnKey: content.text = String(localized: "Return Key")
         case .compression: content.text = String(localized: "Compression Threshold")
-        case .background: content.text = String(localized: "Chat Background")
+        case .background: content.text = String(localized: "Theme")
         }
         cell.contentConfiguration = content
         cell.accessoryType = .disclosureIndicator

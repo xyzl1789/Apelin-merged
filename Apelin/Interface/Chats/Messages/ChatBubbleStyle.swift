@@ -15,8 +15,10 @@ enum ChatBubbleStyle: String, CaseIterable {
     case outline
     /// 暖棕色，浓淡读起来像牛皮纸而不是着色。
     case kraft
-    /// 冷墨色，淡到几乎看不见：五种里最安静的一种。
+    /// 冷墨色，淡到几乎看不见：预设里最安静的一种。
     case inkWash
+    /// 读者自己挑的颜色，存的是它的原始色值。
+    case custom
 
     var title: String {
         switch self {
@@ -25,6 +27,7 @@ enum ChatBubbleStyle: String, CaseIterable {
         case .outline: String(localized: "Outline")
         case .kraft: String(localized: "Kraft")
         case .inkWash: String(localized: "Ink Wash")
+        case .custom: String(localized: "Custom Color")
         }
     }
 
@@ -33,6 +36,7 @@ enum ChatBubbleStyle: String, CaseIterable {
     static let changed = Notification.Name("wiki.qaq.apelin.chatBubbleStyleChanged")
 
     private static let key = "chat.bubbleStyle"
+    private static let customColorKey = "chat.bubbleCustomColor"
 
     static var current: ChatBubbleStyle {
         get {
@@ -45,11 +49,36 @@ enum ChatBubbleStyle: String, CaseIterable {
         }
     }
 
+    /// 读者挑的自定义颜色，按四个色值存储，重启后不依赖归档或系统色表。
+    static var customColor: UIColor {
+        get {
+            guard let values = UserDefaults.standard.array(forKey: customColorKey) as? [NSNumber],
+                  values.count == 4
+            else { return .systemBlue }
+            return UIColor(
+                red: CGFloat(values[0].doubleValue),
+                green: CGFloat(values[1].doubleValue),
+                blue: CGFloat(values[2].doubleValue),
+                alpha: CGFloat(values[3].doubleValue),
+            )
+        }
+        set {
+            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 1
+            let resolved = newValue.resolvedColor(with: UITraitCollection.current)
+            guard resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return }
+            UserDefaults.standard.set(
+                [Double(red), Double(green), Double(blue), Double(alpha)],
+                forKey: customColorKey,
+            )
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
+
     // MARK: - 底色
 
     /// 底色的两个渐变端点，以及围在它外面的描边。`accent` 是应用的着色，
     /// 只有 `tinted` 样式跟着它走，其余样式忽略它。
-    func colours(dark: Bool, accent: UIColor) -> (fill: [UIColor], border: UIColor?, width: CGFloat) {
+    func colours(dark: Bool, accent: UIColor, custom: UIColor? = nil) -> (fill: [UIColor], border: UIColor?, width: CGFloat) {
         switch self {
         case .tinted:
             // 强调色的淡染，加了描边，让它在任何颜色的纸上都读得出来，
@@ -79,6 +108,13 @@ enum ChatBubbleStyle: String, CaseIterable {
             return dark
                 ? ([Self.white(0.05), Self.white(0.09)], Self.white(0.10), 1)
                 : ([Self.rgb(0x0F1720, alpha: 0.05), Self.rgb(0x0F1720, alpha: 0.09)], Self.rgb(0x0F1720, alpha: 0.10), 1)
+        case .custom:
+            let colour = (custom ?? Self.customColor).resolvedColor(with: UITraitCollection.current)
+            return (
+                [colour.withAlphaComponent(dark ? 0.30 : 0.20), colour.withAlphaComponent(dark ? 0.40 : 0.28)],
+                colour.withAlphaComponent(dark ? 0.55 : 0.38),
+                1,
+            )
         }
     }
 
@@ -89,6 +125,7 @@ enum ChatBubbleStyle: String, CaseIterable {
         let skin = colours(
             dark: dark,
             accent: accent.resolvedColor(with: traits),
+            custom: Self.customColor,
         )
         let format = UIGraphicsImageRendererFormat.preferred()
         return UIGraphicsImageRenderer(size: size, format: format).image { context in
