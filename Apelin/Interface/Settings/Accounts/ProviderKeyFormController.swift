@@ -4,7 +4,7 @@ import UIKit
 /// The editable part of an API-key sign-in. The parent owns the sign-in
 /// task; this native grouped form owns only the user's unsent field values.
 final class ProviderKeyFormController: TableController {
-    var onSubmit: (([AgentSignInField: String], String) -> Void)?
+    var onSubmit: (([AgentSignInField: String]) -> Void)?
     var onSwitchMethod: ((AgentSignInMethod) -> Void)?
 
     @objc dynamic var isSubmitting = false {
@@ -18,8 +18,6 @@ final class ProviderKeyFormController: TableController {
     private let keys: [SignInProgress.KeyField]
     private let alternatives: [AgentSignInMethod]
     private let initialValues: [String: String]
-    private let noteField = UITextField()
-    private var noteCell: UITableViewCell?
     private var fields: [AgentSignInField: UITextField] = [:]
     private var cells: [AgentSignInField: UITableViewCell] = [:]
     /// Minis 的开关（`appendV1`、`azure`）用 UISwitch，值仍是 "true"/"false"，
@@ -29,13 +27,11 @@ final class ProviderKeyFormController: TableController {
     private var selections: [AgentSignInField: String] = [:]
     private enum Row: Hashable {
         case field(AgentSignInField)
-        case note
         case method(AgentSignInMethod)
     }
 
     private enum Section: Hashable {
         case field(AgentSignInField)
-        case note
         case methods
     }
 
@@ -51,12 +47,11 @@ final class ProviderKeyFormController: TableController {
         primaryAction: UIAction { [weak self] _ in self?.submit() },
     )
 
-    init(keys: [SignInProgress.KeyField], alternatives: [AgentSignInMethod], initialValues: [String: String] = [:], note: String?) {
+    init(keys: [SignInProgress.KeyField], alternatives: [AgentSignInMethod], initialValues: [String: String] = [:]) {
         self.keys = keys.filter { $0.field != .defaultModel }
         self.alternatives = alternatives
         self.initialValues = initialValues
         super.init(style: .insetGrouped)
-        noteField.text = note
     }
 
     @available(*, unavailable)
@@ -112,20 +107,10 @@ final class ProviderKeyFormController: TableController {
             toggles[key.field] = toggle
             cells[key.field] = toggleCell(for: key, toggle: toggle)
         }
-        noteField.font = .preferredFont(forTextStyle: .body)
-        noteField.adjustsFontForContentSizeCategory = true
-        noteField.clearButtonMode = .whileEditing
-        noteField.returnKeyType = .go
-        let noteTitle = String(localized: "Provider Note")
-        noteField.accessibilityLabel = noteTitle
-        noteField.placeholder = String(localized: "\(noteTitle) (Optional)")
-        noteField.addAction(UIAction { [weak self] _ in self?.submit() }, for: .editingDidEndOnExit)
-        noteCell = cell(containing: noteField)
         submitItem.tintColor = .tintColor
         submitItem.accessibilityLabel = String(localized: "Fetch Models")
         updateSubmit()
         dataSource.headerTitle = { section in
-            if section == .note { return String(localized: "Provider Note") }
             if case let .field(field) = section {
                 return field.title
             }
@@ -136,7 +121,6 @@ final class ProviderKeyFormController: TableController {
             return String(localized: "Use Azure OpenAI authentication (api-key header). Paste the full Azure endpoint above in API Base, including the ?api-version=… query parameter. Both API formats are supported.")
         }
         var sections: [(Section, [Row])] = keys.map { (.field($0.field), [.field($0.field)]) }
-        sections.append((.note, [.note]))
         if !alternatives.isEmpty {
             sections.append((.methods, alternatives.map(Row.method)))
         }
@@ -295,7 +279,6 @@ final class ProviderKeyFormController: TableController {
 
     @objc private dynamic func updateSubmit() {
         submitItem.isEnabled = isReady && !isSubmitting
-        noteField.isEnabled = !isSubmitting
         fields.values.forEach { $0.isEnabled = !isSubmitting }
         toggles.values.forEach { $0.isEnabled = !isSubmitting }
         for cell in cells.values {
@@ -323,14 +306,13 @@ final class ProviderKeyFormController: TableController {
     @objc private dynamic func submit() {
         guard isReady, !isSubmitting else { return }
         view.endEditing(true)
-        onSubmit?(values, noteField.text ?? "")
+        onSubmit?(values)
     }
 
     private func cell(for row: Row) -> UITableViewCell? {
         if case let .field(field) = row {
             return cells[field]
         }
-        if case .note = row { return noteCell }
         guard case let .method(method) = row else { return nil }
         let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
         var content = cell.defaultContentConfiguration()
@@ -346,7 +328,6 @@ final class ProviderKeyFormController: TableController {
         guard let row = dataSource.value(at: indexPath) else { return }
         switch row {
         case let .field(field): fields[field]?.becomeFirstResponder()
-        case .note: noteField.becomeFirstResponder()
         case let .method(method):
             if !isSubmitting {
                 onSwitchMethod?(method)

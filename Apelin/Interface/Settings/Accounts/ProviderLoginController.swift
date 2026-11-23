@@ -43,7 +43,6 @@ final class ProviderLoginController: UIViewController {
 
     private let provider: AgentProvider
     private let isEditingConfiguration: Bool
-    private var pendingNote: String?
     @objc private dynamic var savedValues: [String: String] = [:]
     /// Every way this provider signs in, its own first, as apelin-agent
     /// listed them; the page runs `method`.
@@ -247,7 +246,6 @@ final class ProviderLoginController: UIViewController {
     @objc private dynamic func start() {
         follower?.cancel()
         progress = SignInProgress()
-        pendingNote = nil
         handle = nil
         submitting = false
         openedPage = nil
@@ -327,10 +325,6 @@ final class ProviderLoginController: UIViewController {
 
     @objc private dynamic func finished() {
         isPasting = false
-        if isSucceeded, let pendingNote {
-            Preferences.ProviderNotes.save(pendingNote, for: provider)
-            self.pendingNote = nil
-        }
         onFinish?()
         // the provider's page has done its part either way
         browser.close()
@@ -437,21 +431,18 @@ final class ProviderLoginController: UIViewController {
             body.addArrangedSubview(DeviceCodeView(code: code))
             addLink(to: page, finishing: step.elsewhere)
             primaryButton.isHidden = true
-            addOAuthNote()
             openOnce(page, copying: pageHoldsCode ? nil : code)
         case let .browser(page, _):
             addLink(to: page, finishing: step.elsewhere)
             primaryButton.isHidden = true
-            addOAuthNote()
             openOnce(page, copying: nil)
         case let .keys(keys):
             let form = ProviderKeyFormController(
                 keys: keys,
                 alternatives: methods.filter { $0 != method },
                 initialValues: savedValues,
-                note: pendingNote ?? Preferences.ProviderNotes.note(for: provider),
             )
-            form.onSubmit = { [weak self] values, note in self?.send(values, note: note) }
+            form.onSubmit = { [weak self] values in self?.send(values) }
             form.onSwitchMethod = { [weak self] method in self?.switchMethod(to: method) }
             addChild(form)
             view.addSubview(form.view)
@@ -516,22 +507,6 @@ final class ProviderLoginController: UIViewController {
         primaryButton.configuration?.showsActivityIndicator = submitting
         pasteButton.isEnabled = !isPasting
         pasteButton.configuration?.showsActivityIndicator = isPasting
-    }
-
-    private func addOAuthNote() {
-        let field = UITextField()
-        field.borderStyle = .roundedRect
-        field.font = .preferredFont(forTextStyle: .body)
-        field.adjustsFontForContentSizeCategory = true
-        field.clearButtonMode = .whileEditing
-        let title = String(localized: "Provider Note")
-        field.accessibilityLabel = title
-        field.placeholder = String(localized: "\(title) (Optional)")
-        field.text = pendingNote ?? Preferences.ProviderNotes.note(for: provider)
-        field.addAction(UIAction { [weak self, weak field] _ in
-            self?.pendingNote = field?.text
-        }, for: .editingChanged)
-        body.addArrangedSubview(field)
     }
 
     /// The page's link under the step's own content and, where a browser
@@ -670,9 +645,8 @@ final class ProviderLoginController: UIViewController {
     }
 
     /// What the user typed goes to the sign-in once and is not kept here.
-    private func send(_ values: [AgentSignInField: String], note: String) {
+    private func send(_ values: [AgentSignInField: String]) {
         guard let handle, !submitting else { return }
-        pendingNote = note
         submitting = true
         render()
         Task { [weak self] in

@@ -91,6 +91,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
         navigationItem.searchController = search
         navigationItem.hidesSearchBarWhenScrolling = false
         definesPresentationContext = true
+        dataSource.allowsEditing = true
         dataSource.headerTitle = { section in
             if case let .group(group) = section {
                 return group.title
@@ -251,7 +252,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     }
 
     private func accountActions(_ account: AgentAccount) -> [UIMenuElement] {
-        var actions: [UIMenuElement] = [
+        [
             UIAction(
                 title: String(localized: "Edit"),
                 image: UIImage(systemName: account.isAPIKeyAccount ? "pencil" : "arrow.clockwise"),
@@ -280,20 +281,37 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
                 },
             ]),
         ]
-        if !account.isAPIKeyAccount {
-            actions.insert(UIAction(title: String(localized: "Provider Note"), image: UIImage(systemName: "note.text")) { [weak self] _ in
-                self?.editNote(for: account.provider)
-            }, at: 1)
+    }
+
+    private func noteActionTitle(for provider: AgentProvider) -> String {
+        Preferences.ProviderNotes.note(for: provider) == nil
+            ? String(localized: "Add Note")
+            : String(localized: "Edit Note")
+    }
+
+    override func tableView(
+        _: UITableView,
+        trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath,
+    ) -> UISwipeActionsConfiguration? {
+        guard let account = account(at: indexPath), account.signedIn else { return nil }
+        let provider = account.provider
+        let action = UIContextualAction(style: .normal, title: noteActionTitle(for: provider)) { [weak self] _, _, completion in
+            guard let self, presentedViewController == nil else { completion(false); return }
+            completion(true)
+            editNote(for: provider)
         }
-        return actions
+        action.backgroundColor = .systemIndigo
+        let configuration = UISwipeActionsConfiguration(actions: [action])
+        configuration.performsFirstActionWithFullSwipe = false
+        return configuration
     }
 
     private func editNote(for provider: AgentProvider) {
-        let title = String(localized: "Provider Note")
+        let title = noteActionTitle(for: provider)
         let alert = UIAlertController(title: title, message: nil, preferredStyle: .alert)
         alert.addTextField { field in
             field.text = Preferences.ProviderNotes.note(for: provider)
-            field.accessibilityLabel = title
+            field.accessibilityLabel = String(localized: "Provider Note")
             field.clearButtonMode = .whileEditing
         }
         alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))

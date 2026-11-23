@@ -164,18 +164,34 @@ final class ComposerChoiceSheet: UIViewController {
                 if let previous = stack.arrangedSubviews.last {
                     stack.setCustomSpacing(16, after: previous)
                 }
-                stack.addArrangedSubview(label)
-                stack.setCustomSpacing(4, after: label)
+                let header: UIView
                 if let text = group.note, !text.isEmpty {
+                    label.numberOfLines = 1
+                    label.lineBreakMode = .byTruncatingMiddle
+                    label.setContentHuggingPriority(.defaultLow, for: .horizontal)
+                    label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
                     let note = UILabel()
                     note.text = text
-                    note.font = .preferredFont(forTextStyle: .footnote)
+                    note.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(for: .systemFont(ofSize: 13, weight: .semibold))
                     note.adjustsFontForContentSizeCategory = true
-                    note.textColor = .secondaryLabel
-                    note.numberOfLines = 0
-                    stack.addArrangedSubview(note)
-                    stack.setCustomSpacing(6, after: note)
+                    note.textColor = AppAccent.color(glass: .tintColor)
+                    note.textAlignment = .natural
+                    note.numberOfLines = 1
+                    note.lineBreakMode = .byTruncatingTail
+                    note.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+                    let row = UIStackView(arrangedSubviews: [label, note])
+                    row.axis = .horizontal
+                    row.alignment = .firstBaseline
+                    row.spacing = 8
+                    // 给服务商地址留足位置；超长备注只在本行内省略。
+                    note.widthAnchor.constraint(lessThanOrEqualTo: row.widthAnchor, multiplier: 0.45).isActive = true
+                    header = row
+                } else {
+                    header = label
                 }
+                stack.addArrangedSubview(header)
+                stack.setCustomSpacing(4, after: header)
             }
             for choice in group.choices {
                 let row = ChoiceRow(

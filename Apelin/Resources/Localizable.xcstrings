@@ -1,6 +1,158 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Add Note" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إضافة ملاحظة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notiz hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir nota"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter une note"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi nota"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メモを追加"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메모 추가"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar observação"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавить заметку"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm ghi chú"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加备注"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增備註"
+          }
+        }
+      }
+    },
+    "Edit Note" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعديل الملاحظة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notiz bearbeiten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editar nota"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifier la note"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifica nota"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メモを編集"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메모 편집"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editar observação"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Изменить заметку"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sửa ghi chú"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑备注"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編輯備註"
+          }
+        }
+      }
+    },
     "分享已加入所选草稿" : {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "ar": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "de": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "es": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "fr": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "it": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "ja": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "ko": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "ru": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "vi": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "分享已加入所选草稿"}}}},
     "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。" : {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "ar": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "de": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "es": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "fr": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "it": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "ja": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "ko": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "ru": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "vi": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "会删除待投递的分享、从草稿移除可清理的附件，并让引用已删除副本的历史或分叉会话无法打开这些附件。发送中、排队或正在使用的内容会跳过。消息文字及系统原件保留。"}}}},
     "分享内容" : {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "ar": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "de": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "es": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "fr": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "it": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "ja": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "ko": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "ru": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "vi": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "分享内容"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "分享内容"}}}},
