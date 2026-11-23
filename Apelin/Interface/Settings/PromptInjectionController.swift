@@ -96,6 +96,7 @@ final class PromptInjectionController: TableController, UISearchResultsUpdating 
         tableView.separatorStyle = .none
         // Card surfaces own a 20pt inset; suppress the grouped table's own.
         tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 16, right: 0)
+        dataSource.allowsEditing = true
         dataSource.headerTitle = { _ in nil }
         dataSource.footerTitle = { section in
             switch section {
