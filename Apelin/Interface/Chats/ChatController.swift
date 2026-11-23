@@ -82,6 +82,7 @@ final class ChatController: UIViewController {
     private var checkingOwner: UUID?
     private var stoppableChat: UUID?
     private var historyLoadTask: Task<Void, Never>?
+    private var historyPreviewRows: [ChatMessage] = []
     private var historyLoadGeneration = UUID()
     private var pendingOpeningChat: UUID?
     private var openingPresentationReady = false
@@ -711,6 +712,12 @@ final class ChatController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        topBlur.frame = CGRect(
+            x: 0,
+            y: 0,
+            width: view.bounds.width,
+            height: min(view.bounds.height, view.safeAreaInsets.top + 20),
+        )
         updateWelcome()
         updateMessageListInsets()
         // Not while `use(_:)` is still swapping the conversation in:
@@ -734,12 +741,6 @@ final class ChatController: UIViewController {
             restoreReadingPlace()
         }
         updateLatestMessageButton()
-        topBlur.frame = CGRect(
-            x: 0,
-            y: 0,
-            width: view.bounds.width,
-            height: min(view.bounds.height, view.safeAreaInsets.top + 20),
-        )
         layoutMessageRuler()
         // 首次历史显示并完成布局后才撤销标记，超时退出后的下次启动
         // 才能避开同一个页面；这里只保存 UUID，不保存安装根目录。
@@ -760,6 +761,7 @@ final class ChatController: UIViewController {
             modelSheet?.dismiss(animated: false)
             modelSheet = nil
         }
+        if previous?.id != chat.id { historyPreviewRows = [] }
         self.chat = chat
         historyLoadTask?.cancel()
         let generation = UUID()
@@ -771,7 +773,15 @@ final class ChatController: UIViewController {
         historyLoadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                try await runtime.loadHistory(chat.id)
+                async let fullHistory: Void = runtime.loadHistory(chat.id)
+                let preview = await runtime.historyPreview(chat.id)
+                try Task.checkCancellation()
+                guard self.chat?.id == chat.id, self.historyLoadGeneration == generation else { return }
+                if !preview.isEmpty, !runtime.historyIsReady(chat.id) {
+                    self.historyPreviewRows = preview
+                    self.refreshRuntime()
+                }
+                try await fullHistory
                 try Task.checkCancellation()
                 guard self.chat?.id == chat.id, self.historyLoadGeneration == generation else { return }
                 self.refreshRuntime()
@@ -792,6 +802,7 @@ final class ChatController: UIViewController {
                       self.historyLoadGeneration == generation else { return }
                 self.pendingOpeningChat = nil
                 ChatOpeningRecovery.finish(chat.id)
+                self.historyPreviewRows = []
                 self.refreshRuntime()
                 presentNotice(title: "Unable to Load Conversation", message: error.readableMessage)
             }
@@ -933,6 +944,16 @@ final class ChatController: UIViewController {
                 title = summary.displayTitle
             }
             titleView.setTitle(summary.titlePresentation, animated: view.window != nil)
+            if runtime.historyIsReady(chat.id) {
+                historyPreviewRows = []
+            } else if !historyPreviewRows.isEmpty {
+                // 预览行的事件编号不是完整历史的位置，不能用来回溯或派生。
+                messageList.isUserInteractionEnabled = false
+                updateMessages(historyPreviewRows)
+                composer.setBusy(summary.isWorking)
+                return
+            }
+            messageList.isUserInteractionEnabled = true
             let transcript = runtime.transcript(chat.id)
             updateMessages(transcript.messages)
             composer.setBusy(summary.isWorking)

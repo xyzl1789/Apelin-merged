@@ -1255,6 +1255,18 @@ final class ChatRuntime {
         }
     }
 
+    /// 首屏预览只返回渲染行，不写入会话事件、游标、审批或历史缓存。
+    func historyPreview(_ id: UUID) async -> [ChatMessage] {
+        guard records[id] != nil, !historyIsReady(id) else { return [] }
+        let folder = DataFolder.app.root.appendingPathComponent("Chats")
+        let events = await Task.detached(priority: .userInitiated) {
+            (try? ChatEventsFile.readPreview(id, in: folder)) ?? []
+        }.value
+        guard !Task.isCancelled, records[id] != nil, !historyIsReady(id), !events.isEmpty else { return [] }
+        let preview = ChatTranscript(events: events, runEnded: true) { _ in nil }
+        return preview.messages.filter { $0.role == .user || $0.isReply }
+    }
+
     /// Follow a saved session when the reader opens its page, without sending
     /// a prompt. In particular an empty fork must retry a failed first open.
     func loadHistory(_ id: UUID) async throws {

@@ -3,9 +3,14 @@ import UIKit
 /// VariableBlur's alpha-mask CAFilter approach, on a backdrop UIKit does not reconfigure.
 /// Reference: https://github.com/nikstar/VariableBlur
 final class ChatTopBlurView: UIView {
-    override class var layerClass: AnyClass {
-        NSClassFromString("CABackdropLayer") ?? CALayer.self
+    private final class BackdropView: UIView {
+        override class var layerClass: AnyClass {
+            NSClassFromString("CABackdropLayer") ?? CALayer.self
+        }
     }
+
+    // 底色画在普通图层上，首次进窗口时不依赖背景模糊层完成合成。
+    private let backdrop = BackdropView()
 
     /// Conversation 画在哪张底上，顶部模糊取它的颜色：纸用自己的底色，读者
     /// 的图片用顶部一条的颜色，没有则用应用原本的背景。
@@ -20,6 +25,7 @@ final class ChatTopBlurView: UIView {
         isUserInteractionEnabled = false
         isAccessibilityElement = false
         backgroundColor = .clear
+        addSubview(backdrop)
         frost.locations = [0, 1]
         layer.addSublayer(frost)
         updateFrost()
@@ -41,7 +47,7 @@ final class ChatTopBlurView: UIView {
         filter.setValue(1.0, forKey: "inputRadius")
         filter.setValue(mask.cgImage, forKey: "inputMaskImage")
         filter.setValue(true, forKey: "inputNormalizeEdges")
-        layer.filters = [filter]
+        backdrop.layer.filters = [filter]
     }
 
     @available(*, unavailable)
@@ -53,6 +59,7 @@ final class ChatTopBlurView: UIView {
         super.layoutSubviews()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        backdrop.frame = bounds
         frost.frame = bounds
         CATransaction.commit()
     }
@@ -81,7 +88,8 @@ final class ChatTopBlurView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        guard let window, layer.isKind(of: NSClassFromString("CABackdropLayer") ?? CALayer.self) else { return }
-        layer.setValue(window.traitCollection.displayScale, forKey: "scale")
+        guard let window, let backdropClass = NSClassFromString("CABackdropLayer"),
+              backdrop.layer.isKind(of: backdropClass) else { return }
+        backdrop.layer.setValue(window.traitCollection.displayScale, forKey: "scale")
     }
 }

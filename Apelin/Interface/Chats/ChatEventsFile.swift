@@ -36,6 +36,26 @@ enum ChatEventsFile {
         return decodeEveryLine(in: data)
     }
 
+    /// 大型历史只读末尾固定字节数，供首屏显示，不用来计算游标或落盘条数。
+    static func readPreview(_ id: UUID, in folder: URL) throws -> [TaskEvent] {
+        let file = url(for: id, in: folder)
+        guard FileManager.default.fileExists(atPath: file.path) else { return [] }
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        let limit = 2 * 1024 * 1024
+        let end = try handle.seekToEnd()
+        // 小文件直接走全量路径，避免重复读取。
+        guard end > UInt64(limit) else { return [] }
+        try handle.seek(toOffset: end - UInt64(limit))
+        guard let bytes = try handle.read(upToCount: limit),
+              let boundary = bytes.firstIndex(of: 0x0A) else { return [] }
+        let events = decodeLines(in: bytes[bytes.index(after: boundary)...])
+        // 开头可能是半轮，首屏只显示有提问起点的轮次。
+        guard let first = events.firstIndex(where: { $0.kind == "prompt" }) else { return [] }
+        let start = max(first, ChatHistory.start(of: events, keeping: ChatHistory.turns))
+        return Array(events[start...])
+    }
+
     /// The events of every line in `data`, in the order the file holds them.
     ///
     /// A conversation's history can be a quarter of a million lines, and a line

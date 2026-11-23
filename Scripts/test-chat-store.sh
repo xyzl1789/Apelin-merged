@@ -45,6 +45,7 @@ files += [
     "Apelin/Interface/Chats/Composer/ComposerDraft.swift",
     "Apelin/Interface/Chats/ChatStore.swift",
     "Apelin/Interface/Chats/ChatEventsFile.swift",
+    "Apelin/Interface/Chats/ChatHistory.swift",
     "Tests/ChatStore/Check.swift",
 ]
 

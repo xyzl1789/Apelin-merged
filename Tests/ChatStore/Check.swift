@@ -211,6 +211,23 @@ func checkChatStore(_ scratch: URL, check: (Bool, String) -> Void) async throws 
     check(damagedRead.count == 3999, "a damaged line alone is dropped from a sliced read")
     check(!damagedRead.contains { $0.seq.rawValue == 2000 }, "the damaged event is the one that went")
 
+    // 尾部预览跳过截断的开头和未写完的末行，只展示最后若干轮。
+    let previewID = UUID()
+    var previewData = Data(repeating: 0x78, count: 2 * 1024 * 1024 + 3)
+    previewData.append(0x0A)
+    for number in 1 ... 30 {
+        previewData.append(try JSONCoding.encode(event(UInt64(number))))
+        previewData.append(0x0A)
+    }
+    previewData.append(contentsOf: Data("{\"seq\":31,".utf8))
+    try previewData.write(to: eventsURL(previewID))
+    let preview = try ChatEventsFile.readPreview(previewID, in: chats)
+    check(preview.map(\.seq.rawValue) == (11 ... 30).map { UInt64($0) }, "预览只读最后二十轮，保留磁盘顺序")
+    let afterPreview = try Data(contentsOf: eventsURL(previewID))
+    check(afterPreview == previewData, "预览不更改完整历史")
+    let smallPreview = try ChatEventsFile.readPreview(bigID, in: chats)
+    check(smallPreview.isEmpty, "小文件直接走全量读取")
+
     // A torn last line is cut from the tail without reading the whole file,
     // so what is appended after it is the only thing the file gains.
     var withTorn = try Data(contentsOf: bigURL)
