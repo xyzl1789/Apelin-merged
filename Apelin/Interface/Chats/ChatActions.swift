@@ -24,11 +24,11 @@ enum ChatActions {
         completion: @escaping ([UIMenuElement]) -> Void,
     ) {
         let newChat = UIKit.UIAction(
-            title: String(localized: "New Conversation"),
+            title: String(localized: "New Chat"),
             image: UIImage(systemName: "square.and.pencil"),
         ) { _ in onNewChat() }
         let git = UIKit.UIAction(
-            title: String(localized: "Open Git"),
+            title: String(localized: "Git"),
             image: UIImage(systemName: "arrow.triangle.branch"),
         ) { _ in onOpenGit() }
         let chatActions = [
