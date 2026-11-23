@@ -22,11 +22,22 @@ func checkShareTransfer() throws {
     try FileManager.default.moveItem(at: staged, to: pending)
     var batch = try ShareTransfer.batch(at: pending)
     precondition(batch.target == target && batch.text == text && batch.files.first?.id == fileID)
+    precondition(batch.opensConversation == nil) // 旧批次不触发跳转。
+    batch.opensConversation = true
     precondition(ShareTransfer.size(of: pending.appendingPathComponent(fileID.uuidString)) == 3)
     batch.target = nil
     try ShareTransfer.write(batch, to: pending)
     let retargeted = try ShareTransfer.batch(at: pending)
     precondition(retargeted.target == nil && retargeted.text == text && retargeted.files.first?.name == file.name)
+    precondition(retargeted.opensConversation == true)
+    precondition(ShareTransfer.wakeURL?.absoluteString == "apelin://share")
+    // 唤起链接认得出变体，别的一概不认。
+    for spelling in ["apelin://share", "apelin://share/", "apelin://SHARE", "apelin:share"] {
+        precondition(ShareTransfer.wakes(URL(string: spelling)!), spelling)
+    }
+    for spelling in ["apelin://share/x", "apelin://share?to=1", "apelin://conversation/x", "https://share"] {
+        precondition(!ShareTransfer.wakes(URL(string: spelling)!), spelling)
+    }
 
     let duplicate = ShareTransfer.Batch(target: target, text: text, files: [file, file], createdAt: createdAt)
     try ShareTransfer.write(duplicate, to: pending)

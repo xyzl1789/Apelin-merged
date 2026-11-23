@@ -403,16 +403,17 @@ final class ChatRuntime {
     private var deletingShareTargets: Set<UUID> = []
 
     enum ShareDelivery {
-        case delivered, needsDestination, draftFull, unavailable
+        case delivered(UUID)
+        case needsDestination, draftFull, unavailable
     }
 
     /// 批次在主线程上认领。复制期间设置页不能修改或删除这个批次。
     func deliverShare(_ batch: UUID, retarget: UUID? = nil, chooseTarget: Bool = false) async -> ShareDelivery {
         guard isLoaded, deliveringShares.insert(batch).inserted else { return .unavailable }
         defer { deliveringShares.remove(batch) }
-        if retryShareReceipt(batch) {
+        if let id = retryShareReceipt(batch) {
             await withCheckedContinuation { continuation in saveNow { continuation.resume() } }
-            return ShareInbox.pendingDirectory(batch) == nil ? .delivered : .unavailable
+            return ShareInbox.pendingDirectory(batch) == nil ? .delivered(id) : .unavailable
         }
         guard let directory = ShareInbox.pendingDirectory(batch), var manifest = try? ShareTransfer.batch(at: directory) else {
             return .unavailable
@@ -442,7 +443,7 @@ final class ChatRuntime {
             guard receiveShare(pending, target: target, attachments: attachments) else { return .unavailable }
             installedDraft = true
             await withCheckedContinuation { continuation in saveNow { continuation.resume() } }
-            return ShareInbox.pendingDirectory(batch) == nil ? .delivered : .unavailable
+            return ShareInbox.pendingDirectory(batch) == nil ? .delivered(target ?? batch) : .unavailable
         } catch { return .unavailable }
     }
 
@@ -464,10 +465,10 @@ final class ChatRuntime {
         }
     }
 
-    private func retryShareReceipt(_ batch: UUID) -> Bool {
-        guard let previous = records.first(where: { $0.value.receivedShares?.contains(batch) == true }) else { return false }
+    private func retryShareReceipt(_ batch: UUID) -> UUID? {
+        guard let previous = records.first(where: { $0.value.receivedShares?.contains(batch) == true }) else { return nil }
         persist(previous.key, urgent: true)
-        return true
+        return previous.key
     }
 
     private func shareDestinationExists(_ id: UUID) -> Bool {
@@ -487,7 +488,7 @@ final class ChatRuntime {
         let batch = pending.id
         let id = target ?? batch
         // 草稿和收据写进同一个会话头，失败重试不会重复追加文字。
-        if retryShareReceipt(batch) { return true }
+        if retryShareReceipt(batch) != nil { return true }
         guard target == nil ? records[id] == nil : records[id] != nil else { return false }
         var draft = records[id]?.draft ?? ComposerDraft()
         guard draft.appendShare(text: pending.batch.text, files: attachments, limit: ShareTransfer.fileLimit) else { return false }

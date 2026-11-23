@@ -1,99 +1,174 @@
 import UIKit
 import UniformTypeIdentifiers
 
-/// 扩展只登记投递；不启动会话、不上传附件，也不调用主应用的服务。
+/// 扩展只暂存草稿，不发送消息，也不调用会话服务。
 @objc(ShareController)
 final class ShareController: UITableViewController {
     private var destinations: [ShareTransfer.Destination] = []
-    private var selected: IndexPath = IndexPath(row: 0, section: 0)
-    private var saving = false
-    private weak var addButton: UIButton?
+    @objc dynamic private var saving = false
+    @objc dynamic private weak var progress: UIActivityIndicatorView?
+    @objc dynamic private weak var cancelButton: UIButton?
 
     override func viewDidLoad() {
         super.viewDidLoad()
         if let root = ShareTransfer.root { destinations = ShareTransfer.destinations(at: root) }
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "destination")
-        tableView.tableHeaderView = makeHeader()
+        tableView.backgroundColor = .systemGroupedBackground
+        tableView.separatorStyle = .none
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 78
+        tableView.register(ShareDestinationCard.self, forCellReuseIdentifier: "destination")
+        let header = makeHeader()
+        header.frame.size.height = 88
+        tableView.tableHeaderView = header
     }
 
-    private func makeHeader() -> UIView {
-        let header = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 56))
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard let header = tableView.tableHeaderView, tableView.bounds.width > 0 else { return }
+        let width = tableView.bounds.width
+        let size = header.systemLayoutSizeFitting(
+            CGSize(width: width, height: 0),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        )
+        let height = ceil(size.height)
+        guard header.frame.width != width || header.frame.height != height else { return }
+        header.frame.size = CGSize(width: width, height: height)
+        tableView.tableHeaderView = header
+    }
+
+    @objc dynamic private func makeHeader() -> UIView {
+        let header = UIView()
+        let title = UILabel()
+        title.text = "分享到 Apelin"
+        title.font = .preferredFont(forTextStyle: .title2)
+        title.adjustsFontForContentSizeCategory = true
+        title.numberOfLines = 0
+        title.accessibilityTraits = .header
+        let hint = UILabel()
+        hint.text = "选一个会话，分享内容不会自动发送。"
+        hint.font = .preferredFont(forTextStyle: .subheadline)
+        hint.adjustsFontForContentSizeCategory = true
+        hint.textColor = .secondaryLabel
+        hint.numberOfLines = 0
         let cancel = UIButton(type: .system, primaryAction: UIAction(title: "取消") { [weak self] _ in
-            self?.extensionContext?.cancelRequest(withError: CocoaError(.userCancelled))
+            guard let self, !saving else { return }
+            extensionContext?.cancelRequest(withError: CocoaError(.userCancelled))
         })
-        let send = UIButton(type: .system, primaryAction: UIAction(title: "加入草稿") { [weak self] _ in self?.save() })
-        let buttons = UIStackView(arrangedSubviews: [cancel, UIView(), send])
-        addButton = send
-        buttons.translatesAutoresizingMaskIntoConstraints = false
-        header.addSubview(buttons)
+        cancel.titleLabel?.font = .preferredFont(forTextStyle: .body)
+        cancel.titleLabel?.adjustsFontForContentSizeCategory = true
+        cancel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        cancelButton = cancel
+        let spinner = UIActivityIndicatorView(style: .medium)
+        spinner.isAccessibilityElement = true
+        spinner.accessibilityLabel = "正在保存分享"
+        progress = spinner
+        let bar = UIStackView(arrangedSubviews: [title, spinner, cancel])
+        bar.alignment = .center
+        bar.spacing = 10
+        let stack = UIStackView(arrangedSubviews: [bar, hint])
+        stack.axis = .vertical
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(stack)
         NSLayoutConstraint.activate([
-            buttons.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 20),
-            buttons.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -20),
-            buttons.topAnchor.constraint(equalTo: header.topAnchor),
-            buttons.bottomAnchor.constraint(equalTo: header.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -20),
+            stack.topAnchor.constraint(equalTo: header.topAnchor, constant: 12),
+            stack.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -12),
+            cancel.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
         ])
         return header
     }
 
-    override func numberOfSections(in _: UITableView) -> Int { 2 }
+    override func numberOfSections(in _: UITableView) -> Int { destinations.isEmpty ? 1 : 2 }
 
     override func tableView(_: UITableView, numberOfRowsInSection section: Int) -> Int {
         section == 0 ? 1 : destinations.count
     }
 
     override func tableView(_: UITableView, titleForHeaderInSection section: Int) -> String? {
-        section == 0 ? "分享到 Apelin" : (destinations.isEmpty ? nil : "选择会话")
+        section == 0 ? nil : "已有会话"
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "destination", for: indexPath)
-        var content = UIListContentConfiguration.subtitleCell()
+        guard let card = cell as? ShareDestinationCard else { return cell }
         if indexPath.section == 0 {
-            content.text = "新建会话"
-            content.secondaryText = "返回 Apelin 后查看草稿，不会自动发送"
+            card.configure(title: "新建会话", subtitle: "用本次分享创建草稿", isNew: true)
         } else {
             let item = destinations[indexPath.row]
-            content.text = item.title
-            content.secondaryText = item.project
+            card.configure(title: item.title, subtitle: item.project ?? "通用会话", isNew: false)
         }
-        cell.contentConfiguration = content
-        cell.accessoryType = indexPath == selected ? .checkmark : .none
-        if indexPath == selected { cell.accessibilityTraits.insert(.selected) }
-        else { cell.accessibilityTraits.remove(.selected) }
-        return cell
+        return card
     }
+
+    override func tableView(_: UITableView, shouldHighlightRowAt _: IndexPath) -> Bool { !saving }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard !saving else { return }
-        selected = indexPath
-        tableView.reloadData()
+        guard !saving, presentedViewController == nil else { return }
+        let destination = indexPath.section == 0 ? nil : destinations[indexPath.row]
+        let alert = UIAlertController(
+            title: destination?.title ?? "新建会话",
+            message: "内容会加入草稿，不会自动发送。",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "加入草稿", style: .default) { [weak self] _ in
+            self?.save(target: destination?.id, openConversation: false)
+        })
+        alert.addAction(UIAlertAction(title: "打开会话", style: .default) { [weak self] _ in
+            self?.save(target: destination?.id, openConversation: true)
+        })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        present(alert, animated: true)
     }
 
-    private func save() {
+    @objc dynamic private func save(target: UUID?, openConversation: Bool) {
         guard !saving, let context = extensionContext else { return }
         saving = true
-        tableView.tableHeaderView?.isUserInteractionEnabled = false
-        addButton?.isEnabled = false
-        addButton?.setTitle("暂存中…", for: .normal)
-        let target = selected.section == 0 ? nil : destinations[selected.row].id
+        cancelButton?.isEnabled = false
+        progress?.startAnimating()
         let items = context.inputItems.compactMap { $0 as? NSExtensionItem }
         Task {
             do {
-                try await stage(items, target: target)
-                let alert = UIAlertController(title: "已加入分享队列", message: "返回 Apelin 后即可查看草稿。", preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "完成", style: .default) { _ in
+                try await stage(items, target: target, openConversation: openConversation)
+                if openConversation {
+                    openApelin(using: context)
+                } else {
                     context.completeRequest(returningItems: nil, completionHandler: nil)
-                })
-                present(alert, animated: true)
+                }
             } catch {
                 saving = false
-                tableView.tableHeaderView?.isUserInteractionEnabled = true
-                addButton?.isEnabled = true
-                addButton?.setTitle("加入草稿", for: .normal)
+                cancelButton?.isEnabled = true
+                progress?.stopAnimating()
                 let alert = UIAlertController(title: "未能加入草稿", message: (error as? ShareFailure)?.message ?? "无法暂存分享内容，请检查可用空间后重试。", preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: "好", style: .default))
                 present(alert, animated: true)
+            }
+        }
+    }
+
+    @objc dynamic private func openApelin(using context: NSExtensionContext) {
+        guard let url = ShareTransfer.wakeURL else {
+            // 没有唤起链接时也算投递完成，不能让扩展停在转圈上。
+            context.completeRequest(returningItems: nil, completionHandler: nil)
+            return
+        }
+        // 先发布完整批次，再唤起应用。链接不携带会话或分享正文。
+        context.open(url) { [weak self] opened in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if opened {
+                    context.completeRequest(returningItems: nil, completionHandler: nil)
+                } else {
+                    progress?.stopAnimating()
+                    let alert = UIAlertController(title: "分享已保存", message: "未能自动打开 Apelin。手动打开后会进入所选会话。", preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "完成", style: .default) { _ in
+                        context.completeRequest(returningItems: nil, completionHandler: nil)
+                    })
+                    present(alert, animated: true)
+                }
             }
         }
     }
@@ -103,7 +178,7 @@ final class ShareController: UITableViewController {
         init(_ message: String) { self.message = message }
     }
 
-    private func stage(_ items: [NSExtensionItem], target: UUID?) async throws {
+    private func stage(_ items: [NSExtensionItem], target: UUID?, openConversation: Bool) async throws {
         guard let root = ShareTransfer.root else { throw ShareFailure("无法访问 Apelin 的分享收件箱。") }
         let folders = try ShareTransfer.directories(root)
         let batchID = UUID().uuidString
@@ -149,7 +224,11 @@ final class ShareController: UITableViewController {
             if let value = item.attributedContentText?.string { try addText(value) }
         }
         guard !text.isEmpty || !files.isEmpty else { throw ShareFailure("没有可以加入草稿的内容。") }
-        try ShareTransfer.write(.init(target: target, text: text.joined(separator: "\n\n"), files: files, createdAt: Date()), to: stage)
+        let batch = ShareTransfer.Batch(
+            target: target, text: text.joined(separator: "\n\n"), files: files, createdAt: Date(),
+            opensConversation: openConversation ? true : nil
+        )
+        try ShareTransfer.write(batch, to: stage)
         try FileManager.default.moveItem(at: stage, to: folders.pending.appendingPathComponent(batchID))
     }
 

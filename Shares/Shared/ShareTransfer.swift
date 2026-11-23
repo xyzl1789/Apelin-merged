@@ -3,6 +3,20 @@ import Foundation
 /// 扩展只接触这个 App Group：目标列表没有草稿、正文或凭据。
 enum ShareTransfer {
     static let group = "group.wiki.qaq.apelin"
+    // 只通知主应用读收件箱，不携带正文、文件路径或会话 ID。
+    static let wakeURL = URL(string: "apelin://share")
+    /// 唤起链接认的那一段。
+    static let wakeKind = "share"
+
+    /// 收到的链接是不是唤起收件箱：只认 `apelin://share`，尾部斜杠、
+    /// 大小写或宽松写法 `apelin:share` 都算同一个，别的路径不算。
+    static func wakes(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "apelin", url.query == nil, url.fragment == nil else { return false }
+        let rest = url.pathComponents.filter { $0 != "/" }
+        if let host = url.host?.lowercased(), !host.isEmpty { return host == wakeKind && rest.isEmpty }
+        return rest == [wakeKind]
+    }
+
     static let fileLimit = 8
     static let bytesLimit = 50 * 1024 * 1024
     static let textLimit = 64 * 1024
@@ -25,6 +39,8 @@ enum ShareTransfer {
         let text: String
         let files: [File]
         let createdAt: Date
+        // 旧版暂存没有此字段，按「加入草稿」处理。
+        var opensConversation: Bool?
     }
 
     static var root: URL? {

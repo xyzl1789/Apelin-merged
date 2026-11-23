@@ -37,7 +37,7 @@ final class RootInterfaceController: UIViewController {
     private var shareSnapshotTask: Task<Void, Never>?
 
     /// 系统分享收件箱在冷启动、回到前台时读取。
-    func checkShareInbox() {
+    @objc dynamic func checkShareInbox() {
         pendingInbox = ShareInbox.items()
         nextShareSync = true
         if chatRuntime.isLoaded { chatRuntime.publishShareDestinations() }
@@ -57,13 +57,19 @@ final class RootInterfaceController: UIViewController {
             defer { receivingShare = false; deliverShares() }
             var needsAttention = Set<UUID>()
             var added = false
+            var destinationToOpen: UUID?
             for pending in batches {
                 switch await chatRuntime.deliverShare(pending.id) {
-                case .delivered:
+                case let .delivered(id):
                     notifiedShareBatches.remove(pending.id)
                     added = true
+                    // 批次按时间排列；一次有多个打开请求时，以最后一个成功的为准。
+                    if pending.batch?.opensConversation ?? false { destinationToOpen = id }
                 case .needsDestination, .draftFull, .unavailable: needsAttention.insert(pending.id)
                 }
+            }
+            if let destinationToOpen, let summary = chatRuntime.summary(destinationToOpen) {
+                open(summary, picked: true)
             }
             if added, UIApplication.shared.applicationState == .active {
                 SPIndicator.present(title: String(localized: "分享已加入所选草稿"), preset: .done, haptic: .success)
