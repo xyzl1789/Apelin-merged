@@ -98,13 +98,6 @@ final class SidebarSessionsController: UIViewController {
         )
     }
 
-    /// A picked row's ground, lighter than the system's: black at 0.1 in
-    /// the light, white at 0.1 in the dark (owner, 2026-10-21).
-    private static let selectionColor = UIColor(
-        light: UIColor.black.withAlphaComponent(0.1),
-        dark: UIColor.white.withAlphaComponent(0.1),
-    )
-
     /// Conversations and their nonempty relationship categories have separate IDs.
     private lazy var dataSource = SwipeableTableDataSource<Section, SidebarTree.Item>(
         tableView: tableView,
@@ -120,13 +113,7 @@ final class SidebarSessionsController: UIViewController {
         }
         cell.configure(row: row, summary: summary, title: title)
         cell.onToggle = { [weak self] in self?.toggle(item) }
-        cell.configurationUpdateHandler = { cell, state in
-            var background = UIBackgroundConfiguration.listGroupedCell().updated(for: state)
-            if state.isSelected || state.isHighlighted {
-                background.backgroundColor = Self.selectionColor
-            }
-            cell.backgroundConfiguration = background
-        }
+        cell.useGlassSidebarRow()
         return cell
     }.then {
         $0.sectionTitle = { Self.title(for: $0) }

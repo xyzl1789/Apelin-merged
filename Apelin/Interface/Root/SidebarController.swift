@@ -10,6 +10,8 @@ import UIKit
 /// and the conversations' runtime. A page is a child controller that reads
 /// nothing else, so one can be rebuilt without the other two noticing.
 final class SidebarController: UIViewController {
+    private static let backgroundTag = 9021
+
     /// The pages, in the order the tabs show them: the workspace first, then
     /// the conversations it holds, then its files.
     enum Page: Int, CaseIterable {
@@ -34,6 +36,8 @@ final class SidebarController: UIViewController {
     var onProjectsLoaded: (() -> Void)?
     /// A message to send in the conversation just picked, as if typed.
     var onSendPrompt: ((String) -> Void)?
+    /// Settings as a page of its own, pushed where the app's pages are.
+    var onOpenSettings: (() -> Void)?
     private(set) var hasLoadedProjects = false
 
     var runtime: ChatRuntime! {
@@ -80,6 +84,9 @@ final class SidebarController: UIViewController {
     private lazy var tabs: UISegmentedControl = {
         let control = UISegmentedControl(items: Page.allCases.map { String(localized: $0.title) })
         control.selectedSegmentIndex = Page.sessions.rawValue
+        // 选中的页面是抽屉玻璃的一块，不是盖在上面的白色药丸：用文字本身
+        // 颜色的淡染，让壁纸从选中态里也透出来。
+        control.selectedSegmentTintColor = UIColor.label.withAlphaComponent(0.14)
         control.addAction(
             UIAction { [weak self, weak control] _ in
                 guard let self, let control else { return }
@@ -98,8 +105,7 @@ final class SidebarController: UIViewController {
         symbol: "gearshape",
         title: String(localized: "Settings"),
     ) { [weak self] in
-        guard let self else { return }
-        presentPageAsFormSheet(SettingsViewController())
+        self?.onOpenSettings?()
     }
 
     override func viewDidLoad() {
@@ -175,8 +181,29 @@ final class SidebarController: UIViewController {
             name: .apelinProjectsChanged,
             object: nil,
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(reloadBackground),
+            name: ChatBackground.changed,
+            object: nil,
+        )
+        reloadBackground()
         applyPage()
         Task { await refreshProjects() }
+    }
+
+    @objc private func reloadBackground() {
+        let old = view.viewWithTag(Self.backgroundTag)
+        old?.removeFromSuperview()
+        guard case .image = ChatBackground.current, let image = ChatBackgroundView.picture() else { return }
+        let backdrop = UIImageView(image: image)
+        backdrop.contentMode = .scaleAspectFill
+        backdrop.alpha = CGFloat(ChatBackground.opacity) * 0.85
+        backdrop.isAccessibilityElement = false
+        backdrop.tag = Self.backgroundTag
+        backdrop.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        backdrop.frame = view.bounds
+        view.insertSubview(backdrop, at: 0)
     }
 
     override func viewWillAppear(_ animated: Bool) {

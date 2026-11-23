@@ -27,6 +27,7 @@ enum ProjectActions {
         anchor: UIBarButtonItem,
         distributionBlocker: String? = nil,
         chatActions: [UIKit.UIAction] = [],
+        leadingFolderActions: [UIKit.UIAction] = [],
         onPrepareDistribution: ((String) -> Void)? = nil,
     ) -> UIMenu {
         let folders = folderActions(from: presenter, failureTitle: "Unable to Open Project") {
@@ -80,7 +81,7 @@ enum ProjectActions {
         }
         return UIMenu(children: [
             UIMenu(options: .displayInline, children: chatActions),
-            UIMenu(options: .displayInline, children: folders),
+            UIMenu(options: .displayInline, children: leadingFolderActions + folders),
             UIMenu(title: String(localized: "Project"), options: .displayInline, children: [renameAction, instructions, export, distribute]),
         ])
     }

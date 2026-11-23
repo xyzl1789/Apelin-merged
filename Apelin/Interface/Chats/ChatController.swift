@@ -27,6 +27,8 @@ final class ChatController: UIViewController {
     /// A conversation to show instead, picked as the sidebar picks one: a
     /// fork Fork from Here made.
     var onOpenChat: ((ChatSummary) -> Void)?
+    var onOpenGit: (() -> Void)?
+    var onNewChat: (() -> Void)?
     private let titleView = ChatTitleView()
     private var messageList = ListView<ChatMessage>()
     @objc dynamic private var openingQueueEditor = false
@@ -151,6 +153,8 @@ final class ChatController: UIViewController {
                 runtime: runtime,
                 from: self,
                 anchor: more,
+                onOpenGit: { [weak self] in self?.onOpenGit?() },
+                onNewChat: { [weak self] in self?.onNewChat?() },
                 onPrepareDistribution: { [weak self] prompt in self?.sendPrompt(prompt) },
                 onDelete: { [weak self] id in self?.onDelete?(id) },
                 // The conversation's team is read here and nowhere else, so
@@ -181,6 +185,16 @@ final class ChatController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .pageBackground
+        // iOS 26 之前导航栏自己的底色会盖住滚到它下面的消息，形成黑白
+        // 不透明的一截。聊天页的 topBlur 就是这里的底，让页面延伸到栏下。
+        if #unavailable(iOS 26) {
+            let clear = UINavigationBarAppearance()
+            clear.configureWithTransparentBackground()
+            clear.shadowColor = .clear
+            navigationItem.standardAppearance = clear
+            navigationItem.scrollEdgeAppearance = clear
+            navigationItem.compactAppearance = clear
+        }
         chatBackground.frame = view.bounds
         chatBackground.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(chatBackground)
@@ -701,6 +715,12 @@ final class ChatController: UIViewController {
             welcome.isHidden = true
             welcome.stop()
         }
+    }
+
+    /// 抽屉滑出时让纸或图片停在原处：页面平移 `shift`，背景反向平移同一
+    /// 距离，读作屏幕上的同一张纸，顶栏和输入框仍从它取色。
+    @objc dynamic func keepBackgroundStill(shift: CGFloat) {
+        chatBackground.transform = CGAffineTransform(translationX: -shift, y: 0)
     }
 
     /// 设置页最后留下的纸或图片。

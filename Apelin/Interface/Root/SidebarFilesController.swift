@@ -92,6 +92,7 @@ final class SidebarFilesController: UIViewController {
         tableView: tableView,
     ) { [unowned self] tableView, indexPath, path in
         let cell = tableView.dequeueReusableCell(withIdentifier: "file", for: indexPath) as! SidebarFileCell
+        cell.useGlassSidebarRow()
         let file = rows.first { $0.relativePath == path }
         // A content hit says where in the file the text is, under its name.
         let hit = contentHitsByPath[path]
@@ -627,8 +628,7 @@ final class SidebarFileCell: UITableViewCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        backgroundColor = .clear
-        selectionStyle = .default
+        useGlassSidebarRow()
         // The lines go under everything the row shows.
         contentView.addSubview(guides)
         contentView.addSubview(chevron)

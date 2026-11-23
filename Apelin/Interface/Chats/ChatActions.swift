@@ -17,11 +17,22 @@ enum ChatActions {
         runtime: ChatRuntime,
         from presenter: UIViewController,
         anchor: UIBarButtonItem,
+        onOpenGit: @escaping () -> Void,
+        onNewChat: @escaping () -> Void,
         onPrepareDistribution: @escaping (String) -> Void,
         onDelete: @escaping (UUID) -> Void,
         completion: @escaping ([UIMenuElement]) -> Void,
     ) {
+        let newChat = UIKit.UIAction(
+            title: String(localized: "New Conversation"),
+            image: UIImage(systemName: "square.and.pencil"),
+        ) { _ in onNewChat() }
+        let git = UIKit.UIAction(
+            title: String(localized: "Open Git"),
+            image: UIImage(systemName: "arrow.triangle.branch"),
+        ) { _ in onOpenGit() }
         let chatActions = [
+            newChat,
             usageAction(for: chat.id, runtime: runtime, from: presenter),
             renameAction(for: chat.id, runtime: runtime, from: presenter),
             compactAction(for: chat.id, runtime: runtime, from: presenter),
@@ -41,7 +52,7 @@ enum ChatActions {
             completion(
                 assistant
                     + [UIMenu(options: .displayInline, children: chatActions)]
-                    + [UIMenu(options: .displayInline, children: folders)]
+                    + [UIMenu(options: .displayInline, children: [git] + folders)]
                     + [deletion]
             )
             return
@@ -60,6 +71,7 @@ enum ChatActions {
                 anchor: anchor,
                 distributionBlocker: (project?.buildMethod ?? .missingDescription).shortBlocker,
                 chatActions: chatActions,
+                leadingFolderActions: [git],
                 onPrepareDistribution: onPrepareDistribution,
             )
             completion(assistant + projectActions.children + [deletion])

@@ -50,6 +50,8 @@ final class RootInterfaceController: UIViewController {
             // `open` moves the sidebar's highlight with the page
             self?.open(summary, picked: true)
         }
+        page.onOpenGit = { [weak self] in self?.openGit() }
+        page.onNewChat = { [weak self] in self?.sidebar.startNewChat() }
         return page
     }()
 
@@ -105,6 +107,7 @@ final class RootInterfaceController: UIViewController {
         sidebar.onProjectsLoaded = { [weak self] in self?.restoreChatIfReady() }
         // startNewChat has just put that conversation on the page
         sidebar.onSendPrompt = { [weak self] text in self?.chatController.sendPrompt(text) }
+        sidebar.onOpenSettings = { [weak self] in self?.openSettings() }
         chatRuntime.onChange = { [weak self] in
             guard let self else { return }
             sidebar.refresh()
@@ -370,6 +373,7 @@ final class RootInterfaceController: UIViewController {
                 shift: view.directionalOffset(-width * 0.25 * (1 - drawerProgress)),
             )
             place(navigator.view, in: bounds, shift: shift)
+            chatController.keepBackgroundStill(shift: shift)
             place(shade, in: bounds, shift: shift)
             shade.alpha = drawerProgress
             navigator.view.layer.shadowOpacity = 0.15
@@ -387,6 +391,7 @@ final class RootInterfaceController: UIViewController {
                 in: view.directionalFrame(CGRect(x: width, y: 0, width: bounds.width - width, height: bounds.height)),
                 shift: 0,
             )
+            chatController.keepBackgroundStill(shift: 0)
             place(shade, in: bounds, shift: 0)
             shade.alpha = 0
             navigator.view.layer.shadowOpacity = 0
@@ -662,24 +667,9 @@ final class RootInterfaceController: UIViewController {
             )
         }
         if isRoot, !isSidebarShown {
-            // Read from the trailing edge in: the page's own menu keeps the
-            // edge, and the shortcuts sit inside it — Git, Search, then
-            // New Chat — so the bar reads, left to right, New Chat, Search,
-            // Git, and the menu.
-            let git = UIAction { [weak self] _ in self?.openGit() }
+            // Git 与新建会话已移入聊天自己的「…」菜单；顶栏只留搜索。
             let search = UIAction { [weak self] _ in self?.chatController.presentMessageSearch() }
-            let newChat = UIAction { [weak self] _ in self?.sidebar.startNewChat() }
             if #available(iOS 26.0, *) {
-                // Liquid Glass puts the bar's own controls in one capsule,
-                // as close as they should be.
-                trailing.append(
-                    RootBarItem(
-                        image: UIImage(systemName: "arrow.triangle.branch"),
-                        primaryAction: git,
-                    ).then {
-                        $0.accessibilityLabel = String(localized: "Git")
-                    },
-                )
                 trailing.append(
                     RootBarItem(
                         image: UIImage(systemName: "magnifyingglass"),
@@ -688,20 +678,8 @@ final class RootInterfaceController: UIViewController {
                         $0.accessibilityLabel = String(localized: "Search in Conversation")
                     },
                 )
-                trailing.append(
-                    RootBarItem(
-                        image: UIImage(systemName: "square.and.pencil"),
-                        primaryAction: newChat,
-                    ).then {
-                        $0.accessibilityLabel = String(localized: "New Chat")
-                    },
-                )
             } else {
-                // Before it, the bar sets a gap of its own between items, and
-                // three of them took the room the conversation's name needs:
-                // the shortcuts share one item and sit a couple of points
-                // apart in it.
-                trailing.append(RootBarItem(customView: rootToolGroup(git: git, search: search, newChat: newChat)))
+                trailing.append(RootBarItem(customView: rootToolGroup(search: search)))
             }
         }
         item.leftBarButtonItems = leading.isEmpty ? nil : leading
@@ -710,15 +688,20 @@ final class RootInterfaceController: UIViewController {
 
     // MARK: - Root tools
 
-    /// The root's shortcuts as one bar item, their glyphs a couple of
-    /// points apart: the gap the bar sets between items of its own is wider
-    /// than the room the conversation's name beside them can spare.
-    private func rootToolGroup(git: UIAction, search: UIAction, newChat: UIAction) -> UIView {
+    /// 顶栏唯一的快捷方式（搜索）在 iOS 26 之前放在一个自定义视图里。
+    private func rootToolGroup(search: UIAction) -> UIView {
         RootToolGroup(tools: [
-            (symbol: "arrow.triangle.branch", label: String(localized: "Git"), action: git),
             (symbol: "magnifyingglass", label: String(localized: "Search in Conversation"), action: search),
-            (symbol: "square.and.pencil", label: String(localized: "New Chat"), action: newChat),
         ])
+    }
+
+    /// 设置作为详情页里的一页压在对话之上，用导航栏的返回键退回。
+    private func openSettings() {
+        if isDrawer, drawerProgress > 0 {
+            setDrawerOpen(false)
+        }
+        guard !(navigator.topViewController is SettingsViewController) else { return }
+        navigator.pushViewController(SettingsViewController(), animated: true)
     }
 
     /// The visual Git page for the conversation's project, full screen —

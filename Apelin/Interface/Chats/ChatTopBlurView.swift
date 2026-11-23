@@ -21,9 +21,14 @@ final class ChatTopBlurView: UIView {
     private let frost = CAGradientLayer()
     private var material: UIVisualEffectView?
     private var materialMask: CAGradientLayer?
+    /// 盖在 material 之上、向下淡出的本页颜色：单靠系统的磨砂在亮图片上
+    /// 仍是透明的，这一层让顶栏读作页面的磨砂边缘，而不是看穿它的窗口。
+    private var veil: TintVeil?
 
     private func installStandardBlur() {
         let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterial))
+        blur.isUserInteractionEnabled = false
+        blur.isAccessibilityElement = false
         let mask = CAGradientLayer()
         mask.colors = [UIColor.black.cgColor, UIColor.clear.cgColor]
         mask.locations = [0, 1]
@@ -31,6 +36,13 @@ final class ChatTopBlurView: UIView {
         material = blur
         materialMask = mask
         addSubview(blur)
+        let veil = TintVeil()
+        veil.isUserInteractionEnabled = false
+        veil.isAccessibilityElement = false
+        veil.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(veil)
+        self.veil = veil
+        updateFrost()
     }
 
     override init(frame: CGRect) {
@@ -84,6 +96,7 @@ final class ChatTopBlurView: UIView {
         backdrop.frame = bounds
         material?.frame = bounds
         materialMask?.frame = material?.bounds ?? .zero
+        veil?.frame = bounds
         frost.frame = bounds
         CATransaction.commit()
     }
@@ -102,8 +115,17 @@ final class ChatTopBlurView: UIView {
             color = ChatBackgroundView.base(paper, traits: traitCollection)
                 .resolvedColor(with: traitCollection)
         case .image:
-            // 图片自身颜色的一半：顶栏属于图片，又仍能柔化从下面滚过的内容。
-            color = ChatBackgroundView.topTint()?.withAlphaComponent(0.55)
+            // 图片自身颜色的八成：顶栏属于图片，又仍能柔化从下面滚过的内容。
+            color = ChatBackgroundView.topTint()?.withAlphaComponent(0.8)
+        }
+        if material != nil {
+            // 系统磨砂已经带着自己的颜色；它下面的 frost 会是第二层不透明
+            // 的纸。改为在磨砂之上画本页的颜色，并把下面的 frost 清空。
+            frost.colors = [UIColor.clear.cgColor, UIColor.clear.cgColor]
+            veil?.gradient.colors = color.map {
+                [$0.withAlphaComponent(0.45).cgColor, $0.withAlphaComponent(0).cgColor]
+            } ?? [UIColor.clear.cgColor, UIColor.clear.cgColor]
+            return
         }
         frost.colors = color.map {
             [$0.cgColor, $0.withAlphaComponent(0).cgColor]
@@ -115,5 +137,25 @@ final class ChatTopBlurView: UIView {
         guard let window, let backdropClass = NSClassFromString("CABackdropLayer"),
               backdrop.layer.isKind(of: backdropClass) else { return }
         backdrop.layer.setValue(window.traitCollection.displayScale, forKey: "scale")
+    }
+}
+
+/// 图层就是渐变本身的视图：它在磨砂之上，向下淡出。
+private final class TintVeil: UIView {
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+
+    var gradient: CAGradientLayer { layer as! CAGradientLayer }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        gradient.locations = [0, 1]
+        gradient.startPoint = CGPoint(x: 0.5, y: 0)
+        gradient.endPoint = CGPoint(x: 0.5, y: 1)
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("Use init(frame:)")
     }
 }
