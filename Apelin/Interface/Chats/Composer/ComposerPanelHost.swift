@@ -34,17 +34,35 @@ class ComposerPanel: UIView {
     let body = UIView()
 
     private var wasExpandedBeforeSuppressing = true
+    private let backdrop: UIVisualEffectView
 
     required init() {
+        // 面板和输入框使用同一种材质，不再在输入框上方盖一张实色卡片。
+        if #available(iOS 26, *) {
+            backdrop = UIVisualEffectView(effect: UIGlassEffect())
+        } else {
+            backdrop = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+        }
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         clipsToBounds = false
 
-        backgroundColor = .secondarySystemGroupedBackground
+        backgroundColor = .clear
         layer.cornerRadius = ComposerMetrics.Radius.lg
         layer.cornerCurve = .continuous
-        layer.borderWidth = 1 / UIScreen.main.scale
-        layer.borderColor = UIColor.separator.cgColor
+        if #unavailable(iOS 26) {
+            layer.borderWidth = 1 / UIScreen.main.scale
+            layer.borderColor = UIColor.separator.cgColor
+        }
+
+        backdrop.frame = bounds
+        backdrop.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        backdrop.layer.cornerRadius = layer.cornerRadius
+        backdrop.layer.cornerCurve = .continuous
+        backdrop.clipsToBounds = true
+        backdrop.isUserInteractionEnabled = false
+        backdrop.isAccessibilityElement = false
+        addSubview(backdrop)
 
         titleLabel.font = .preferredFont(forTextStyle: .subheadline)
         titleLabel.textColor = .secondaryLabel
