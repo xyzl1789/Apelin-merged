@@ -162,12 +162,12 @@ final class ShareController: UITableViewController {
                 if opened {
                     context.completeRequest(returningItems: nil, completionHandler: nil)
                 } else {
-                    progress?.stopAnimating()
+                    self.progress?.stopAnimating()
                     let alert = UIAlertController(title: "分享已保存", message: "未能自动打开 Apelin。手动打开后会进入所选会话。", preferredStyle: .alert)
                     alert.addAction(UIAlertAction(title: "完成", style: .default) { _ in
                         context.completeRequest(returningItems: nil, completionHandler: nil)
                     })
-                    present(alert, animated: true)
+                    self.present(alert, animated: true)
                 }
             }
         }
