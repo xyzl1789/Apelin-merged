@@ -8,11 +8,19 @@ import UIKit
 ///
 /// 它不接收触碰，对 VoiceOver 是一个整体元素——即便还在写，也读完整句。
 final class ChatWelcomeView: UIView {
-    /// 开场的两句话，按写出的顺序排列：每轮取下一句，两句都会出现。
+    /// 从随机一句开始，之后按顺序轮播，每句都会出现。
     static var lines: [String] {
         [
             String(localized: "Hello, is there anything I can help you with?"),
             String(localized: "What would you like to do right now?"),
+            String(localized: "A thought in hand, waiting to set out."),
+            String(localized: "In this small square, thoughts become things!"),
+            String(localized: "Wherever thought turns, it can take shape."),
+            String(localized: "What would you like to explore?"),
+            String(localized: "Ready and waiting for your word."),
+            String(localized: "Ready when you are — let's begin!"),
+            String(localized: "One thought, a thousand things built."),
+            String(localized: "Waiting quietly for your next idea."),
         ]
     }
 
@@ -38,12 +46,11 @@ final class ChatWelcomeView: UIView {
         UIColor.label.withAlphaComponent(inkAlpha)
     }
 
-    /// 字号定到中文那句十三个字能在页面边距内保持一行；英文那句占两行，
-    /// 居中看起来也没问题。
+    /// 对齐上游字号：欢迎语低调一点，较长的译文也能自然换行。
     private static var font: UIFont {
         UIFontMetrics(forTextStyle: .title2).scaledFont(
-            for: .systemFont(ofSize: 24, weight: .regular),
-            maximumPointSize: 40,
+            for: .systemFont(ofSize: 20, weight: .regular),
+            maximumPointSize: 34,
         )
     }
 

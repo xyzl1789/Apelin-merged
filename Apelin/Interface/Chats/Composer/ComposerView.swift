@@ -111,6 +111,15 @@ class ComposerView: ComposerSectionView {
             effectView.clipsToBounds = true
             addSubview(effectView)
             glassEffectView = effectView
+        } else {
+            // 旧版 iOS 用薄磨砂保留底色，并模糊滑过输入框后方的文字。
+            let effectView = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+            effectView.isUserInteractionEnabled = false
+            effectView.layer.cornerRadius = shadowContainer.layer.cornerRadius
+            effectView.layer.cornerCurve = .continuous
+            effectView.clipsToBounds = true
+            addSubview(effectView)
+            glassEffectView = effectView
         }
 
         applyShadowStyle()
