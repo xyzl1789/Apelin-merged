@@ -828,7 +828,7 @@ struct AccountDeskTests {
             #expect(resolved.model.api == format.rawValue)
             #expect(await APIRegistry.shared.provider(scope: resolved.model.provider, api: resolved.model.api) != nil)
             let auth = try #require(try await resolved.authResolver?(resolved.model, nil))
-            guard case .apiKeyHeader("api-key") = auth.scheme else {
+            guard case let .apiKeyHeader(name: header) = auth.scheme, header == "api-key" else {
                 Issue.record("Azure 应使用 api-key，而不是 Bearer 鉴权")
                 continue
             }

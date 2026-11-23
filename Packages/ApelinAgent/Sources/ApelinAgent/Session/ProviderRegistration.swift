@@ -142,7 +142,7 @@ public enum ProviderRegistration {
             model: model,
             modelLabel: resolved.modelLabel,
             authResolver: { _, _ in
-                ResolvedProviderAuth(token: credentials.access, scheme: azure ? .apiKeyHeader("api-key") : .bearer)
+                ResolvedProviderAuth(token: credentials.access, scheme: azure ? .apiKeyHeader(name: "api-key") : .bearer)
             },
             providerSlots: resolved.providerSlots,
             authResolvers: resolved.authResolvers,
