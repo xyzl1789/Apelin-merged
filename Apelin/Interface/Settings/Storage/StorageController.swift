@@ -21,6 +21,7 @@ final class StorageController: TableController {
     private enum Row: Hashable {
         case disk
         case area(StorageArea)
+        case shares
         case purge(StorageArea)
         case purgeAll
     }
@@ -46,6 +47,8 @@ final class StorageController: TableController {
     private var disk: StorageDisk?
     private var measuring: [StorageArea: Task<Void, Never>] = [:]
     private var diskTask: Task<Void, Never>?
+    private var shareTask: Task<Void, Never>?
+    private var shareBytes: Int64?
     private var working = false
 
     init() {
@@ -81,12 +84,15 @@ final class StorageController: TableController {
         measuring.removeAll()
         diskTask?.cancel()
         diskTask = nil
+        shareTask?.cancel()
+        shareTask = nil
     }
 
     // MARK: - 测量
 
     private func measureAll() {
         measureDisk()
+        measureShares()
         for area in Self.areas + Self.purgeable {
             measure(area, children: false)
         }
@@ -113,6 +119,16 @@ final class StorageController: TableController {
             let response = try? await ApelinService.app.storageUsage(areas: [], includeDisk: true)
             guard !Task.isCancelled, let self else { return }
             disk = response?.disk
+            updateRows()
+        }
+    }
+
+    private func measureShares() {
+        shareTask?.cancel()
+        shareTask = Task { [weak self] in
+            let staged = await Task.detached { ShareInbox.storedBatches().reduce(Int64(0)) { $0 + $1.bytes } }.value
+            guard !Task.isCancelled, let self else { return }
+            shareBytes = staged + (runtime?.shareFiles().reduce(Int64(0), { $0 + $1.bytes }) ?? 0)
             updateRows()
         }
     }
@@ -144,7 +160,7 @@ final class StorageController: TableController {
     private func rows(in section: Section) -> [Row] {
         switch section {
         case .disk: [.disk]
-        case .areas: Self.areas.map(Row.area)
+        case .areas: Self.areas.map(Row.area) + [.shares]
         case .purgeable: Self.purgeable.map(Row.purge) + [.purgeAll]
         }
     }
@@ -161,6 +177,8 @@ final class StorageController: TableController {
             return RowContent(row: row, detail: diskText)
         case let .area(area):
             return RowContent(row: row, detail: text(for: area))
+        case .shares:
+            return RowContent(row: row, detail: shareBytes.map(Self.format) ?? String(localized: "Reading…"))
         case let .purge(area):
             return RowContent(row: row, detail: text(for: area))
         case .purgeAll:
@@ -227,6 +245,8 @@ final class StorageController: TableController {
             cell.selectionStyle = .none
         case let .area(area):
             configuration.text = Self.name(of: area)
+        case .shares:
+            configuration.text = String(localized: "分享内容")
         case let .purge(area):
             configuration.text = Self.name(of: area)
             configuration.textProperties.color = .systemRed
@@ -242,7 +262,7 @@ final class StorageController: TableController {
         guard let row = dataSource.value(at: indexPath)?.row else { return false }
         switch row {
         case .disk: return false
-        case .area, .purge, .purgeAll: return !working
+        case .area, .shares, .purge, .purgeAll: return !working
         }
     }
 
@@ -254,6 +274,9 @@ final class StorageController: TableController {
             break
         case let .area(area):
             open(area)
+        case .shares:
+            guard let runtime else { return }
+            push(StorageSharesController(runtime: runtime))
         case let .purge(area):
             confirmPurge([area])
         case .purgeAll:

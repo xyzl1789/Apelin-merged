@@ -146,12 +146,13 @@ if [[ $mode == app ]]; then
         ldid -S -Cadhoc "$library"
     done
     packaging="$(cd "$(dirname "$0")/.." && pwd)/Packaging"
-    widget="$staging/Apelin.app/PlugIns/ApelinWidgets.appex"
-    if [[ -d "$widget" ]]; then
-        rm -rf -- "${widget:?}/_CodeSignature"
-        ldid -S"$packaging/ApelinWidgets.entitlements" -Cadhoc \
-            "$widget/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$widget/Info.plist")"
-    fi
+    for name in ApelinWidgets ApelinShare; do
+        extension="$staging/Apelin.app/PlugIns/$name.appex"
+        [[ -d "$extension" ]] || continue
+        rm -rf -- "${extension:?}/_CodeSignature"
+        ldid -S"$packaging/$name.entitlements" -Cadhoc \
+            "$extension/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$extension/Info.plist")"
+    done
     executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$staging/Apelin.app/Info.plist")"
     ldid -S"$packaging/Apelin.entitlements" -Cadhoc "$staging/Apelin.app/$executable"
 fi

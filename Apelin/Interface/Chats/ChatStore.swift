@@ -22,6 +22,61 @@ struct ChatRecord: Codable, Sendable {
     /// Set while the task of a reopened session replays the history
     /// `events` already hold (`reopen(as:)`). Absent from older files.
     var replay: SessionReplay?
+    /// 只有会话头成功写入后才确认分享已投递。
+    var receivedShares: Set<UUID>?
+    /// 发出后，服务端副本与原分享附件的对应关系。
+    var sharedFiles: [SharedHistoryFile]?
+}
+
+struct SharedHistoryFile: Codable, Sendable, Identifiable {
+    let id: UUID
+    let path: String
+    let name: String
+    let draftFile: UUID
+    let identity: ShareTransfer.FileIdentity?
+
+    init(path: String, name: String, draftFile: UUID, summary: ChatSummary, folder: DataFolder?) {
+        id = UUID()
+        self.path = path
+        self.name = name
+        self.draftFile = draftFile
+        if let folder, let url = Self.localURL(path, in: summary, folder: folder) {
+            identity = ShareTransfer.identity(of: url)
+        } else {
+            identity = nil
+        }
+    }
+
+    func localURL(in summary: ChatSummary, folder: DataFolder) -> URL? {
+        guard let url = Self.localURL(path, in: summary, folder: folder), let identity,
+              ShareTransfer.identity(of: url) == identity else { return nil }
+        return url
+    }
+
+    private static func localURL(_ path: String, in summary: ChatSummary, folder: DataFolder) -> URL? {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count == 2, parts[0] == "Attachments", let key = UUID(uuidString: String(parts[1])),
+              path == "Attachments/" + key.uuidString.lowercased(),
+              let dataRoot = CanonicalPath.resolve(folder.root.path) else { return nil }
+        let group: URL
+        let name: String
+        if let project = summary.projectName {
+            guard folder.project(named: project) != nil else { return nil }
+            group = folder.projects
+            name = project
+        } else {
+            group = folder.root.appendingPathComponent("Temporary")
+            name = summary.id.uuidString
+        }
+        let root = group.appendingPathComponent(name)
+        let parent = root.appendingPathComponent("Attachments")
+        let url = root.appendingPathComponent(path)
+        let base = dataRoot + "/" + group.lastPathComponent + "/" + name
+        guard ShareTransfer.isDirectory(group), ShareTransfer.isDirectory(root), ShareTransfer.isDirectory(parent),
+              CanonicalPath.resolve(root.path) == base,
+              CanonicalPath.resolve(url.path) == base + "/" + path else { return nil }
+        return url
+    }
 }
 
 /// What the app knows about the run a conversation's last turn belongs to.
@@ -170,13 +225,23 @@ extension ChatRecord {
     /// with the event that echoed it. A draft put back by
     /// `reclaimUnsent` that the host did take is emptied too, unless its
     /// text was changed since.
-    mutating func takeEchoed(by events: [TaskEvent]) -> [(draft: ComposerDraft, event: TaskEvent)] {
+    mutating func takeEchoed(by events: [TaskEvent], folder: DataFolder? = nil) -> [(draft: ComposerDraft, event: TaskEvent)] {
         var echoed: [(draft: ComposerDraft, event: TaskEvent)] = []
         let acknowledgements = events.flatMap(ChatTranscript.acceptedMessages)
         for event in acknowledgements {
             guard let id = ChatTranscript.userMessageID(of: event) else { continue }
             if let index = sending?.firstIndex(where: { $0.id == id }), let draft = sending?.remove(at: index) {
                 echoed.append((draft, event))
+                let remote = ChatTranscript.attachments(in: event.payload?["attachments"])
+                if remote.count == draft.attachments.count {
+                    var files = sharedFiles ?? []
+                    for (item, local) in zip(remote, draft.attachments) {
+                        guard local.shareBatch != nil, let key = local.storedFile,
+                              !files.contains(where: { $0.path == item.path }) else { continue }
+                        files.append(SharedHistoryFile(path: item.path, name: local.name, draftFile: key, summary: summary, folder: folder))
+                    }
+                    if !files.isEmpty { sharedFiles = files }
+                }
             }
             if draft.id == id, draft.text == event.payload?["text"]?.stringValue ?? "" {
                 draft = ComposerDraft()
@@ -302,8 +367,8 @@ extension ChatRecord {
     /// the host, so it goes back to the draft, before anything typed after
     /// it. A lone message keeps its id: if the host did take it, sending it
     /// again is not a second message, and its echo empties the draft.
-    mutating func reclaimUnsent() {
-        _ = takeEchoed(by: events)
+    mutating func reclaimUnsent(folder: DataFolder? = nil) {
+        _ = takeEchoed(by: events, folder: folder)
         guard let unsent = sending else { return }
         sending = nil
         let parts = (unsent + [draft]).filter { !$0.text.isEmpty || !$0.attachments.isEmpty }
@@ -351,6 +416,8 @@ actor ChatStore {
         var run: ChatRunState?
         var sending: [ComposerDraft]?
         var replay: SessionReplay?
+        var receivedShares: Set<UUID>?
+        var sharedFiles: [SharedHistoryFile]?
         var eventCount = 0
 
         init(_ record: ChatRecord) {
@@ -361,6 +428,8 @@ actor ChatStore {
             run = record.run
             sending = record.sending
             replay = record.replay
+            receivedShares = record.receivedShares
+            sharedFiles = record.sharedFiles
             eventCount = record.events.count
         }
 
@@ -374,6 +443,8 @@ actor ChatStore {
                 events: events,
                 sending: sending,
                 replay: replay,
+                receivedShares: receivedShares,
+                sharedFiles: sharedFiles,
             )
         }
 
@@ -437,6 +508,7 @@ actor ChatStore {
         // 会话头是回执：一旦草稿入档，就把分享收件箱里的原文件清掉。
         for record in loaded.records {
             ShareInbox.acknowledge(([record.draft] + (record.sending ?? [])).flatMap(\.attachments))
+            for batch in record.receivedShares ?? [] { ShareInbox.acknowledgeBatch(batch) }
         }
         return loaded
     }
@@ -567,6 +639,7 @@ actor ChatStore {
         let head = Head(record)
         try write(eventCount.map(head.counting) ?? head, into: directory)
         ShareInbox.acknowledge(record.draft.attachments + (record.sending ?? []).flatMap(\.attachments))
+        for batch in record.receivedShares ?? [] { ShareInbox.acknowledgeBatch(batch) }
         if writesEvents { written[id] = record.events.count }
         revisions[id] = revision
     }

@@ -54,17 +54,18 @@ login_profile="$packaging_root/profile.d/wiki.qaq.apelin.sh"
 [[ -f "$login_profile" ]] || { echo "error: missing packaging input: $login_profile" >&2; exit 66; }
 /bin/sh -n "$login_profile" || { echo "error: $login_profile is not valid sh" >&2; exit 65; }
 
-# The one app extension: the widgets (Widgets/Extension), sandboxed, signed
-# with Packaging/ApelinWidgets.entitlements, sharing one App Group with the
-# app and nothing else.
+# 小组件和分享扩展各自签名。两者都在沙盒内，只与主应用共用 App Group。
 widget_appex=ApelinWidgets.appex
 widget_bundle_identifier=wiki.qaq.apelin.widgets
 widget_entitlements="$packaging_root/ApelinWidgets.entitlements"
+share_appex=ApelinShare.appex
+share_bundle_identifier=wiki.qaq.apelin.share
+share_entitlements="$packaging_root/ApelinShare.entitlements"
 app_group=group.wiki.qaq.apelin
 
 [[ -d "$app_bundle" && -f "$app_bundle/Info.plist" ]] || { echo "error: $app_bundle is not a complete app bundle; expected a directory containing Info.plist" >&2; exit 66; }
 [[ -x "$daemon_binary" ]] || { echo "error: daemon binary is missing" >&2; exit 66; }
-for input in "$control_template" "$app_entitlements" "$daemon_entitlements" "$launch_plist" "$widget_entitlements"; do
+for input in "$control_template" "$app_entitlements" "$daemon_entitlements" "$launch_plist" "$widget_entitlements" "$share_entitlements"; do
     [[ -f "$input" ]] || { echo "error: missing packaging input: $input" >&2; exit 66; }
 done
 for resource in "${worker_resources[@]}"; do
@@ -116,22 +117,23 @@ esac
 # Native binaries keep physical paths; libroot's vroot would rewrite one side
 # of the XPC boundary and not the other.
 app_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_bundle/Info.plist")"
-# Exactly the widget extension in PlugIns: another one is a second process
-# under the app's bundle id with none of its review, so the packager is
-# changed for it on purpose, not by accident.
+# 只接受已经审核并签名的两个扩展。
 shopt -s nullglob
 built_appexes=("$app_bundle/PlugIns"/*)
 shopt -u nullglob
-[[ "${#built_appexes[@]}" -eq 1 && "$(basename "${built_appexes[0]}")" == "$widget_appex" ]] || {
-    echo "error: $app_bundle/PlugIns must hold $widget_appex and nothing else; sign and verify a new extension in this packager first" >&2
+[[ "${#built_appexes[@]}" -eq 2 && -d "$app_bundle/PlugIns/$widget_appex" && -d "$app_bundle/PlugIns/$share_appex" ]] || {
+    echo "error: PlugIns must contain only $widget_appex and $share_appex" >&2
     exit 65
 }
-widget_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_bundle/PlugIns/$widget_appex/Info.plist")"
-[[ -x "$app_bundle/PlugIns/$widget_appex/$widget_executable" ]] || {
-    echo "error: $widget_appex has no executable" >&2
-    exit 65
+extension_executable() {
+    local extension="$1" executable
+    executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$extension/Info.plist")" || return 65
+    [[ -n "$executable" && "$executable" != */* && -x "$extension/$executable" ]] || return 65
+    printf '%s\n' "$executable"
 }
-native_binaries=("$daemon_binary" "$app_bundle/$app_executable" "$app_bundle/PlugIns/$widget_appex/$widget_executable")
+widget_executable="$(extension_executable "$app_bundle/PlugIns/$widget_appex")"
+share_executable="$(extension_executable "$app_bundle/PlugIns/$share_appex")"
+native_binaries=("$daemon_binary" "$app_bundle/$app_executable" "$app_bundle/PlugIns/$widget_appex/$widget_executable" "$app_bundle/PlugIns/$share_appex/$share_executable")
 for worker in "${workers[@]}"; do
     native_binaries+=("$workers_dir/$worker")
 done
@@ -155,15 +157,20 @@ app_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$
     echo "error: app version '$app_version' does not match package version '$version'" >&2
     exit 65
 }
-# An embedded extension carries its app's versions, under its app's id.
-widget_plist="$app_bundle/PlugIns/$widget_appex/Info.plist"
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$widget_plist")" == "$widget_bundle_identifier" \
-    && "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$widget_plist")" == "$app_version" \
-    && "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$widget_plist")" == "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_bundle/Info.plist")" \
-    && "$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$widget_plist")" == com.apple.widgetkit-extension ]] || {
-    echo "error: $widget_appex must be $widget_bundle_identifier, a WidgetKit extension with the app's version and build" >&2
-    exit 65
+# 嵌入扩展必须采用主应用的版本和构建号。
+check_extension() {
+    local appex="$1" identifier="$2" point="$3" plist
+    plist="$app_bundle/PlugIns/$appex/Info.plist"
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == "$identifier" \
+        && "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == "$app_version" \
+        && "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" == "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_bundle/Info.plist")" \
+        && "$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$plist")" == "$point" ]] || {
+        echo "error: invalid identifier, version, or extension point in $appex" >&2
+        exit 65
+    }
 }
+check_extension "$widget_appex" "$widget_bundle_identifier" com.apple.widgetkit-extension
+check_extension "$share_appex" "$share_bundle_identifier" com.apple.share-services
 
 # Settings ▸ About ▸ Licenses reads this; the Collect Licenses build phase
 # writes it, and a bundle without it is a build that skipped the phase.
@@ -317,6 +324,11 @@ rm -rf -- "${installed_widget:?}/_CodeSignature"
 rm -f "$installed_widget/embedded.mobileprovision"
 strip_and_check_private_paths "$installed_widget/$widget_executable"
 ldid -S"$widget_entitlements" -Cadhoc "$installed_widget/$widget_executable"
+installed_share="$installed_app/PlugIns/$share_appex"
+rm -rf -- "${installed_share:?}/_CodeSignature"
+rm -f "${installed_share:?}/embedded.mobileprovision"
+strip_and_check_private_paths "$installed_share/$share_executable"
+ldid -S"$share_entitlements" -Cadhoc "$installed_share/$share_executable"
 
 # Every strong @rpath dependency of every shipped Mach-O resolves to a file in
 # the package or to a library the OS has on the floor; dyld would otherwise
@@ -406,21 +418,23 @@ require_app_group "$app_signed_entitlements" "the app"
 # nothing that widens it. apelind authenticates peers by their binary, so an
 # extension with the client key or the service's Mach name would be an
 # entrance nobody designed — what was signed is checked, not what was asked.
-widget_signed_entitlements="$scratch/widget-entitlements.plist"
-ldid -e "$installed_widget/$widget_executable" >"$widget_signed_entitlements"
-require_app_group "$widget_signed_entitlements" "$widget_appex"
-for key in wiki.qaq.apelin.client \
-    wiki.qaq.irisin.client \
-    platform-application \
-    com.apple.private.security.no-sandbox \
-    com.apple.private.security.no-container \
-    com.apple.private.security.container-required \
-    com.apple.private.security.storage.AppBundles \
-    com.apple.private.security.storage.AppDataContainers \
-    com.apple.private.skip-library-validation \
-    com.apple.security.exception.mach-lookup.global-name \
-    com.apple.security.iokit-user-client-class; do
-    require_absent "$widget_signed_entitlements" "$key" "$widget_appex"
+for extension in "$installed_widget/$widget_executable" "$installed_share/$share_executable"; do
+    signed_entitlements="$scratch/$(basename "$extension")-entitlements.plist"
+    ldid -e "$extension" >"$signed_entitlements"
+    require_app_group "$signed_entitlements" "$extension"
+    for key in wiki.qaq.apelin.client \
+        wiki.qaq.irisin.client \
+        platform-application \
+        com.apple.private.security.no-sandbox \
+        com.apple.private.security.no-container \
+        com.apple.private.security.container-required \
+        com.apple.private.security.storage.AppBundles \
+        com.apple.private.security.storage.AppDataContainers \
+        com.apple.private.skip-library-validation \
+        com.apple.security.exception.mach-lookup.global-name \
+        com.apple.security.iokit-user-client-class; do
+        require_absent "$signed_entitlements" "$key" "$extension"
+    done
 done
 
 # The daemon: platform, unsandboxed, the two storage classes, irisind's
@@ -506,6 +520,7 @@ contents="$(dpkg-deb --contents "$temporary_deb")"
 grep -F ".$install_prefix/Applications/Apelin.app/$app_executable" <<<"$contents" >/dev/null
 grep -F ".$install_prefix/Applications/Apelin.app/Licenses.json" <<<"$contents" >/dev/null
 grep -F ".$install_prefix/Applications/Apelin.app/PlugIns/$widget_appex/$widget_executable" <<<"$contents" >/dev/null
+grep -F ".$install_prefix/Applications/Apelin.app/PlugIns/$share_appex/$share_executable" <<<"$contents" >/dev/null
 for resource in "${app_resources[@]}"; do
     grep -F ".$install_prefix/Applications/Apelin.app/$resource/Info.plist" <<<"$contents" >/dev/null
 done

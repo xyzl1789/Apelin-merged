@@ -185,7 +185,7 @@ final class ChatRuntime {
                     // Whether the host took a message is read from the events
                     // that echo it, so this one conversation is read now.
                     try await prepareEvents(id)
-                    records[id]?.reclaimUnsent()
+                    records[id]?.reclaimUnsent(folder: .app)
                     persist(id, urgent: true)
                 }
             }
@@ -399,6 +399,285 @@ final class ChatRuntime {
         return records[summary.id]?.summary ?? summary
     }
 
+    private(set) var deliveringShares: Set<UUID> = []
+    private var deletingShareTargets: Set<UUID> = []
+
+    enum ShareDelivery {
+        case delivered, needsDestination, draftFull, unavailable
+    }
+
+    /// 批次在主线程上认领。复制期间设置页不能修改或删除这个批次。
+    func deliverShare(_ batch: UUID, retarget: UUID? = nil, chooseTarget: Bool = false) async -> ShareDelivery {
+        guard isLoaded, deliveringShares.insert(batch).inserted else { return .unavailable }
+        defer { deliveringShares.remove(batch) }
+        if retryShareReceipt(batch) {
+            await withCheckedContinuation { continuation in saveNow { continuation.resume() } }
+            return ShareInbox.pendingDirectory(batch) == nil ? .delivered : .unavailable
+        }
+        guard let directory = ShareInbox.pendingDirectory(batch), var manifest = try? ShareTransfer.batch(at: directory) else {
+            return .unavailable
+        }
+        if chooseTarget {
+            if let retarget, records[retarget] == nil { return .needsDestination }
+            manifest.target = retarget
+            do { try ShareTransfer.write(manifest, to: directory) }
+            catch { return .unavailable }
+        }
+        let target = manifest.target
+        if let target {
+            guard shareDestinationExists(target) else { return .needsDestination }
+            guard canReceiveShare(target, count: manifest.files.count) else { return .draftFull }
+        }
+        let pending = ShareInbox.Pending(id: batch, directory: directory, batch: manifest)
+        var installedDraft = false
+        defer {
+            if !installedDraft { discardUnreferencedShareCopies(manifest.files) }
+        }
+        do {
+            let attachments = try await Task.detached { try Self.copyShareAttachments(pending) }.value
+            if let target {
+                guard shareDestinationExists(target) else { return .needsDestination }
+                guard canReceiveShare(target, count: attachments.count) else { return .draftFull }
+            }
+            guard receiveShare(pending, target: target, attachments: attachments) else { return .unavailable }
+            installedDraft = true
+            await withCheckedContinuation { continuation in saveNow { continuation.resume() } }
+            return ShareInbox.pendingDirectory(batch) == nil ? .delivered : .unavailable
+        } catch { return .unavailable }
+    }
+
+    nonisolated private static func copyShareAttachments(_ pending: ShareInbox.Pending) throws -> [ComposerAttachment] {
+        var remaining = Int64(ShareTransfer.bytesLimit)
+        return try pending.batch.files.map { file in
+            let url = pending.directory.appendingPathComponent(file.id.uuidString)
+            guard let size = ShareTransfer.size(of: url), size <= remaining else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            remaining -= size
+            let name = (file.name as NSString).lastPathComponent
+            var attachment = try ComposerAttachmentImport.readAttachment(
+                at: url, name: name.isEmpty ? "分享附件" : name,
+                origin: .shareInbox(file.id), mimeType: file.mimeType,
+            )
+            attachment.shareBatch = pending.id
+            return attachment
+        }
+    }
+
+    private func retryShareReceipt(_ batch: UUID) -> Bool {
+        guard let previous = records.first(where: { $0.value.receivedShares?.contains(batch) == true }) else { return false }
+        persist(previous.key, urgent: true)
+        return true
+    }
+
+    private func shareDestinationExists(_ id: UUID) -> Bool {
+        guard !deletingShareTargets.contains(id), let record = records[id] else { return false }
+        guard let name = record.summary.projectName else { return true }
+        guard let project = DataFolder.app.project(named: name) else { return false }
+        return ShareTransfer.isDirectory(project)
+    }
+
+    private func canReceiveShare(_ id: UUID, count: Int) -> Bool {
+        guard let draft = records[id]?.draft else { return false }
+        return draft.attachments.count + count <= ShareTransfer.fileLimit
+    }
+
+    private func receiveShare(_ pending: ShareInbox.Pending, target: UUID?, attachments: [ComposerAttachment]) -> Bool {
+        guard isLoaded else { return false }
+        let batch = pending.id
+        let id = target ?? batch
+        // 草稿和收据写进同一个会话头，失败重试不会重复追加文字。
+        if retryShareReceipt(batch) { return true }
+        guard target == nil ? records[id] == nil : records[id] != nil else { return false }
+        var draft = records[id]?.draft ?? ComposerDraft()
+        guard draft.appendShare(text: pending.batch.text, files: attachments, limit: ShareTransfer.fileLimit) else { return false }
+        if records[id] == nil {
+            var summary = ChatSummary.untitled(lastInteraction: Date(), projectName: nil)
+            summary.id = id
+            records[id] = ChatRecord(summary: summary)
+        }
+        guard var record = records[id] else { return false }
+        record.draft = draft
+        var receipts = record.receivedShares ?? []
+        receipts.insert(batch)
+        record.receivedShares = receipts
+        records[id] = record
+        changed(id)
+        onDraftRestored?(id)
+        return true
+    }
+
+    enum ShareCopy: Hashable {
+        case draft(UUID)
+        case history(UUID, UUID)
+    }
+
+    struct ShareFileEntry {
+        let copy: ShareCopy
+        let name: String
+        let owners: [String]
+        let bytes: Int64
+        let protected: Bool
+    }
+
+    func shareFiles() -> [ShareFileEntry] {
+        let canClearHistory = isReconciled && !hasWorkingConversations
+        var owners: [UUID: Set<String>] = [:]
+        var names: [UUID: String] = [:]
+        var sending: Set<UUID> = []
+        var history: [ShareFileEntry] = []
+        for record in records.values {
+            let id = record.summary.id
+            let title = record.summary.displayTitle
+            for file in record.draft.attachments + (record.sending ?? []).flatMap(\.attachments) {
+                guard file.shareBatch != nil, let key = file.storedFile else { continue }
+                owners[key, default: []].insert(title)
+                names[key] = file.name
+            }
+            sending.formUnion((record.sending ?? []).flatMap(\.attachments).compactMap(\.storedFile))
+            for file in record.sharedFiles ?? [] {
+                guard let url = shareHistoryURL(file, in: id), let size = ShareTransfer.size(of: url) else { continue }
+                history.append(.init(copy: .history(id, file.id), name: file.name, owners: [title], bytes: size,
+                                     protected: !canClearHistory || (historyIsReady(id) && shareHistoryQueued(file, in: id))))
+            }
+        }
+        let drafts = names.compactMap { key, name -> ShareFileEntry? in
+            guard let url = shareDraftURL(key), let size = ShareTransfer.size(of: url) else { return nil }
+            return .init(copy: .draft(key), name: name, owners: (owners[key] ?? []).sorted(), bytes: size,
+                         protected: sending.contains(key))
+        }
+        return (drafts + history).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private func shareDraftURL(_ key: UUID) -> URL? {
+        let folder = DataFolder.app
+        let storage = ComposerAttachment.storage
+        let chats = storage.deletingLastPathComponent()
+        let url = storage.appendingPathComponent(key.uuidString)
+        guard ShareTransfer.isDirectory(chats), ShareTransfer.isDirectory(storage),
+              let dataRoot = CanonicalPath.resolve(folder.root.path),
+              CanonicalPath.resolve(storage.path) == dataRoot + "/Chats/AttachmentFiles",
+              CanonicalPath.resolve(url.path) == dataRoot + "/Chats/AttachmentFiles/" + key.uuidString,
+              ShareTransfer.size(of: url) != nil else { return nil }
+        return url
+    }
+
+    private func shareHistoryURL(_ file: SharedHistoryFile, in id: UUID) -> URL? {
+        guard let summary = records[id]?.summary else { return nil }
+        return file.localURL(in: summary, folder: .app)
+    }
+
+    private func shareHistoryQueued(_ file: SharedHistoryFile, in id: UUID) -> Bool {
+        guard historyIsReady(id), let events = records[id]?.events else { return true }
+        guard let queue = events.last(where: { $0.kind == "pendingQueue" }) else { return false }
+        guard case let .array(messages)? = queue.payload?["messages"] else { return true }
+        return messages.contains { message in
+            guard let value = message["attachments"] else { return false }
+            guard case let .array(items) = value else { return true }
+            return items.contains { item in
+                guard let path = item["path"]?.stringValue else { return true }
+                return path == file.path
+            }
+        }
+    }
+
+    func deletePendingShare(_ id: UUID) throws {
+        guard !deliveringShares.contains(id),
+              !records.values.contains(where: { $0.receivedShares?.contains(id) == true }) else {
+            throw ApelinError(.badRequest, "这批分享正在投递或保存。")
+        }
+        guard let directory = ShareInbox.pendingDirectory(id) else { return }
+        let manifest = try? ShareTransfer.batch(at: directory)
+        try ShareInbox.removeBatch(id)
+        if let manifest { discardUnreferencedShareCopies(manifest.files) }
+    }
+
+    private func discardUnreferencedShareCopies(_ files: [ShareTransfer.File]) {
+        for file in files where !records.values.contains(where: {
+            ([$0.draft] + ($0.sending ?? [])).flatMap(\.attachments).contains { $0.storedFile == file.id }
+        }) {
+            if let copy = shareDraftURL(file.id) { try? FileManager.default.removeItem(at: copy) }
+        }
+    }
+
+    func deleteShareCopy(_ copy: ShareCopy) async throws {
+        switch copy {
+        case let .draft(key):
+            guard let url = shareDraftURL(key) else { return }
+            let owners = records.keys.filter { id in
+                records[id]?.draft.attachments.contains { $0.storedFile == key && $0.shareBatch != nil } == true
+            }
+            guard !owners.isEmpty else { return }
+            guard !records.values.contains(where: {
+                ($0.sending ?? []).flatMap(\.attachments).contains { $0.storedFile == key }
+            }) else { throw ApelinError(.badRequest, "附件正在发送。") }
+            var removed: [UUID: [ComposerAttachment]] = [:]
+            for id in owners {
+                removed[id] = records[id]?.draft.attachments.filter { $0.storedFile == key }
+                records[id]?.draft.attachments.removeAll { $0.storedFile == key }
+                changed(id)
+                onDraftRestored?(id)
+            }
+            await withCheckedContinuation { continuation in saveNow { continuation.resume() } }
+            guard owners.allSatisfy({ !unsaved.contains($0) }) else {
+                for (id, attachments) in removed where unsaved.contains(id) {
+                    guard var draft = records[id]?.draft, !draft.attachments.contains(where: { $0.storedFile == key }) else { continue }
+                    draft.attachments += attachments
+                    records[id]?.draft = draft
+                    changed(id)
+                    onDraftRestored?(id)
+                }
+                throw ApelinError(.badRequest, "草稿未能保存；磁盘上的附件副本未删除。")
+            }
+            // 回调可能在等待保存时恢复了同一个附件；有任何引用就保留。
+            guard !records.values.contains(where: {
+                ([$0.draft] + ($0.sending ?? [])).flatMap(\.attachments).contains { $0.storedFile == key }
+            }) else { throw ApelinError(.badRequest, "附件仍被草稿或待发送消息使用。") }
+            if shareDraftURL(key) == url { try FileManager.default.removeItem(at: url) }
+        case let .history(id, key):
+            try await prepareEvents(id, priority: .utility)
+            guard let file = records[id]?.sharedFiles?.first(where: { $0.id == key }),
+                  let url = shareHistoryURL(file, in: id), let path = CanonicalPath.resolve(url.path) else { return }
+            guard isReconciled, !hasWorkingConversations, !shareHistoryQueued(file, in: id) else {
+                throw ApelinError(.badRequest, "正在运行、排队或尚未读取的会话不能清理历史附件。")
+            }
+            try FileManager.default.removeItem(at: url)
+            var cachedKeys = Set<UUID>([file.draftFile])
+            if let cached = attachmentCache.removeValue(forKey: path) {
+                attachmentBytes -= cached.byteCount
+                if let key = cached.storedFile { cachedKeys.insert(key) }
+            }
+            attachmentOrder.removeAll { $0 == path }
+            inlineCache.removeAll()
+            transcripts = ChatTranscriptCache()
+            records[id]?.sharedFiles?.removeAll { $0.id == key }
+            changed(id)
+            for cached in cachedKeys where !records.values.contains(where: {
+                ([$0.draft] + ($0.sending ?? [])).flatMap(\.attachments).contains { $0.storedFile == cached }
+            }) {
+                if let local = shareDraftURL(cached) { try? FileManager.default.removeItem(at: local) }
+            }
+        }
+    }
+
+    private var publishedShareDestinations: [ShareTransfer.Destination]?
+
+    func publishShareDestinations() {
+        let list = summaries.filter { !deletingShareTargets.contains($0.id) }
+            .sorted { $0.lastInteraction > $1.lastInteraction }
+            .map {
+                ShareTransfer.Destination(id: $0.id, title: String($0.displayTitle.prefix(160)),
+                                          project: $0.projectName.map { String($0.prefix(160)) })
+            }
+        guard list != publishedShareDestinations else { return }
+        do {
+            try ShareTransfer.writeDestinations(list)
+            publishedShareDestinations = list
+        } catch {
+            // 不缓存失败的发布；下次前台仍会尝试更新快照。
+        }
+    }
+
     /// Nothing sent, typed or attached, no session opening, not pinned and
     /// not named: a row that holds nothing but its place.
     private func isUntouched(_ record: ChatRecord) -> Bool {
@@ -431,6 +710,8 @@ final class ChatRuntime {
     }
 
     func delete(_ id: UUID) async throws {
+        guard deletingShareTargets.insert(id).inserted else { throw ApelinError(.conflict, "会话正在删除。") }
+        defer { deletingShareTargets.remove(id) }
         let session = records[id]?.sessionID
         try await closeSession(id)
         let isTemporary = records[id].map { $0.summary.projectName == nil } ?? false
@@ -449,6 +730,9 @@ final class ChatRuntime {
 
     func deleteProject(_ name: String) async throws {
         let ids = records.values.filter { $0.summary.projectName == name }.map(\.summary.id)
+        guard deletingShareTargets.isDisjoint(with: ids) else { throw ApelinError(.conflict, "会话正在删除。") }
+        deletingShareTargets.formUnion(ids)
+        defer { deletingShareTargets.subtract(ids) }
         for id in ids {
             ConversationNotices.shared.withdraw(session: records[id]?.sessionID)
             try await closeSession(id)
@@ -1469,13 +1753,14 @@ final class ChatRuntime {
     /// showed, so its preview does not fade in again.
     private func settleSending(in id: UUID, against events: [TaskEvent]) {
         guard let draftID = records[id]?.draft.id,
-              let echoed = records[id]?.takeEchoed(by: events) else { return }
+              let echoed = records[id]?.takeEchoed(by: events, folder: .app) else { return }
         for (draft, event) in echoed {
             // persisted-read: one event's field, nothing written back from it
             let saved = (try? event.payload?["attachments"]?.decode([AgentAttachment].self)) ?? []
             guard saved.count == draft.attachments.count else { continue }
             for (item, local) in zip(saved, draft.attachments) {
-                if let path = attachmentPath(item, in: id) {
+                // 分享文件的草稿副本可单独清理，历史预览必须从历史文件读。
+                if local.shareBatch == nil, let path = attachmentPath(item, in: id) {
                     _ = keepAttachment(local, at: path)
                 }
             }

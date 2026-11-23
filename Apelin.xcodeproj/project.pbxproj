@@ -114,6 +114,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				A50000000000000000000101 /* ApelinWidgets.appex in Embed Foundation Extensions */,
+				A60000000000000000000101 /* ApelinShare.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -346,6 +347,8 @@
 				AA0000000000000000000150 /* Workers/LogReader */,
 				A50000000000000000000106 /* Widgets/Extension */,
 				A50000000000000000000107 /* Widgets/Shared */,
+				A60000000000000000000106 /* Shares/Extension */,
+				A60000000000000000000107 /* Shares/Shared */,
 				AA0000000000000000000015 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -361,6 +364,7 @@
 				AA0000000000000000000141 /* apelin-diagnostics */,
 				AA000000000000000000014F /* apelin-log-reader */,
 				A50000000000000000000102 /* ApelinWidgets.appex */,
+				A60000000000000000000102 /* ApelinShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -388,11 +392,13 @@
 				AA0000000000000000000149 /* PBXTargetDependency */,
 				AA0000000000000000000157 /* PBXTargetDependency */,
 				A50000000000000000000108 /* PBXTargetDependency */,
+				A60000000000000000000108 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				AA0000000000000000000012 /* Apelin */,
 				AA0000000000000000000013 /* Shared */,
 				A50000000000000000000107 /* Widgets/Shared */,
+				A60000000000000000000107 /* Shares/Shared */,
 			);
 			name = Apelin;
 			packageProductDependencies = (
@@ -656,6 +662,7 @@
 				AA0000000000000000000140 /* WorkerDiagnostics */,
 				AA000000000000000000014E /* WorkerLogReader */,
 				A50000000000000000000110 /* ApelinWidgets */,
+				A60000000000000000000110 /* ApelinShare */,
 			);
 		};
 /* End PBXProject section */
@@ -1513,6 +1520,34 @@
 			productName = ScrubberKit;
 		};
 /* End XCSwiftPackageProductDependency section */
+
+/* Begin ApelinShare objects */
+		A60000000000000000000101 = {isa = PBXBuildFile; fileRef = A60000000000000000000102; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A60000000000000000000102 = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ApelinShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A60000000000000000000103 = {isa = PBXContainerItemProxy; containerPortal = AA0000000000000000000001; proxyType = 1; remoteGlobalIDString = A60000000000000000000110; remoteInfo = ApelinShare; };
+		A60000000000000000000106 = {isa = PBXFileSystemSynchronizedRootGroup; path = Shares/Extension; sourceTree = "<group>"; };
+		A60000000000000000000107 = {isa = PBXFileSystemSynchronizedRootGroup; path = Shares/Shared; sourceTree = "<group>"; };
+		A60000000000000000000108 = {isa = PBXTargetDependency; target = A60000000000000000000110; targetProxy = A60000000000000000000103; };
+		A60000000000000000000110 /* ApelinShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A60000000000000000000111;
+			buildPhases = ( A60000000000000000000112, A60000000000000000000113, A60000000000000000000114, );
+			buildRules = ( );
+			dependencies = ( );
+			fileSystemSynchronizedGroups = ( A60000000000000000000106, A60000000000000000000107, );
+			name = ApelinShare;
+			packageProductDependencies = ( );
+			productName = ApelinShare;
+			productReference = A60000000000000000000102;
+			productType = "com.apple.product-type.app-extension";
+		};
+		A60000000000000000000111 = {isa = XCConfigurationList; buildConfigurations = ( A60000000000000000000115, A60000000000000000000116, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A60000000000000000000112 = {isa = PBXSourcesBuildPhase; files = ( ); };
+		A60000000000000000000113 = {isa = PBXFrameworksBuildPhase; files = ( ); };
+		A60000000000000000000114 = {isa = PBXResourcesBuildPhase; files = ( ); };
+		A60000000000000000000115 = {isa = XCBuildConfiguration; baseConfigurationReferenceAnchor = AA0000000000000000000011; baseConfigurationReferenceRelativePath = Share.xcconfig; buildSettings = {}; name = Debug; };
+		A60000000000000000000116 = {isa = XCBuildConfiguration; baseConfigurationReferenceAnchor = AA0000000000000000000011; baseConfigurationReferenceRelativePath = Share.xcconfig; buildSettings = {}; name = Release; };
+/* End ApelinShare objects */
 	};
 	rootObject = AA0000000000000000000001 /* Project object */;
 }

@@ -45,6 +45,7 @@ files += [
     "Apelin/Interface/Chats/Composer/ComposerDraft.swift",
     "Apelin/Interface/Chats/ChatStore.swift",
     "Apelin/Application/ShareInbox.swift",
+    "Shares/Shared/ShareTransfer.swift",
     "Apelin/Interface/Chats/ChatEventsFile.swift",
     "Apelin/Interface/Chats/ChatHistory.swift",
     "Tests/ChatStore/Check.swift",
@@ -73,6 +74,7 @@ enum ChatTranscript {
     static func endsTask(_ event: TaskEvent) -> Bool { false }
     static func userMessageID(of event: TaskEvent) -> UUID? { nil }
     static func acceptedMessages(in event: TaskEvent) -> [TaskEvent] { [] }
+    static func attachments(in value: JSONValue?) -> [AgentAttachment] { [] }
     static func rowID(forEventAt index: Int) -> UUID { UUID() }
 }
 

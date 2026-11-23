@@ -1,4 +1,5 @@
 import Litext
+import SPIndicator
 import Then
 import UIKit
 
@@ -30,11 +31,57 @@ final class RootInterfaceController: UIViewController {
     @objc private dynamic var restoredChat = false
     private var pendingFiles: [URL] = []
     private var pendingInbox: [ShareInbox.Item] = []
+    private var receivingShare = false
+    private var notifiedShareBatches: Set<UUID> = []
+    private var nextShareSync = false
+    private var shareSnapshotTask: Task<Void, Never>?
 
     /// 系统分享收件箱在冷启动、回到前台时读取。
     func checkShareInbox() {
         pendingInbox = ShareInbox.items()
-        if !pendingInbox.isEmpty { restoreChatIfReady() }
+        nextShareSync = true
+        if chatRuntime.isLoaded { chatRuntime.publishShareDestinations() }
+        restoreChatIfReady()
+    }
+
+    @objc dynamic private func deliverShares() {
+        guard restoredChat, nextShareSync, !receivingShare else { return }
+        nextShareSync = false
+        receivingShare = true
+        Task { [weak self] in
+            let batches = await Task.detached {
+                ShareInbox.reapAbandonedStaging()
+                return ShareInbox.storedBatches().filter { $0.batch != nil }
+            }.value
+            guard let self else { return }
+            defer { receivingShare = false; deliverShares() }
+            var needsAttention = Set<UUID>()
+            var added = false
+            for pending in batches {
+                switch await chatRuntime.deliverShare(pending.id) {
+                case .delivered:
+                    notifiedShareBatches.remove(pending.id)
+                    added = true
+                case .needsDestination, .draftFull, .unavailable: needsAttention.insert(pending.id)
+                }
+            }
+            if added, UIApplication.shared.applicationState == .active {
+                SPIndicator.present(title: String(localized: "分享已加入所选草稿"), preset: .done, haptic: .success)
+            }
+            guard !needsAttention.subtracting(notifiedShareBatches).isEmpty,
+                  let presenter = navigator.topViewController, presenter.viewIfLoaded?.window != nil,
+                  presentedViewController == nil, presenter.presentedViewController == nil,
+                  !(presenter is StorageSharesController) else { return }
+            notifiedShareBatches.formUnion(needsAttention)
+            presenter.presentConfirmation(
+                title: "有分享尚未投递",
+                message: "尚未投递的内容仍保留。可在分享内容中重试、改投其他会话或删除。",
+                cancelTitle: "稍后", confirmTitle: "查看分享",
+            ) { [weak self] in
+                guard let self else { return }
+                navigator.pushViewController(StorageSharesController(runtime: chatRuntime), animated: true)
+            }
+        }
     }
 
     /// 「打开方式」送来的文件先排队，等会话恢复后投入当前草稿。
@@ -147,6 +194,14 @@ final class RootInterfaceController: UIViewController {
             // conversation the runtime no longer has
             leaveGoneChat()
             ChatWidgetPublisher.shared.chatsChanged()
+            if shareSnapshotTask == nil {
+                shareSnapshotTask = Task { [weak self] in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard let self else { return }
+                    shareSnapshotTask = nil
+                    if chatRuntime.isLoaded { chatRuntime.publishShareDestinations() }
+                }
+            }
         }
         ChatWidgetPublisher.shared.attach(chatRuntime)
         ChatRuntime.active = chatRuntime
@@ -172,7 +227,10 @@ final class RootInterfaceController: UIViewController {
     /// wait for the sidebar's saved project, rather than racing it into General.
     @objc private dynamic func restoreChatIfReady() {
         guard !WelcomeFlow.shouldPresent, chatRuntime.isLoaded, !isResolvingLink else { return }
-        defer { deliverPendingFiles() }
+        defer {
+            deliverPendingFiles()
+            deliverShares()
+        }
         if let link = pendingLink {
             pendingLink = nil
             open(link)
