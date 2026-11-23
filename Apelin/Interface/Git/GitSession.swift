@@ -234,8 +234,10 @@ final class GitSession {
         await perform { try await ApelinService.app.gitDeletePaths(projectID: self.scopeID, paths: paths) }
     }
 
-    func ignore(_ pattern: String) async {
-        await perform { _ = try await ApelinService.app.gitIgnoreAppend(projectID: self.scopeID, pattern: pattern) }
+    func ignore(_ pattern: String) async throws -> Bool {
+        let answer = try await ApelinService.app.gitIgnoreAppend(projectID: scopeID, pattern: pattern)
+        await reloadStatus()
+        return answer.added
     }
 
     /// Commits the index with `message`; `all` stages every change first, as

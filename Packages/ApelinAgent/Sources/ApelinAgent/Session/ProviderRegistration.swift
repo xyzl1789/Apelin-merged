@@ -84,6 +84,12 @@ public enum ProviderRegistration {
         // 注入，OAuth/CLI 登录自带的强制 UA 不动。
         // 自定义 User-Agent（Minis 的 `customUserAgent`）非空时替代默认标识。
         if CredentialProviderID.isOpenAICompatible(storeID) {
+            // 仅在端点未明确声明时使用旧接口兼容的 system 角色。
+            if model.compat?.supportsDeveloperRole == nil {
+                var compat = model.compat ?? ModelCompat()
+                compat.supportsDeveloperRole = false
+                model.compat = compat
+            }
             let customUA = ProviderRegistration.extra(AgentSignInField.customUserAgent.rawValue, in: credentials)
             model = CompatibleEndpointUserAgent.applying(to: model, customUserAgent: customUA)
             // Azure OpenAI 用 `api-key` 头传密钥；kwwk 传输层原样应用

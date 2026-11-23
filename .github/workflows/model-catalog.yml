@@ -18,6 +18,7 @@ on:
     - cron: "0 12 * * *"
   # The first copy, and any change to how it is trimmed, without waiting a day.
   push:
+    branches: [main]
     paths:
       - Scripts/refresh-models-dev.py
       - .github/workflows/model-catalog.yml
@@ -34,6 +35,7 @@ concurrency:
 jobs:
   refresh:
     name: Read models.dev and commit what changed
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

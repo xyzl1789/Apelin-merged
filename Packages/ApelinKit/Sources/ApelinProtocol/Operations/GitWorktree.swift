@@ -56,8 +56,7 @@ public struct GitIgnoreAppendRequest: OperationRequest {
     public typealias Response = GitIgnoreAppendResponse
     public static let operation = AppOperation.gitIgnoreAppend
     public var projectID: String
-    /// One line: a name, a `*.ext` pattern, or a folder's name with a
-    /// trailing slash. Refused when it is empty, absolute or holds a newline.
+    /// 一行 Git 忽略规则；允许用开头的斜杠锚定仓库根目录，不允许空规则或换行。
     public var pattern: String
     public init(projectID: String, pattern: String) {
         self.projectID = projectID

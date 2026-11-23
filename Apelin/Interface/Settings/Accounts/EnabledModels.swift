@@ -38,13 +38,26 @@ enum EnabledModels {
         Set(UserDefaults.standard.stringArray(forKey: "hiddenModels.\(provider.rawValue)") ?? [])
     }
 
+    /// 附加的兼容端点不在内置供应商枚举中，从已保存的模型偏好补齐。
+    static var providers: [AgentProvider] {
+        let builtIn = AgentProvider.allCases
+        let prefix = "enabledModels."
+        let endpoints = UserDefaults.standard.dictionaryRepresentation().keys.compactMap { key -> AgentProvider? in
+            guard key.hasPrefix(prefix),
+                  let provider = AgentProvider(rawValue: String(key.dropFirst(prefix.count))),
+                  case .openAICompatibleEndpoint = provider else { return nil }
+            return provider
+        }
+        return builtIn + endpoints.filter { !builtIn.contains($0) }.sorted { $0.rawValue < $1.rawValue }
+    }
+
     /// The model ids this device keeps for each provider, keyed by the
     /// provider's own id: handed to the account listing so the catalogs are
     /// read over the models the app shows — a custom endpoint's own — and not
     /// only the ones the agent can list for itself.
     static func knownModelIDs() -> [String: [String]] {
         var known: [String: [String]] = [:]
-        for provider in AgentProvider.allCases {
+        for provider in providers {
             let models = ids(for: provider)
                 .union(customIDs(for: provider))
                 .subtracting(hiddenIDs(for: provider))
@@ -59,7 +72,7 @@ enum EnabledModels {
     /// separate from knownModelIDs(), which settings needs in full.
     static func selectedModelIDs() -> [String: [String]] {
         var selected: [String: [String]] = [:]
-        for provider in AgentProvider.allCases {
+        for provider in providers {
             let models = ids(for: provider).subtracting(hiddenIDs(for: provider))
             if !models.isEmpty { selected[provider.rawValue] = models.sorted() }
         }

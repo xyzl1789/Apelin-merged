@@ -8,6 +8,7 @@ name: Icon Sheet
 
 on:
   push:
+    branches: [main]
     paths:
       - Apelin/Resources/Assets.xcassets/Provider*.imageset/**
       - .github/workflows/icon-preview.yml
@@ -23,6 +24,7 @@ concurrency:
 jobs:
   sheet:
     name: Draw every mark
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

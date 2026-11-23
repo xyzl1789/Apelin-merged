@@ -1403,7 +1403,7 @@ final class ChatController: UIViewController {
             return modelGroups(EnabledModels.accounts(from: cached.filter { $0.models != nil }), for: id)
         }
         let selection = ComposerModelSelection.selection(for: id)
-        return AgentProvider.allCases.compactMap { provider in
+        return EnabledModels.providers.compactMap { provider in
             guard let ids = models[provider.rawValue], !ids.isEmpty else { return nil }
             return ComposerChoiceSheet.Group(
                 title: provider.displayName,

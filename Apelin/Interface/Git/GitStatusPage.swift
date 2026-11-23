@@ -353,9 +353,14 @@ final class GitStatusPage: UIViewController, GitPage {
     private func ignore(_ pattern: String) {
         busy = true
         Task { @MainActor in
-            await session.ignore(pattern)
-            busy = false
-            host?.gitShowSuccess(String(localized: "Added to .gitignore"))
+            defer { busy = false }
+            do {
+                if try await session.ignore(pattern) {
+                    host?.gitShowSuccess(String(localized: "Added to .gitignore"))
+                }
+            } catch {
+                host?.gitShowToast(error.readableMessage)
+            }
         }
     }
 

@@ -76,13 +76,20 @@ extension ComposerInputView {
 
     /// One shape, whatever the state: the text takes the band's row, and the
     /// wand sits at the trailing corner when there is something to rewrite.
+    var textLayoutWidth: CGFloat {
+        let rewriteRoom = hasContent && !isBusy ? ComposerMetrics.Send.diameter + iconSpacing : 0
+        return max(0, bounds.width - inset.left - inset.right - rewriteRoom)
+    }
+
+    func scrollTextToTopIfItFits() {
+        guard textView.contentSize.height <= textView.bounds.height, textView.contentOffset.y != 0 else { return }
+        textView.contentOffset.y = 0
+    }
+
     func layoutTextBand() {
-        // The wand takes the send's diameter when visible; text uses the rest.
-        let toolsShown = hasContent && !isBusy
-        let rewriteRoom = toolsShown ? ComposerMetrics.Send.diameter + iconSpacing : 0
-        let width = bounds.width - inset.left - inset.right - rewriteRoom
-        let frame = textFrame(width: width)
+        let frame = textFrame(width: textLayoutWidth)
         textView.frame = frame
+        scrollTextToTopIfItFits()
         // The tip rolls with a transform on it, and a view carrying one has no
         // frame to set: its bounds and centre are what a layout pass may write.
         placeholderLabel.bounds = CGRect(origin: .zero, size: frame.size)

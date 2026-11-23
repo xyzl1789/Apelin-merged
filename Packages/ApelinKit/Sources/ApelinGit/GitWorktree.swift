@@ -113,9 +113,7 @@ public extension GitRepository {
     /// which it is not when the line is already one of them.
     func appendIgnore(_ pattern: String) throws -> Bool {
         guard !pattern.isEmpty else { throw GitError(.invalid, "the pattern is empty") }
-        guard !pattern.hasPrefix("/") else {
-            throw GitError(.invalid, "\(pattern.debugDescription) is an absolute path: give a pattern")
-        }
+        // 开头的斜杠是 Git 忽略规则的根目录锚点，并不用于打开文件。
         guard !pattern.contains("\n"), !pattern.contains("\r"), !pattern.utf8.contains(0) else {
             throw GitError(.invalid, "a pattern is one line")
         }

@@ -90,7 +90,7 @@ extension ComposerInputView: UITextViewDelegate {
 
     @objc dynamic func textViewDidChange(_ textView: UITextView) {
         updatePlaceholderAlpha()
-        updateTextHeight()
+        scheduleTextHeightUpdate()
         updateOverflowState()
         delegate?.onComposerInputTextChanged(text: textView.text)
         switchToRequiredStatus()
@@ -139,13 +139,28 @@ extension ComposerInputView: UITextViewDelegate {
 
     @objc dynamic func updateTextHeight() {
         let attrText = textView.attributedText ?? .init()
-        let textHeight = TextMeasurement.shared.measureSize(
-            of: attrText,
-            usingWidth: textView.frame.width,
-        ).height
-        let decision = ceil(max(textHeight, font.lineHeight))
-        doWithAnimation { self.textHeight.send(decision) }
+        let width = textLayoutWidth
+        textMeasuredWidth = width
+        guard width > 0 || attrText.length == 0 else { return }
+        let height = width > 0 ? TextMeasurement.shared.measureSize(of: attrText, usingWidth: width).height : 0
+        let decision = ceil(max(height, font.lineHeight))
+        if textHeight.value != decision {
+            doWithAnimation { self.textHeight.send(decision) } completion: { [weak self] in
+                self?.textView.layoutIfNeeded()
+                self?.scrollTextToTopIfItFits()
+            }
+        }
         updateOverflowState()
+    }
+
+    func scheduleTextHeightUpdate() {
+        guard !isTextHeightUpdateScheduled else { return }
+        isTextHeightUpdateScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isTextHeightUpdateScheduled = false
+            self.updateTextHeight()
+        }
     }
 
     @objc dynamic func clearAttributedText() {

@@ -18,6 +18,8 @@ class ComposerInputView: ComposerSectionView {
 
     let textView = TextEditorView()
     let placeholderLabel = UILabel()
+    var textMeasuredWidth: CGFloat?
+    var isTextHeightUpdateScheduled = false
     /// The tips the empty box shows in place of a placeholder, rolled under
     /// the label every few seconds. Made in `initializeViews`.
     private var tipRoller: ComposerTipRoller?
@@ -238,6 +240,9 @@ class ComposerInputView: ComposerSectionView {
         elementClipper.mirrorForLayoutDirection(
             [textView, placeholderLabel, rewriteButton],
         )
+        if textMeasuredWidth != textLayoutWidth {
+            scheduleTextHeightUpdate()
+        }
 
         updatePlaceholderAlpha()
     }

@@ -19,22 +19,44 @@ final class ChatTopBlurView: UIView {
     }
 
     private let frost = CAGradientLayer()
+    private var material: UIVisualEffectView?
+    private var materialMask: CAGradientLayer?
+
+    private func installStandardBlur() {
+        let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterial))
+        let mask = CAGradientLayer()
+        mask.colors = [UIColor.black.cgColor, UIColor.clear.cgColor]
+        mask.locations = [0, 1]
+        blur.layer.mask = mask
+        material = blur
+        materialMask = mask
+        addSubview(blur)
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         isAccessibilityElement = false
         backgroundColor = .clear
-        addSubview(backdrop)
         frost.locations = [0, 1]
-        layer.addSublayer(frost)
-        updateFrost()
-        guard let filterClass = NSClassFromString("CAFilter") as? NSObject.Type,
+        defer {
+            // 底色仍在普通图层上，保留冷启动首帧的修复。
+            layer.addSublayer(frost)
+            updateFrost()
+        }
+        guard #available(iOS 26, *),
+              let backdropClass = NSClassFromString("CABackdropLayer"),
+              backdrop.layer.isKind(of: backdropClass),
+              let filterClass = NSClassFromString("CAFilter") as? NSObject.Type,
               let filter = filterClass.perform(
                   NSSelectorFromString("filterWithType:"),
                   with: "variableBlur",
               )?.takeUnretainedValue() as? NSObject
-        else { return }
+        else {
+            installStandardBlur()
+            return
+        }
+        addSubview(backdrop)
 
         let gradient = CAGradientLayer()
         gradient.frame = CGRect(x: 0, y: 0, width: 2, height: 128)
@@ -60,6 +82,8 @@ final class ChatTopBlurView: UIView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         backdrop.frame = bounds
+        material?.frame = bounds
+        materialMask?.frame = material?.bounds ?? .zero
         frost.frame = bounds
         CATransaction.commit()
     }
