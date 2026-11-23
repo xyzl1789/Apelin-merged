@@ -5952,13 +5952,13 @@
           "zh-Hans": {
             "stringUnit": {
               "state": "translated",
-              "value": "存储"
+              "value": "储存空间"
             }
           },
           "zh-Hant": {
             "stringUnit": {
               "state": "translated",
-              "value": "Storage"
+              "value": "儲存空間"
             }
           }
         }
@@ -6788,13 +6788,13 @@
           "zh-Hans": {
             "stringUnit": {
               "state": "translated",
-              "value": "设备存储"
+              "value": "设备储存"
             }
           },
           "zh-Hant": {
             "stringUnit": {
               "state": "translated",
-              "value": "Device Storage"
+              "value": "裝置儲存空間"
             }
           }
         }
@@ -166046,13 +166046,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ available of %@"
+            "value": "可用 %@，共 %@"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ available of %@"
+            "value": "可用 %@，共 %@"
           }
         }
       }
