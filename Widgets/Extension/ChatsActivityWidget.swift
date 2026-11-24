@@ -168,6 +168,9 @@ private extension ChatWidgetSnapshot {
                 let detail = [progress.title, progress.detail].compactMap { $0 }.joined(separator: " — ")
                 return (progress.symbol, chat.activityColor, chat.statusWord, detail, false)
             }
+            if progress.stage == .waitingForNextStep, let tool = recentTools.first {
+                return (tool.symbol, chat.activityColor, tool.title, tool.detail, true)
+            }
             return (progress.symbol, chat.activityColor, progress.title, progress.detail, progress.stage == .tool)
         }
         if chat.status == .working, let tool = currentTool {
@@ -239,13 +242,19 @@ private struct ChatActivitySessionRow: View {
                     .lineLimit(1)
             }
             if let detail = phase.detail {
-                Text(verbatim: detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 21)
-                    .privacySensitive()
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Image(systemName: phase.symbol)
+                        .font(.caption)
+                        .foregroundStyle(phase.color)
+                        .frame(width: 16)
+                        .accessibilityHidden(true)
+                    Text(verbatim: detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .privacySensitive()
+                }
             }
             ForEach(state.recentTools.indices, id: \.self) { index in
                 let tool = state.recentTools[index]
