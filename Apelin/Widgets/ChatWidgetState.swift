@@ -110,7 +110,7 @@ extension ChatRecord {
             case "finished":
                 return nil
             case TaskEvent.stateKind:
-                if let state = payload? ["state"]?.stringValue.flatMap(TaskState.init(rawValue)), state.isTerminal { return nil }
+                if let state = payload? ["state"]?.stringValue.flatMap(TaskState.init(rawValue:)), state.isTerminal { return nil }
             case "toolResult":
                 if let id = payload? ["id"]?.stringValue { completed.insert(id) }
             case "toolCall":
