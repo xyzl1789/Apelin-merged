@@ -55,7 +55,7 @@ final class ShareController: UITableViewController {
             guard let self, !saving else { return }
             extensionContext?.cancelRequest(withError: CocoaError(.userCancelled))
         })
-        cancel.titleLabel?.font = .preferredFont(forTextStyle: .body)
+        cancel.titleLabel?.font = .preferredFont(forTextStyle: .title3)
         cancel.titleLabel?.adjustsFontForContentSizeCategory = true
         cancel.setContentCompressionResistancePriority(.required, for: .horizontal)
         cancelButton = cancel
@@ -63,7 +63,11 @@ final class ShareController: UITableViewController {
         spinner.isAccessibilityElement = true
         spinner.accessibilityLabel = "正在保存分享"
         progress = spinner
-        let bar = UIStackView(arrangedSubviews: [title, spinner, cancel])
+        // 弹簧视图把取消推到行尾；没有它，标题后面紧跟取消，取消会落在中间。
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let bar = UIStackView(arrangedSubviews: [title, spinner, spacer, cancel])
         bar.alignment = .center
         bar.spacing = 10
         let stack = UIStackView(arrangedSubviews: [bar, hint])
@@ -156,20 +160,30 @@ final class ShareController: UITableViewController {
             return
         }
         // 先发布完整批次，再唤起应用。链接不携带会话或分享正文。
-        context.open(url) { [weak self] opened in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                if opened {
-                    context.completeRequest(returningItems: nil, completionHandler: nil)
-                } else {
-                    self.progress?.stopAnimating()
-                    let alert = UIAlertController(title: "分享已保存", message: "未能自动打开 Apelin。手动打开后会进入所选会话。", preferredStyle: .alert)
-                    alert.addAction(UIAlertAction(title: "完成", style: .default) { _ in
-                        context.completeRequest(returningItems: nil, completionHandler: nil)
-                    })
-                    self.present(alert, animated: true)
-                }
-            }
+        // `extensionContext.open` 在分享扩展里常被系统拒（回调 opened 为 false），
+        // 改为从响应链取 UIApplication，直接调 openURL:。
+        var responder: UIResponder? = self
+        var application: UIApplication?
+        while let current = responder {
+            if let app = current as? UIApplication { application = app; break }
+            responder = current.next
+        }
+        // 扩展进程里 UIApplication 在响应链的最上端；取不到就退回提示，
+        // 不去碰 sharedApplication（扩展里它被系统禁着，取它可能直接抛异常）。
+        guard let application else {
+            // 取不到 UIApplication 时退回提示：内容仍已保存，下次打开应用时投递。
+            progress?.stopAnimating()
+            let alert = UIAlertController(title: "分享已保存", message: "未能自动打开 Apelin。手动打开后会进入所选会话。", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "完成", style: .default) { _ in
+                context.completeRequest(returningItems: nil, completionHandler: nil)
+            })
+            present(alert, animated: true)
+            return
+        }
+        _ = application.perform(NSSelectorFromString("openURL:"), with: url)
+        // 唤起本身不回报结果，到点就结束请求，避免扩展停在转圈上。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            context.completeRequest(returningItems: nil, completionHandler: nil)
         }
     }
 
