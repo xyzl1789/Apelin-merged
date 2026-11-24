@@ -93,26 +93,54 @@ extension ChatRecord {
         return nil
     }
 
-    /// 当前会话在详情页下方的实际阶段：工具优先，其次是流式思考内容，再是回答预览。
+    /// 当前会话在详情页下方的实际阶段：连接状态与收尾优先，其次是工具，
+    /// 再是流式思考内容，最后是回答预览。
     var widgetProgress: ChatWidgetProgress? {
         guard summary.isWorking else { return nil }
+        // 已点停止、host 还没确认：这一轮真正在做的就是收尾。
+        if run == .stopping {
+            return .init(stage: .stopping, symbol: "stop.circle",
+                         title: String(localized: "Stopping…"), detail: nil)
+        }
         var completed: Set<String> = []
         var latestThinking = ""
         var sawReply = false
         var sawTurn = false
+        // 连接状态只在它是这一轮最新的说法时成立：之后任何推进回合的事件都把它清掉。
+        var linking = true
+        var compacted = false
         for event in events.reversed() where !ChatFork.isHistorical(event) {
             let payload = event.payload
             switch event.kind {
             case "prompt", "steer":
                 sawTurn = true
                 if latestThinking.isEmpty { latestThinking = payload? ["text"]?.stringValue ?? "" }
-                break
             case "finished":
                 return nil
             case TaskEvent.stateKind:
                 if let state = payload? ["state"]?.stringValue.flatMap(TaskState.init(rawValue:)), state.isTerminal { return nil }
+                linking = false
+            case "reconnecting" where linking:
+                return .init(stage: .reconnecting, symbol: "arrow.triangle.2.circlepath",
+                             title: String(localized: "Reconnecting…"), detail: nil)
+            case "waitingForNetwork" where linking:
+                return .init(stage: .waitingForNetwork, symbol: "wifi.exclamationmark",
+                             title: String(localized: "Waiting for Network…"), detail: nil)
+            case "compactionStarted":
+                // 倒着读：先遇到 compactionFinished 说明压缩已经结束。
+                if !compacted {
+                    return .init(stage: .compacting, symbol: "rectangle.compress.vertical",
+                                 title: String(localized: "Compacting Chat"), detail: nil)
+                }
+                linking = false
+            case "compactionFinished":
+                compacted = true
+                linking = false
             case "toolResult":
                 if let id = payload? ["id"]?.stringValue { completed.insert(id) }
+                linking = false
+            case "approvalRequested", "approvalResolved", "error":
+                linking = false
             case "toolCall":
                 guard let id = payload? ["id"]?.stringValue, !completed.contains(id),
                       let name = payload? ["tool"]?.stringValue, !name.isEmpty else { continue }

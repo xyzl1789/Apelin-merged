@@ -6,6 +6,14 @@ import SwiftUI
 struct ChatWidgetProgress: Codable, Hashable, Sendable {
     enum Stage: String, Codable, Hashable, Sendable {
         case thinking, tool, replying
+        /// 这一轮正在重新连上模型服务；请求还没发出去。
+        case reconnecting
+        /// 请求失败了，正在等网络回来。
+        case waitingForNetwork
+        /// 压缩上下文。
+        case compacting
+        /// 已请求停止，host 还没确认。
+        case stopping
     }
 
     let stage: Stage
@@ -13,6 +21,15 @@ struct ChatWidgetProgress: Codable, Hashable, Sendable {
     let title: String
     /// Thinking text is the actual streamed reasoning, not a placeholder.
     let detail: String?
+
+    /// 还没连上或正在停止时，先前的工具行和回答预览不该盖住这个状态：
+    /// 那正是「明明没连上却显示在思考」的来源。
+    var hidesToolAndPreview: Bool {
+        switch stage {
+        case .reconnecting, .waitingForNetwork, .stopping: true
+        case .thinking, .tool, .replying, .compacting: false
+        }
+    }
 }
 
 /// The shared icon families used by `ChatToolCallRow` in the transcript.

@@ -61,6 +61,55 @@ do {
     precondition(decoded == snapshot)
 }
 
+// 实时活动不能把「还没连上」说成「在思考」：连接、压缩和停止各自成阶段。
+do {
+    var record = ChatRecord(summary: ChatSummary(title: "重连", lastInteraction: Date()))
+    record.summary.isWorking = true
+    let prompt = event(1, "prompt")
+    func progress(_ tail: [TaskEvent], run: ChatRunState? = nil) -> ChatWidgetProgress? {
+        record.events = [prompt] + tail
+        record.run = run
+        return record.widgetProgress
+    }
+
+    let reconnecting = progress([event(2, "reconnecting")])
+    precondition(reconnecting?.stage == .reconnecting && reconnecting?.symbol == "arrow.triangle.2.circlepath",
+                 "a request being made again is not thinking")
+    precondition(reconnecting?.title == "Reconnecting…" && reconnecting?.hidesToolAndPreview == true)
+
+    let offline = progress([event(2, "reconnecting"), event(3, "waitingForNetwork")])
+    precondition(offline?.stage == .waitingForNetwork && offline?.symbol == "wifi.exclamationmark")
+    precondition(offline?.title == "Waiting for Network…")
+
+    // 请求真的又发出去了：连接提示让位给这一轮在做的事。
+    for resumed in ["messageStarted", "thinking", "text", "toolCallPreparing"] {
+        precondition(progress([event(2, "waitingForNetwork"), event(3, resumed, ["text": .string("继续")])])?.stage != .waitingForNetwork,
+                     "\(resumed) clears the wait")
+    }
+    // 一个等结果的调用回来了，也说明已经连上。
+    let resolvedCall = progress([
+        event(2, "toolCall", ["id": .string("c"), "tool": .string("file_read")]),
+        event(3, "waitingForNetwork"), event(4, "toolResult", ["id": .string("c")]),
+    ])
+    precondition(resolvedCall?.stage != .waitingForNetwork)
+
+    let compacting = progress([event(2, "compactionStarted")])
+    precondition(compacting?.stage == .compacting && compacting?.symbol == "rectangle.compress.vertical")
+    precondition(compacting?.hidesToolAndPreview == false)
+    let compacted = progress([event(2, "compactionStarted"), event(3, "compactionFinished")])
+    precondition(compacted?.stage != .compacting, "a finished compaction is not running")
+
+    let stopping = progress([event(2, "messageStarted")], run: .stopping)
+    precondition(stopping?.stage == .stopping && stopping?.symbol == "stop.circle")
+    precondition(stopping?.hidesToolAndPreview == true)
+
+    precondition(progress([event(2, "reconnecting"), event(3, "finished")]) == nil, "a finished turn shows nothing")
+    precondition(progress([event(2, "reconnecting"), event(3, TaskEvent.stateKind,
+                                                          ["state": .string(TaskState.interrupted.rawValue)])]) == nil)
+    record.summary.isWorking = false
+    precondition(progress([event(2, "reconnecting")]) == nil, "so does a conversation at rest")
+}
+
 // 实时活动的回答预览取自当前助手消息，且批次结果与历史失败隔离。
 do {
     var record = ChatRecord(summary: ChatSummary(title: "日期", lastInteraction: Date()))

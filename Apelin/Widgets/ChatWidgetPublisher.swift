@@ -197,8 +197,9 @@ final class ChatWidgetPublisher {
         } else if let chat = activity.mostUrgent, chat.status == .working,
                   let id = UUID(uuidString: chat.id), let record = runtime.records[id] {
             activity.progress = record.widgetProgress
-            activity.currentTool = record.widgetCurrentTool
-            if activity.currentTool == nil {
+            // 还没连上或正在停止时，先前的工具行与回答预览不该盖住这个状态。
+            activity.currentTool = activity.progress?.hidesToolAndPreview == true ? nil : record.widgetCurrentTool
+            if activity.currentTool == nil, activity.progress?.hidesToolAndPreview != true {
                 activity.answerPreview = record.widgetReply(completed: false)
             }
         }
