@@ -238,4 +238,27 @@ let encoded = try JSONEncoder().encode(busy)
 require(encoded.count < 4096, "The activity's payload stays within ActivityKit's 4 KB")
 try require(JSONDecoder().decode(ChatWidgetSnapshot.self, from: encoded) == busy, "The snapshot round-trips")
 
+var answered = finishedActivity
+answered.batchOutcome = .succeeded
+answered.answerPreview = String(repeating: "答", count: 60)
+let answerData = try JSONEncoder().encode(answered)
+require(answerData.count < 4096, "The activity fits a capped final reply")
+try require(JSONDecoder().decode(ChatWidgetSnapshot.self, from: answerData) == answered, "The final reply and outcome round-trip")
+
+var oversized = busy
+for index in oversized.chats.indices {
+    // 控制字符编码成 JSON 时比原文更大，覆盖最后的载荷兜底。
+    oversized.chats[index].title = String(repeating: "\u{0001}", count: 3_000)
+    oversized.chats[index].project = oversized.chats[index].title
+    oversized.chats[index].approvalTool = oversized.chats[index].title
+}
+oversized.answerPreview = oversized.chats.first?.title
+oversized.currentTool = .init(symbol: "doc.text", title: oversized.answerPreview ?? "")
+let fitted = oversized.fittingActivityPayload()
+require(fitted.mostUrgent?.id == oversized.mostUrgent?.id && fitted.mostUrgent?.link == oversized.mostUrgent?.link,
+        "Trimming keeps the current chat and deep link")
+require(fitted.inProgressCount == oversized.inProgressCount, "Trimming never reduces the live count")
+let fittedData = try JSONEncoder().encode(fitted)
+require(fittedData.count <= 3_500, "Even escaped text fits within the activity budget")
+
 print("ok: ApelinLink, RepositoryImportPlan and ChatWidgetSnapshot")

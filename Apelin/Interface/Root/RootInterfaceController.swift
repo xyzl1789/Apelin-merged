@@ -193,13 +193,13 @@ final class RootInterfaceController: UIViewController {
         sidebar.onOpenSettings = { [weak self] in self?.openSettings() }
         chatRuntime.onChange = { [weak self] in
             guard let self else { return }
+            ChatWidgetPublisher.shared.chatsChanged()
             sidebar.refresh()
             restoreChatIfReady()
             chatController.refreshRuntime()
             // after everything above has read the new state: the page leaves a
             // conversation the runtime no longer has
             leaveGoneChat()
-            ChatWidgetPublisher.shared.chatsChanged()
             if shareSnapshotTask == nil {
                 shareSnapshotTask = Task { [weak self] in
                     try? await Task.sleep(for: .milliseconds(500))
@@ -374,7 +374,10 @@ final class RootInterfaceController: UIViewController {
         // A run whose end the app never read — the app was killed in the
         // middle of it, or the host restarted — ends here rather than only
         // at the next launch.
-        Task { await chatRuntime.reconcileRuns() }
+        Task {
+            await chatRuntime.reconcileRuns()
+            ChatWidgetPublisher.shared.chatsChanged()
+        }
         StorageWarning.checkFreeSpace(from: self)
         // 自动签到：每天第一次回到前台时安静地跑一次，worker 会复用当天缓存。
         CheckInStore.shared.automaticRunIfNeeded()

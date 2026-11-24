@@ -8,10 +8,8 @@ import WidgetKit
 /// widget reads from the App Group container, and one Live Activity while
 /// any conversation is working or waiting for an approval.
 ///
-/// The runtime says when anything changed; the publisher looks at most once
-/// a second, and writes, reloads or updates only when what the widgets show
-/// changed — streamed text changes nothing they show. Project display names
-/// are read again when a project changes (`.apelinProjectsChanged`).
+/// 会话开始、结束、改变优先级或等待审批时立即刷新；流式文案最多每秒刷新一次。
+/// 回答预览只更新实时活动，不触发主屏小组件刷新。
 @MainActor
 final class ChatWidgetPublisher {
     static let shared = ChatWidgetPublisher()
@@ -19,25 +17,23 @@ final class ChatWidgetPublisher {
     private weak var runtime: ChatRuntime?
     /// Folder name to display name, read from the projects' manifests.
     @objc private dynamic var projectNames: [String: String] = [:]
-    @objc private dynamic var isScheduled = false
-    @objc private dynamic var lastLook = Date.distantPast
+    @objc private dynamic var plannedRefresh: String?
+    private let streamClock = ContinuousClock()
+    private var lastLook: ContinuousClock.Instant?
+    private var lastFocus: Set<ChatActivityFocus>?
     private var written: ChatWidgetSnapshot?
     private var shownActivity: ChatWidgetSnapshot?
-    /// 本次启动是否已把遗留活动重建过：升级装新版后，已存在的实时活动
-    /// 一直沿用旧扩展的画面（系统不因 App 更新重绘），所以启动后第一次
-    /// 发布时先结束再重建一次，让新版的紧凑区、背景等立即可见。
-    private var hasRebuiltLegacyActivity = false
-    /// Activity requests and updates, one after another, so two quick
-    /// changes never request two activities.
+    /// 最多一个 ActivityKit 调用在执行，后面只留最新快照，不排队重播旧回答。
     private var activityWork: Task<Void, Never>?
+    private var pendingActivity: ChatWidgetSnapshot?
     /// Set once a quit has ended the activity: a change queued behind the
     /// quit must not bring one back.
     @objc private dynamic static var isClosedForQuit = false
     private let writer = DispatchQueue(label: "wiki.qaq.apelin.widgets.writer", qos: .utility)
     private let log = Logger(subsystem: "wiki.qaq.apelin", category: "widgets")
 
-    /// The most often the widgets are looked at.
-    private static let interval: TimeInterval = 1
+    /// 流式更新的最小间隔；不适用于会话切换。
+    private static let streamInterval: Duration = .seconds(1)
 
     private init() {
         NotificationCenter.default.addObserver(
@@ -65,17 +61,33 @@ final class ChatWidgetPublisher {
         showActivity(shownActivity!)
     }
 
-    /// Something in the runtime changed: looks again within a second.
     @objc dynamic func chatsChanged() {
-        guard !isScheduled else { return }
-        isScheduled = true
-        let delay = max(0, Self.interval - Date().timeIntervalSince(lastLook))
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self else { return }
-            isScheduled = false
-            lastLook = Date()
-            publish()
+        guard let runtime, runtime.isReconciled, !Self.isClosedForQuit else { return }
+        let focus = Set(runtime.records.values.compactMap(\.widgetFocus))
+        if focus != lastFocus {
+            lastFocus = focus
+            publishNow()
+            return
         }
+        guard plannedRefresh == nil else { return }
+        let elapsed = lastLook.map { $0.duration(to: streamClock.now) } ?? Self.streamInterval
+        if elapsed >= Self.streamInterval {
+            publishNow()
+            return
+        }
+        let token = UUID().uuidString
+        plannedRefresh = token
+        Task { [weak self] in
+            try? await Task.sleep(for: Self.streamInterval - elapsed)
+            guard let self, plannedRefresh == token else { return }
+            publishNow()
+        }
+    }
+
+    @objc private dynamic func publishNow() {
+        plannedRefresh = nil
+        lastLook = streamClock.now
+        publish()
     }
 
     @objc private dynamic func reloadProjectNames() {
@@ -94,29 +106,50 @@ final class ChatWidgetPublisher {
     /// would start one for a turn long over.
     @objc private dynamic func publish() {
         guard let runtime, runtime.isReconciled else { return }
-        let listed = runtime.records.values.filter(\.isListedInWidgets).map { record in
+        let records = runtime.records.values
+        let listed = records.filter { $0.isListedInWidgets || $0.summary.isWorking }.map { record in
             let project = record.summary.projectName.map { projectNames[$0] ?? $0 }
-            return (chat: record.widgetChat(projectName: project), updated: record.summary.lastInteraction)
+            return (chat: record.widgetChat(projectName: project), updated: record.summary.lastInteraction, listed: record.isListedInWidgets)
         }
-        let snapshot = ChatWidgetSnapshot(chats: listed)
+        let snapshot = ChatWidgetSnapshot(chats: listed.filter { $0.listed }.map { ($0.chat, $0.updated) })
         if snapshot != written {
             written = snapshot
             write(snapshot)
         }
-        var activity = snapshot.inProgress
-        if let chat = activity.mostUrgent, chat.status == .working,
-           let id = UUID(uuidString: chat.id) {
-            activity.currentTool = runtime.records[id]?.widgetCurrentTool
+        let running = listed.filter { $0.chat.isInProgress }
+        var activity = ChatWidgetSnapshot(chats: running.map { ($0.chat, $0.updated) }).inProgress
+        if running.isEmpty {
+            // 批次结果只在全部结束时才用。仍有任务时不重扫历史，也不把已结束的行送给组件。
+            let batch = ChatActivityBatch(turns: records.flatMap(\.widgetTurns))
+            let participants = listed.filter { row in
+                UUID(uuidString: row.chat.id).map(batch.chatIDs.contains) == true
+            }
+            activity = ChatWidgetSnapshot(chats: participants.map { ($0.chat, $0.updated) }).inProgress
+            activity.batchOutcome = batch.outcome
+            if let id = batch.finalChatID, var row = participants.first(where: { $0.chat.id == id.uuidString })?.chat {
+                activity.chats.removeAll { $0.id == row.id }
+                row.status = batch.outcome == .failed ? .failed : .done
+                activity.chats.insert(row, at: 0)
+                activity.chats = Array(activity.chats.prefix(ChatWidgetSnapshot.activityLimit))
+                if batch.outcome == .succeeded {
+                    activity.answerPreview = runtime.records[id]?.widgetReply(completed: true)
+                }
+            }
+        } else if let chat = activity.mostUrgent, chat.status == .working,
+                  let id = UUID(uuidString: chat.id), let record = runtime.records[id] {
+            activity.currentTool = record.widgetCurrentTool
+            if activity.currentTool == nil {
+                activity.answerPreview = record.widgetReply(completed: false)
+            }
         }
+        // 启动时历史按需读入。暂时没投影出任何回合，不等于用户清空了会话。
+        if activity.chats.isEmpty, records.contains(where: { !runtime.historyIsReady($0.summary.id) }) {
+            return
+        }
+        activity = activity.fittingActivityPayload()
         if activity != shownActivity {
             shownActivity = activity
-            showActivity(activity, rebuild: !hasRebuiltLegacyActivity)
-            hasRebuiltLegacyActivity = true
-        } else if !hasRebuiltLegacyActivity, activity.totalCount > 0 {
-            // 快照没变也要重建一次：装新版后遗留活动的画面还是旧扩展的。
-            shownActivity = activity
-            hasRebuiltLegacyActivity = true
-            showActivity(activity, rebuild: true)
+            showActivity(activity)
         }
     }
 
@@ -136,58 +169,51 @@ final class ChatWidgetPublisher {
         }
     }
 
-    private func showActivity(_ state: ChatWidgetSnapshot, rebuild: Bool = false) {
+    private func showActivity(_ state: ChatWidgetSnapshot) {
         guard #available(iOS 16.2, *), !Self.isClosedForQuit else { return }
-        let previous = activityWork
-        activityWork = Task {
-            await previous?.value
-            await Self.apply(state, rebuild: rebuild)
+        pendingActivity = state
+        guard activityWork == nil else { return }
+        activityWork = Task { [weak self] in
+            guard let self else { return }
+            while !Self.isClosedForQuit, let next = pendingActivity {
+                pendingActivity = nil
+                if !(await Self.apply(next)), shownActivity == next, pendingActivity == nil {
+                    // 系统在后台可能拒绝新建。下次收到事件或回前台时，允许重试同一快照。
+                    shownActivity = nil
+                }
+            }
+            activityWork = nil
         }
     }
 
-    /// One activity while anything is in progress, kept showing its final
-    /// state (✅ / ❌) after everything has finished until the user closes
-    /// it by hand. An activity the last run left is updated, or ended, by
-    /// the first look after launch. Once the user closes it, a finished
-    /// state never brings it back — only a new turn starting does.
+    /// 有现存活动就原地更新，不在切换时结束再重建。
     @available(iOS 16.2, *)
-    private static func apply(_ state: ChatWidgetSnapshot, rebuild: Bool = false) async {
-        guard !isClosedForQuit else { return }
-        let existing = Activity<ChatActivityAttributes>.activities
-        // Nothing is listed at all: the conversations were cleared or the
-        // app was reset, so the activity has nothing to wear — end it.
-        guard !state.chats.isEmpty || state.totalCount > 0 else {
+    private static func apply(_ state: ChatWidgetSnapshot) async -> Bool {
+        guard !isClosedForQuit else { return true }
+        let existing = Activity<ChatActivityAttributes>.activities.filter {
+            $0.activityState == .active || $0.activityState == .stale
+        }
+        guard !state.chats.isEmpty else {
             for activity in existing {
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
-            return
+            return true
         }
         let content = ActivityContent(state: state, staleDate: nil)
-        // 用户手动关掉活动后，纯终态（没有进行中的工作）不该把 ❌/✅ 再请回来：
-        // 活动只在工作开始时创建，工作结束后更新成最终状态，直到用户再关掉。
-        let hasWork = state.inProgressCount > 0
-        // rebuild：结束全部再重新请求，系统才会用新扩展的画面重绘——
-        // 只 update 时已存在活动可能一直沿用装新版前的渲染。没有现存活动
-        // 又没有工作在做时跳过，免得把用户关掉的终态活动重建出来。
-        if rebuild {
-            guard !existing.isEmpty || hasWork else { return }
-            for activity in existing {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
-            guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-            _ = try? Activity.request(attributes: ChatActivityAttributes(), content: content)
-            return
-        }
         if let activity = existing.first {
             await activity.update(content)
-            for extra in existing.dropFirst() {
-                await extra.end(nil, dismissalPolicy: .immediate)
-            }
-            return
+            return true
         }
-        // 没有现存活动：只有真的有工作在做才新建，终态不再自动请回来。
-        guard hasWork, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        _ = try? Activity.request(attributes: ChatActivityAttributes(), content: content)
+        // 手动关闭后不重新创建纯终态活动。
+        guard state.inProgressCount > 0 else { return true }
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return false }
+        do {
+            _ = try Activity.request(attributes: ChatActivityAttributes(), content: content)
+            return true
+        } catch {
+            Self.shared.log.error("无法创建实时活动：\(error.localizedDescription, privacy: .public)")
+            return false
+        }
     }
 
     /// The app is quitting: nothing will update the activity after this,

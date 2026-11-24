@@ -27,17 +27,17 @@ struct ChatsActivityWidget: Widget {
                     .padding(.leading, 8)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    if state.allCompleted {
+                    if let result = state.finishedBadge {
                         HStack(spacing: 3) {
-                            Image(systemName: "checkmark.circle.fill")
+                            Image(systemName: result.symbol)
                                 .font(.caption)
-                                .foregroundStyle(.green)
-                            Text(verbatim: "\(state.chats.count)")
+                                .foregroundStyle(result.color)
+                            Text(verbatim: result.label)
                                 .font(.caption.bold())
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(.green.opacity(0.18), in: Capsule())
+                        .background(result.color.opacity(0.18), in: Capsule())
                         .padding(.trailing, 8)
                     } else {
                         Text(state.summaryLine ?? "")
@@ -74,50 +74,60 @@ struct ChatsActivityWidget: Widget {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(state.summaryLine ?? ""))
             } compactTrailing: {
-                if let tool = state.currentTool {
-                    ChatActivityToolIcon(tool: tool, font: .body)
-                } else {
-                    Image(systemName: state.statusSymbol)
-                        .font(.body)
-                        .foregroundStyle(state.statusColor)
-                        .id(state.statusSymbol)
-                        .transition(.opacity.animation(.easeInOut(duration: 0.35)))
-                }
+                ChatActivityIslandIcon(state: state, font: .body)
             } minimal: {
-                if let tool = state.currentTool {
-                    ChatActivityToolIcon(tool: tool, font: .caption)
-                } else {
-                    MarkView(size: 26, braces: .white)
-                }
+                ChatActivityIslandIcon(state: state, font: .caption)
             }
             .widgetURL(state.mostUrgent?.link)
         }
     }
 }
 
-/// 收起状态的整体符号：等待审批是警告三角，有工作在跑是进度环，
-/// 只有全部结束且出过错才是叉，全成功是纯绿对勾。进行中优先于历史失败，
-/// 免得一个旧的失败会话让新任务在跑时也一直顶着 ❌。
+/// 审批优先；运行中的符号只反映当前阶段；批次结束才显示结果。
+@available(iOS 16.2, *)
+private struct ChatActivityIslandIcon: View {
+    let state: ChatWidgetSnapshot
+    let font: Font
+
+    var body: some View {
+        if state.waitingCount > 0 {
+            symbol("exclamationmark.triangle.fill", color: WidgetTheme.island.amber, label: String(localized: "Needs Approval"))
+        } else if state.workingCount > 0 {
+            if let tool = state.currentTool {
+                ChatActivityToolIcon(tool: tool, font: font)
+            } else if state.answerPreview != nil {
+                symbol("text.bubble", color: .blue, label: String(localized: "Replying…"))
+            } else {
+                symbol("ellipsis.bubble", color: WidgetTheme.island.green, label: String(localized: "Thinking…"))
+            }
+        } else if let result = state.finishedBadge {
+            symbol(result.symbol, color: result.color, label: result.label)
+        } else {
+            MarkView(size: 16, braces: .white)
+        }
+    }
+
+    private func symbol(_ name: String, color: Color, label: String) -> some View {
+        Image(systemName: name)
+            .font(font)
+            .foregroundStyle(color)
+            .accessibilityLabel(Text(verbatim: label))
+            .id(name)
+            .transition(.opacity.animation(.easeInOut(duration: 0.35)))
+    }
+}
+
 @available(iOS 16.2, *)
 private extension ChatWidgetSnapshot {
-    var statusSymbol: String {
-        if waitingCount > 0 { return "exclamationmark.triangle.fill" }
-        if workingCount > 0 { return "arrow.triangle.2.circlepath" }
-        if chats.contains(where: { $0.status == .failed }) { return "xmark.circle.fill" }
-        // 全部完成：照 Minis 的绿色圆底对勾（caption 圈勾），收起态不再
-        // 用 body 字号的裸对勾——那个明显偏大。
-        return "checkmark.circle.fill"
+    var finishedBadge: (symbol: String, color: Color, label: String)? {
+        guard inProgressCount == 0 else { return nil }
+        switch batchOutcome {
+        case .succeeded: return ("checkmark.circle.fill", WidgetTheme.island.green, String(localized: "All Done"))
+        case .failed: return ("xmark.circle.fill", WidgetTheme.island.red, String(localized: "Failed"))
+        case .stopped: return ("stop.circle.fill", WidgetTheme.island.amber, String(localized: "Stopped"))
+        case nil: return nil
+        }
     }
-
-    var statusColor: Color {
-        if waitingCount > 0 { return WidgetTheme.island.amber }
-        if workingCount > 0 { return WidgetTheme.island.green }
-        if chats.contains(where: { $0.status == .failed }) { return WidgetTheme.island.red }
-        return WidgetTheme.island.green
-    }
-
-    /// 没有进行中的会话、也没有失败时才算全部完成；有失败的会话仍显示红叉。
-    var allCompleted: Bool { inProgressCount == 0 && !chats.contains(where: { $0.status == .failed }) }
 }
 
 /// 单个会话在状态行上的图标与颜色，照 minis 的工具图标那一行。
@@ -143,7 +153,7 @@ private extension ChatWidgetSnapshot.Chat {
 }
 
 /// 展开岛底部与锁屏共用的当前会话行：保留原有的标题与状态布局，
-/// 有工具正在运行时在状态行下方单列操作说明。
+/// 下方的一行随思考、工具调用和回答进度切换。
 @available(iOS 16.2, *)
 private struct ChatActivitySessionRow: View {
     let chat: ChatWidgetSnapshot.Chat
@@ -181,10 +191,11 @@ private struct ChatActivitySessionRow: View {
                 }
             }
             HStack(spacing: 5) {
-                Image(systemName: chat.activitySymbol)
+                let stopped = state.inProgressCount == 0 && state.batchOutcome == .stopped
+                Image(systemName: stopped ? "stop.circle.fill" : chat.activitySymbol)
                     .font(.caption)
-                    .foregroundStyle(chat.activityColor)
-                Text(verbatim: chat.statusLine)
+                    .foregroundStyle(stopped ? WidgetTheme.island.amber : chat.activityColor)
+                Text(verbatim: stopped ? String(localized: "Stopped") : chat.statusLine)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -194,18 +205,30 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
-            if chat.status == .working, let tool = state.currentTool {
-                HStack(spacing: 5) {
-                    ChatActivityToolIcon(tool: tool, font: .caption)
-                        .accessibilityHidden(true)
-                    Text(verbatim: tool.title)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+            if chat.status != .waiting {
+                if let tool = state.currentTool {
+                    activityDetail(symbol: tool.symbol, title: tool.title)
+                } else if let answer = state.answerPreview {
+                    activityDetail(symbol: "text.bubble", title: answer)
+                        .privacySensitive()
+                } else if chat.status == .working {
+                    activityDetail(symbol: "ellipsis.bubble", title: String(localized: "Thinking…"))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private func activityDetail(symbol: String, title: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+                .foregroundStyle(.blue)
+                .accessibilityHidden(true)
+            Text(verbatim: title)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -248,12 +271,12 @@ private struct ChatLockScreenView: View {
                 .padding(.vertical, 2)
                 .background(.white.opacity(0.15), in: Capsule())
                 Spacer()
-                if state.allCompleted {
-                    Text("All Done")
+                if let result = state.finishedBadge {
+                    Text(verbatim: result.label)
                         .font(.caption.bold())
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(.green.opacity(0.18), in: Capsule())
+                        .background(result.color.opacity(0.18), in: Capsule())
                 } else if let summary = state.summaryLine {
                     Text(summary)
                         .font(.caption.bold())
@@ -270,7 +293,6 @@ private struct ChatLockScreenView: View {
         .foregroundStyle(theme.ink)
         .padding()
         .activityBackgroundTint(ChatWidgetAppearance.backgroundTint(for: colorScheme))
-        .animation(.easeInOut(duration: 0.35), value: state)
         .activitySystemActionForegroundColor(theme.green)
         .widgetURL(state.mostUrgent?.link)
     }

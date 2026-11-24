@@ -61,6 +61,84 @@ do {
     precondition(decoded == snapshot)
 }
 
+// 实时活动的回答预览取自当前助手消息，且批次结果与历史失败隔离。
+do {
+    var record = ChatRecord(summary: ChatSummary(title: "日期", lastInteraction: Date()))
+    record.summary.isWorking = true
+    record.events = [event(1, "prompt"), event(2, "thinking", ["text": .string("推理不展示")])]
+    precondition(record.widgetReply(completed: false) == nil)
+    record.events += [event(3, "messageStarted"), event(4, "text", ["text": .string("今天是")]),
+                      event(5, "text", ["text": .string("星期二。\n下一行")])]
+    precondition(record.widgetReply(completed: false) == "今天是星期二。 下一行")
+    record.events += [event(6, "message", ["text": .string("今天是星期二。")]),
+                      event(7, "finished", ["reason": .string("completed")])]
+    record.summary.isWorking = false
+    precondition(record.widgetReply(completed: true) == "今天是星期二。")
+    let single = ChatActivityBatch(turns: record.widgetTurns)
+    precondition(single.outcome == .succeeded && single.finalChatID == record.summary.id)
+    record.events += [event(8, "prompt"), event(9, "messageDiscarded")]
+    precondition(record.widgetReply(completed: true) == nil)
+    precondition(record.widgetReply(completed: false) == nil)
+
+    let oldID = UUID(), earlierID = UUID(), latestID = UUID()
+    func turn(_ id: UUID, _ start: TimeInterval, _ end: TimeInterval?,
+              _ outcome: ChatWidgetSnapshot.BatchOutcome?) -> ChatActivityBatch.Turn {
+        .init(chatID: id, start: Date(timeIntervalSince1970: start),
+              end: end.map(Date.init(timeIntervalSince1970:)), outcome: outcome)
+    }
+    let old = turn(oldID, 1, 2, .failed)
+    let failed = turn(earlierID, 3, 5, .failed)
+    let running = turn(latestID, 4, nil, nil)
+    let finished = turn(latestID, 4, 6, .succeeded)
+    let ongoingBatch = ChatActivityBatch(turns: [old, failed, running])
+    precondition(ongoingBatch.chatIDs == [earlierID, latestID] && ongoingBatch.outcome == nil)
+    let failedBatch = ChatActivityBatch(turns: [old, failed, finished])
+    precondition(failedBatch.outcome == .failed && failedBatch.finalChatID == earlierID)
+    let successfulBatch = ChatActivityBatch(turns: [old, finished])
+    precondition(successfulBatch.outcome == .succeeded && successfulBatch.finalChatID == latestID)
+    precondition(ChatActivityBatch(turns: [old, turn(latestID, 4, 6, .stopped)]).outcome == .stopped)
+
+    let bridgeID = UUID()
+    let bridge = turn(bridgeID, 4, 8, .succeeded)
+    let newest = turn(latestID, 7, 9, .succeeded)
+    let handoff = ChatActivityBatch(turns: [newest, old, failed, bridge])
+    precondition(handoff.chatIDs == [earlierID, bridgeID, latestID] && handoff.outcome == .failed)
+    let nextBatch = ChatActivityBatch(turns: [newest, old, failed, bridge, turn(latestID, 10, 11, .succeeded)])
+    precondition(nextBatch.chatIDs == [latestID] && nextBatch.outcome == .succeeded)
+}
+
+// 回答片段不改变焦点；正在展示的会话完成和其他会话请求审批都会改变焦点。
+do {
+    var first = ChatRecord(summary: ChatSummary(title: "先运行", lastInteraction: Date(timeIntervalSince1970: 10)))
+    var second = ChatRecord(summary: ChatSummary(title: "后运行", lastInteraction: Date(timeIntervalSince1970: 20)))
+    first.summary.isWorking = true
+    second.summary.isWorking = true
+    first.events = [event(1, "prompt")]
+    second.events = [event(2, "prompt")]
+    let before = Set([first.widgetFocus, second.widgetFocus].compactMap { $0 })
+    second.events.append(event(3, "text", ["text": .string("回答片段")]))
+    precondition(Set([first.widgetFocus, second.widgetFocus].compactMap { $0 }) == before)
+
+    first.events.append(event(4, "approvalRequested", ["approvalID": .string("a1"), "tool": .string("file_read")]))
+    precondition(first.widgetFocus?.approvalID == "a1")
+    func activity() -> ChatWidgetSnapshot {
+        ChatWidgetSnapshot(chats: [first, second].map {
+            (chat: $0.widgetChat(projectName: nil), updated: $0.summary.lastInteraction)
+        }).inProgress
+    }
+    precondition(activity().mostUrgent?.id == first.summary.id.uuidString)
+    first.events.append(event(5, "approvalResolved", ["approvalID": .string("a1")]))
+    precondition(Set([first.widgetFocus, second.widgetFocus].compactMap { $0 }) == before)
+    precondition(activity().mostUrgent?.id == second.summary.id.uuidString)
+
+    second.events.append(event(6, "finished", ["reason": .string("completed")]))
+    second.summary.isWorking = false
+    precondition(second.widgetFocus == nil)
+    let handoff = activity()
+    precondition(handoff.inProgressCount == 1 && handoff.mostUrgent?.id == first.summary.id.uuidString)
+    precondition(handoff.mostUrgent?.link == ApelinLink.conversation(first.summary.id.uuidString).url)
+}
+
 let userID = UUID()
 let events = [
     event(1, "prompt", ["id": .string(userID.uuidString), "text": .string("Make a change")]),

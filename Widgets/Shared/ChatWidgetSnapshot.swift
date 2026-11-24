@@ -7,8 +7,8 @@ import SwiftUI
 ///
 /// Everything in it is ready to draw: the extension cannot reach the app's
 /// model, so the app resolves the status, the project's display name and
-/// the order before it writes. No date is kept, so a conversation that only
-/// streams more text writes nothing and reloads no widget.
+/// the order before it writes. Streamed replies only update the Live Activity;
+/// the home-screen widget snapshot does not include them.
 struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     struct ToolActivity: Codable, Hashable, Sendable {
         let symbol: String
@@ -60,6 +60,14 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     var waitingCount = 0
     /// 仅实时活动携带，且只保留当前显示的一个会话的工具信息。
     var currentTool: ToolActivity?
+    /// 仅实时活动携带的单行回答预览，不写进主屏小组件的快照。
+    var answerPreview: String?
+    /// 只汇总同批运行的会话，终态不再读取历史失败卡片。
+    var batchOutcome: BatchOutcome?
+
+    enum BatchOutcome: String, Codable, Hashable, Sendable {
+        case succeeded, failed, stopped
+    }
 
     static let empty = ChatWidgetSnapshot()
 
@@ -102,6 +110,54 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         activity.totalCount = chats.count
         activity.inProgressCount = inProgressCount
         return activity
+    }
+
+    /// 按实际 JSON 字节数留出余量，避免多会话的长标题或项目名让系统拒收
+    /// 整份活动。先去掉屏幕不画的尾部行；始终保留首行、计数和跳转目标。
+    func fittingActivityPayload() -> Self {
+        let budget = 3_500
+        let encoder = JSONEncoder()
+        func fits(_ value: Self) -> Bool {
+            guard let bytes = try? encoder.encode(value) else { return false }
+            return bytes.count <= budget
+        }
+
+        var result = self
+        while !fits(result), result.chats.count > 1 { result.chats.removeLast() }
+        if fits(result) { return result }
+
+        if !result.chats.isEmpty {
+            result.chats[0].title = Self.activityText(result.chats[0].title, bytes: 240)
+            result.chats[0].project = result.chats[0].project.map { Self.activityText($0, bytes: 180) }
+            result.chats[0].approvalTool = result.chats[0].approvalTool.flatMap { $0.utf8.count <= 96 ? $0 : nil }
+        }
+        result.answerPreview = result.answerPreview.map { Self.activityText($0, bytes: 180) }
+        if let tool = result.currentTool {
+            result.currentTool = .init(symbol: Self.activityText(tool.symbol, bytes: 64), title: Self.activityText(tool.title, bytes: 180))
+        }
+        // JSON 转义可能把每字节放大六倍；最后的兜底仍保留会话和状态。
+        if !fits(result) {
+            result.answerPreview = nil
+            result.currentTool = nil
+            if !result.chats.isEmpty {
+                result.chats[0].title = Self.activityText(result.chats[0].title, bytes: 160)
+                result.chats[0].project = result.chats[0].project.map { Self.activityText($0, bytes: 120) }
+            }
+        }
+        return result
+    }
+
+    private static func activityText(_ text: String, bytes: Int) -> String {
+        let suffix = "…"
+        var prefix = ""
+        var used = 0
+        for character in text {
+            let size = String(character).utf8.count
+            if used + size > bytes - suffix.utf8.count { return prefix + suffix }
+            prefix.append(character)
+            used += size
+        }
+        return prefix
     }
 
     /// The conversation a tap on the Live Activity opens: the one waiting,

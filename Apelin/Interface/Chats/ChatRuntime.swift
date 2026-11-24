@@ -213,17 +213,14 @@ final class ChatRuntime {
             await self.scanLineage()
             self.restoreLineage()
         }
-        // A host that does not answer yet is not an error, and runs
-        // nothing this app could follow: every saved row stops working.
-        //
-        // A saved row's `isWorking` is what the last launch saw, not what is
-        // running now: the app was quit, so the run it showed ended with the
-        // process. The row waits here rather than claiming a turn is going —
-        // a chat shown working with no way to stop it is worse than one that
-        // takes a moment to come back, and the host's answer is what puts a
-        // live one back (`reopen`).
-        let live = await (try? ApelinService.app.agentList().sessions) ?? []
-        reconcile(with: live)
+        // 启动时连接失败不是空列表。让已有实时活动等到第一次有效对账，
+        // 不要把仍然运行的会话当成结束；轮询和回前台时都会重试。
+        await reconcileRuns()
+        watchHostRuns()
+        warmRecentEvents()
+    }
+
+    private func finishInitialReconciliation(with live: [AgentSessionSummary]) {
         // What agents opened while the app was not following their openers.
         // Resolve parents before children without relying on the host's order.
         var remaining = live
@@ -243,8 +240,6 @@ final class ChatRuntime {
         restoreLineage(sessions: live)
         isReconciled = true
         onChange?()
-        watchHostRuns()
-        warmRecentEvents()
     }
 
     /// Puts every saved row in step with what the host reports now: a run it
@@ -257,8 +252,18 @@ final class ChatRuntime {
     /// only an answer may end a row's run. Treating a miss as an empty list
     /// cleared every row's spinner while its turn was still going.
     func reconcileRuns() async {
-        guard let answer = try? await ApelinService.app.agentList() else { return }
-        reconcile(with: answer.sessions)
+        guard isLoaded else { return }
+        do {
+            let answer = try await ApelinService.app.agentList()
+            reconcile(with: answer.sessions)
+            if !isReconciled { finishInitialReconciliation(with: answer.sessions) }
+        } catch let error as ApelinError where error.code == .backendUnavailable && !isReconciled {
+            // 客户端宽限期已过，允许无特权模式正常使用；短暂断线或超时则继续等。
+            reconcile(with: [])
+            finishInitialReconciliation(with: [])
+        } catch {
+            // 不把连接中断或超时解释成会话全部结束。
+        }
     }
 
     /// Every few seconds, while the app is in front, the host's live sessions
@@ -298,6 +303,7 @@ final class ChatRuntime {
     }
 
     private func reconcile(with live: [AgentSessionSummary]) {
+        var changedIDs: [UUID] = []
         for record in records.values {
             if let session = live.first(where: { $0.sessionID == record.sessionID }) {
                 // Only a task the host names that this row is not on is a
@@ -318,7 +324,7 @@ final class ChatRuntime {
                     {
                         records[record.summary.id]?.summary.isWorking = false
                         records[record.summary.id]?.run = .ended
-                        changed(record.summary.id)
+                        changedIDs.append(record.summary.id)
                     }
                 } else if record.task != session.task {
                     // Only a task the host names that this row is not on is a
@@ -332,16 +338,19 @@ final class ChatRuntime {
                     // with nothing to stop.
                     records[record.summary.id]?.run = .running
                     records[record.summary.id]?.summary.isWorking = true
-                    changed(record.summary.id)
+                    changedIDs.append(record.summary.id)
                 }
             } else if record.summary.isWorking || record.run == .running || record.run == .stopping {
                 // The host has no such session: whatever turn this row shows
                 // as going ended with the process that ran it.
                 records[record.summary.id]?.summary.isWorking = false
                 records[record.summary.id]?.run = .ended
-                changed(record.summary.id)
+                changedIDs.append(record.summary.id)
             }
         }
+        guard !changedIDs.isEmpty else { return }
+        for id in changedIDs { persist(id, urgent: true) }
+        if isReconciled { onChange?() }
     }
 
     /// Lists and follows a conversation an agent opened, leaving the
