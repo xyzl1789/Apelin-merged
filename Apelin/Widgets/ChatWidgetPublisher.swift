@@ -26,6 +26,39 @@ final class ChatWidgetPublisher {
     /// 最多一个 ActivityKit 调用在执行，后面只留最新快照，不排队重播旧回答。
     private var activityWork: Task<Void, Never>?
     private var pendingActivity: ChatWidgetSnapshot?
+
+    /// 每批事件都会来问一次：事件条数、工作状态、标题和项目都没变的会话，
+    /// 复用上次算出的行，不再把它的整份历史重扫一遍。
+    private var chatRows: [UUID: CachedChat] = [:]
+
+    private struct CachedChat {
+        let events: Int
+        let working: Bool
+        let title: String
+        let project: String?
+        let chat: ChatWidgetSnapshot.Chat
+    }
+
+    private func chatRow(_ record: ChatRecord, projectName: String?) -> ChatWidgetSnapshot.Chat {
+        let id = record.summary.id
+        let title = record.summary.displayTitle
+        if let cached = chatRows[id], cached.events == record.events.count,
+           cached.working == record.summary.isWorking, cached.title == title,
+           cached.project == projectName
+        {
+            return cached.chat
+        }
+        let chat = record.widgetChat(projectName: projectName)
+        chatRows[id] = CachedChat(
+            events: record.events.count,
+            working: record.summary.isWorking,
+            title: title,
+            project: projectName,
+            chat: chat,
+        )
+        return chat
+    }
+
     /// Set once a quit has ended the activity: a change queued behind the
     /// quit must not bring one back.
     @objc private dynamic static var isClosedForQuit = false
@@ -113,7 +146,7 @@ final class ChatWidgetPublisher {
         let records = runtime.records.values
         let listed = records.filter { $0.isListedInWidgets || $0.summary.isWorking }.map { record in
             let project = record.summary.projectName.map { projectNames[$0] ?? $0 }
-            return (chat: record.widgetChat(projectName: project), updated: record.summary.lastInteraction, listed: record.isListedInWidgets)
+            return (chat: chatRow(record, projectName: project), updated: record.summary.lastInteraction, listed: record.isListedInWidgets)
         }
         let snapshot = ChatWidgetSnapshot(chats: listed.filter { $0.listed }.map { ($0.chat, $0.updated) })
         if snapshot != written {

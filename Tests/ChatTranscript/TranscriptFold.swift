@@ -8,6 +8,7 @@ import Foundation
 /// the quiet deadline.
 func checkTranscriptFold() {
     checkPayloadReaders()
+    checkRunActivity()
     var seen = FoldCoverage()
     for seed in UInt64(1) ... 64 {
         checkFold(seed: seed, seen: &seen)
@@ -18,6 +19,43 @@ func checkTranscriptFold() {
     seen.expectEverything()
     print("ok: a transcript read in batches, its cache too, is the one built from every event at once "
         + "(\(seen.states) states)")
+}
+
+/// 后台只读运行状态，不依赖消息行。对每个批次边界检查冷读、增量和两条会话的隔离。
+private func checkRunActivity() {
+    let events = [
+        event(1, "prompt"),
+        event(2, "messageStarted"),
+        event(3, "thinking", ["text": .string("持续输出")]),
+        event(4, "approvalRequested", ["approvalID": .string("确认")]),
+        event(5, TaskEvent.stateKind, ["state": .string(TaskState.waitingForApproval.rawValue)]),
+        event(6, "approvalResolved", ["approvalID": .string("确认"), "decision": .string("approve")]),
+        event(7, "compactionStarted"),
+        event(8, "compactionFinished"),
+        event(9, "finished"),
+        event(10, "compactionStarted"),
+        event(11, "steer"),
+        event(12, TaskEvent.stateKind, ["state": .string(TaskState.interrupted.rawValue)]),
+    ]
+    let expected: [(working: Bool, compacting: Bool)] = [
+        (true, false), (true, false), (true, false), (true, false), (true, false), (true, false),
+        (true, true), (true, false), (false, false), (false, true), (true, true), (false, false),
+    ]
+    var followed = ChatRunActivity()
+    var other = ChatRunActivity(events: [event(1, "prompt")])
+    precondition(!followed.isActive(runEnded: false))
+    for (index, next) in events.enumerated() {
+        followed.apply(next)
+        let cold = ChatRunActivity(events: Array(events.prefix(index + 1)))
+        let state = expected[index]
+        precondition(followed.isWorking == state.working && followed.isCompacting == state.compacting)
+        precondition(cold.isWorking == state.working && cold.isCompacting == state.compacting)
+        precondition(cold.isActive(runEnded: true) == state.compacting)
+        precondition(other.isActive(runEnded: false), "本会话的审批、压缩和结束不改变另一条会话")
+    }
+    other.endTurn()
+    precondition(!other.isActive(runEnded: false))
+    print("ok: run activity follows appended events without building message rows")
 }
 
 /// What the states compared showed, so the logs are known to reach every

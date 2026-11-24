@@ -13,6 +13,15 @@ final class ChatRuntime {
     weak static var active: ChatRuntime?
 
     @objc dynamic var onChange: (() -> Void)?
+
+    /// 事件和按需读入的历史只作会话内更新；标题、会话树等跨会话变化走 onChange。
+    struct EventChange {
+        let id: UUID
+        var summaryChanged = false
+        var filesMayHaveChanged = false
+    }
+
+    var onEventsChanged: ((EventChange) -> Void)?
     /// The saved conversations could not be read.
     @objc dynamic var onError: ((Error) -> Void)?
     /// A conversation could not be written; it goes on in memory and is
@@ -1639,15 +1648,19 @@ final class ChatRuntime {
                 self?.onError?(error)
                 return
             }
+            // 保留两个运行标记，不把整份事件数组持有到下一次等待。
+            var activity = ChatRunActivity(events: self?.records[id]?.events ?? [])
             while !Task.isCancelled {
                 // Only the cursor: a copy of the record held over the wait
                 // would make the next batch copy every event to add to them.
                 guard let self, records[id]?.task == task, let cursor = records[id]?.cursor else { return }
                 do {
                     let batch = try await ApelinService.app.attach(task, afterSeq: cursor)
-                    guard !Task.isCancelled, records[id]?.task == task else { return }
+                    guard !Task.isCancelled, records[id]?.task == task,
+                          let previous = records[id]?.summary else { return }
                     let fresh = records[id]?.take(batch.events) ?? []
                     if !fresh.isEmpty { eventCounts[id] = records[id]?.events.count ?? 0 }
+                    for event in fresh { activity.apply(event) }
                     let realtime = fresh.filter { !ChatFork.isHistorical($0) }
                     // 有事件到达就说明模型还在动：看门狗重新计时。
                     if !realtime.isEmpty {
@@ -1673,7 +1686,8 @@ final class ChatRuntime {
                             ))
                         }
                     }
-                    if realtime.contains(where: { $0.kind == AgentConversations.openedEventKind }) {
+                    let openedConversation = realtime.contains { $0.kind == AgentConversations.openedEventKind }
+                    if openedConversation {
                         // The child may already have been adopted from a link
                         // or agentList, so a duplicate open still supplies an edge.
                         restoreLineage()
@@ -1703,37 +1717,48 @@ final class ChatRuntime {
                     if let finished = realtime.last(where: { $0.kind == "compactionFinished" }) {
                         endCompaction(id, with: .success(Self.compactionResult(finished)))
                     }
-                    let wasWorking = records[id]?.summary.isWorking
-                    let current = transcript(id)
-                    let isWorking = current.isWorking || current.isCompacting
-                    // The row's state, never its place in the sidebar: only
-                    // the reader's New Chat and messages move that
-                    // (`lastInteraction`), however much the agent writes.
-                    records[id]?.summary.isWorking = isWorking
-                    // A wait that ran out with nothing, as an idle session's
-                    // does every 20 s, has nothing to write or show. A turn's
-                    // start and end are written at once, what streams between
-                    // them at most every `saveInterval`.
-                    let turnMoved = isWorking != wasWorking
-                    if !batch.events.isEmpty || turnMoved {
-                        changed(id, urgent: turnMoved || batch.finished)
-                    }
+                    let runEnded = records[id]?.run == .ended
+                    let isWorking = activity.isActive(runEnded: runEnded)
+                    let finishesRun = batch.finished && (!runEnded || records[id]?.replay != nil)
+                    var recoveredEnd = false
                     if batch.finished {
                         if let end = records[id]?.missedEnd(of: batch, isWorking: isWorking) {
-                            await takeMissedEnd(at: end, of: task, from: batch, in: id)
+                            recoveredEnd = await takeMissedEnd(at: end, of: task, from: batch, in: id)
+                            guard !Task.isCancelled, records[id]?.task == task else { return }
                         }
-                        // The task is over: nothing more comes for this turn,
-                        // so it stops looking as if it were going.
                         records[id]?.run = .ended
-                        records[id]?.summary.isWorking = false
                         records[id]?.dropReplay()
-                        changed(id)
-                        return
                     }
+                    // 状态更新不改变会话排序；空轮询不触碰页面。回放即使不显示，
+                    // 也要保存新的游标，避免下次重复读。
+                    records[id]?.summary.isWorking = !batch.finished && isWorking
+                    guard let summary = records[id]?.summary else { return }
+                    let summaryChanged = summary != previous
+                    let presentationChanged = !fresh.isEmpty || summaryChanged || finishesRun || recoveredEnd
+                    if !batch.events.isEmpty || presentationChanged {
+                        persist(id, urgent: summary.isWorking != previous.isWorking || batch.finished)
+                    }
+                    if presentationChanged {
+                        if openedConversation || summary.title != previous.title {
+                            // 分支标题、协作消息的发送方和分享目标也可能随之变化。
+                            onChange?()
+                        } else {
+                            let filesMayHaveChanged = finishesRun || recoveredEnd || realtime.contains {
+                                $0.kind == "toolResult" || $0.kind == "finished"
+                            }
+                            onEventsChanged?(.init(id: id, summaryChanged: summaryChanged,
+                                                   filesMayHaveChanged: filesMayHaveChanged))
+                        }
+                    }
+                    if batch.finished { return }
                 } catch let error as ApelinError where error.code == .notFound {
+                    guard !Task.isCancelled, records[id]?.task == task,
+                          let previous = records[id]?.summary,
+                          previous.isWorking || records[id]?.run != .ended else { return }
                     records[id]?.summary.isWorking = false
                     records[id]?.run = .ended
-                    changed(id)
+                    persist(id, urgent: true)
+                    onEventsChanged?(.init(id: id, summaryChanged: previous.isWorking, filesMayHaveChanged: true))
                     return
                 } catch is CancellationError { return }
                 catch {
@@ -1746,15 +1771,14 @@ final class ChatRuntime {
 
     /// The end of `task` the conversation read past (`ChatRecord.missedEnd`),
     /// read again from just before it unless `batch` carries it, and taken.
-    private func takeMissedEnd(at end: EventSeq, of task: TaskHandle, from batch: TaskEventBatch, in id: UUID) async {
+    private func takeMissedEnd(at end: EventSeq, of task: TaskHandle, from batch: TaskEventBatch, in id: UUID) async -> Bool {
         var event = batch.events.last { $0.seq == end }
         if event == nil {
             event = try? await ApelinService.app.attach(task, afterSeq: EventSeq(end.rawValue - 1), waitMilliseconds: 0)
                 .events.first
         }
-        guard records[id]?.task == task else { return }
-        records[id]?.takeMissedEnd(event, at: end)
-        changed(id)
+        guard !Task.isCancelled, records[id]?.task == task else { return false }
+        return records[id]?.takeMissedEnd(event, at: end) == true
     }
 
     /// Sent messages whose echo arrived leave `sending`, in the same

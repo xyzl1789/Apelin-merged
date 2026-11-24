@@ -3,6 +3,49 @@ import ApelinProtocol
 import CryptoKit
 import Foundation
 
+/// 按事件追踪会话是否忙碌，不生成消息行、不读取附件。
+struct ChatRunActivity {
+    private(set) var isWorking = false
+    private(set) var isCompacting = false
+
+    init(events: [TaskEvent] = []) {
+        // 恢复跟随时，每个状态只取最后一次变更，找到后不再读更早的回合。
+        var working: Bool?
+        var compacting: Bool?
+        for event in events.reversed() {
+            let change = Self.change(for: event)
+            working = working ?? change.working
+            compacting = compacting ?? change.compacting
+            if working != nil, compacting != nil { break }
+        }
+        isWorking = working ?? false
+        isCompacting = compacting ?? false
+    }
+
+    func isActive(runEnded: Bool) -> Bool {
+        (isWorking && !runEnded) || isCompacting
+    }
+
+    mutating func apply(_ event: TaskEvent) {
+        let change = Self.change(for: event)
+        isWorking = change.working ?? isWorking
+        isCompacting = change.compacting ?? isCompacting
+    }
+
+    mutating func endTurn() { isWorking = false }
+
+    private static func change(for event: TaskEvent) -> (working: Bool?, compacting: Bool?) {
+        switch event.kind {
+        case "prompt", "steer", "messageStarted": return (true, nil)
+        case "finished": return (false, nil)
+        case "compactionStarted": return (nil, true)
+        case "compactionFinished": return (nil, false)
+        case TaskEvent.stateKind where ChatTranscript.endsTask(event): return (false, false)
+        default: return (nil, nil)
+        }
+    }
+}
+
 /// Rebuilds visible rows from ordered host events. Rebuilding from the same
 /// events gives the same row IDs.
 ///
@@ -16,9 +59,9 @@ struct ChatTranscript {
     var pendingMessages: [ChatMessage] = []
     var pendingPaused = false
     var pendingHeld: Set<UUID> = []
-    var isWorking = false
-    /// Compacting between runs, as the app asked (`agentCompact`).
-    var isCompacting = false
+    private var activity = ChatRunActivity()
+    var isWorking: Bool { activity.isWorking }
+    var isCompacting: Bool { activity.isCompacting }
     /// How full the conversation's context is, from the last `contextUsage`
     /// the agent recorded: the figure the ring beside the composer shows.
     var contextUsage: ChatContextUsage?
@@ -195,6 +238,7 @@ struct ChatTranscript {
             if Self.endsReconnecting.contains(event.kind) {
                 reconnecting = false
             }
+            activity.apply(event)
             switch event.kind {
             case "prompt", "steer":
                 finishThinking(at: event.time)
@@ -224,7 +268,6 @@ struct ChatTranscript {
                     add(message)
                 }
                 unanswered = messageID
-                isWorking = true
             case "pendingQueue":
                 readPending(payload, conversationTitle: conversationTitle, attachment: attachment)
             case "queued":
@@ -251,7 +294,6 @@ struct ChatTranscript {
                 finishThinking(at: event.time)
                 attempt = (rows.count, unanswered)
                 startThinking(id: id, at: event.time)
-                isWorking = true
             case "messageDiscarded":
                 // The rows it made go, and what it answered is unanswered
                 // again: the stand-in its thought replaced comes back, and
@@ -407,7 +449,6 @@ struct ChatTranscript {
             case "finished":
                 finishThinking(at: event.time)
                 assistant = nil
-                isWorking = false
                 processingSource = nil
                 receivedTokens = nil
                 endTurn(at: event.time)
@@ -439,10 +480,7 @@ struct ChatTranscript {
                 if let messageID = Self.payloadID(payload), let index = firstRows[messageID] {
                     rewind(to: index)
                 }
-            case "compactionStarted":
-                isCompacting = true
             case "compactionFinished":
-                isCompacting = false
                 if payload?["outcome"]?.stringValue == AgentCompactionResult.Outcome.compacted.rawValue {
                     // text after it is a reply of its own, under it
                     assistant = nil
@@ -453,15 +491,11 @@ struct ChatTranscript {
                         unanswered = id
                     }
                 }
-            case TaskEvent.stateKind:
-                if Self.endsTask(event) {
-                    finishThinking(at: event.time)
-                    isWorking = false
-                    processingSource = nil
-                    isCompacting = false
-                    receivedTokens = nil
-                    endTurn(at: event.time)
-                }
+            case TaskEvent.stateKind where Self.endsTask(event):
+                finishThinking(at: event.time)
+                processingSource = nil
+                receivedTokens = nil
+                endTurn(at: event.time)
             default: break
             }
         }
@@ -470,7 +504,7 @@ struct ChatTranscript {
             // The app knows this run is over and nothing more is coming, so
             // the turn stops looking as if it were going — whatever end the
             // process that ran it left unread.
-            isWorking = false
+            activity.endTurn()
             endTurn(at: now ?? lastEventTime ?? Date())
         }
         show(sending: sending, now: now)

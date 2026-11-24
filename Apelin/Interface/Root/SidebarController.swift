@@ -285,6 +285,18 @@ final class SidebarController: UIViewController {
         if page == .files { filesPage.reload() }
     }
 
+    /// 正文流不触发侧栏重建；工作区页打开时才需要同步其他项目的运行数量。
+    @objc dynamic func refreshEvents(in projectName: String?, summaryChanged: Bool, filesMayHaveChanged: Bool) {
+        let currentWorkspace = project?.name == projectName
+        if summaryChanged {
+            if currentWorkspace { sessions.refresh() }
+            if page == .workspaces {
+                workspacesPage.update(projects: projects, current: project, chats: runtime?.summaries ?? [])
+            }
+        }
+        if filesMayHaveChanged, currentWorkspace, page == .files { filesPage.reload() }
+    }
+
     /// An empty conversation at the top of today, picked and shown: the
     /// workspace's untouched one if it has one, so empty rows never pile up.
     func startNewChat(picked: Bool = true) {

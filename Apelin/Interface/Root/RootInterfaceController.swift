@@ -209,6 +209,23 @@ final class RootInterfaceController: UIViewController {
                 }
             }
         }
+        chatRuntime.onEventsChanged = { [weak self] change in
+            guard let self else { return }
+            ChatWidgetPublisher.shared.chatsChanged()
+            if (change.summaryChanged || change.filesMayHaveChanged),
+               let summary = chatRuntime.records[change.id]?.summary
+            {
+                sidebar.refreshEvents(
+                    in: summary.projectName,
+                    summaryChanged: change.summaryChanged,
+                    filesMayHaveChanged: change.filesMayHaveChanged,
+                )
+            }
+            // 另一条会话的正文不会重建当前页的历史和输入栏。
+            if chatController.chat?.id == change.id {
+                chatController.refreshRuntime()
+            }
+        }
         ChatWidgetPublisher.shared.attach(chatRuntime)
         ChatRuntime.active = chatRuntime
         chatRuntime.onDraftRestored = { [weak self] id in self?.chatController.restoreDraft(for: id) }
