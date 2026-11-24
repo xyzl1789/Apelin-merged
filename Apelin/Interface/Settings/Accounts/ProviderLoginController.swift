@@ -40,6 +40,7 @@ final class ProviderLoginController: UIViewController {
     /// Told each time a sign-in has ended (Try Again starts another), so
     /// Settings reads the accounts again.
     @objc dynamic var onFinish: (() -> Void)?
+    @objc dynamic var onSuccessfulSignIn: (() -> Void)?
 
     private let provider: AgentProvider
     private let isEditingConfiguration: Bool
@@ -333,6 +334,7 @@ final class ProviderLoginController: UIViewController {
             UIAccessibility.post(notification: .announcement, argument: String(localized: "Sign-in did not finish"))
             return
         }
+        onSuccessfulSignIn?()
         view.endEditing(true)
         SPIndicator.present(
             title: isEditingConfiguration ? String(localized: "Configuration Updated") : String(localized: "Signed In"),

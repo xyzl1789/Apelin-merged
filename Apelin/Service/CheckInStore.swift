@@ -28,20 +28,38 @@ final class CheckInStore {
         }
     }
 
-    private(set) var results: [CheckInResult] = []
+    private var storedResults: [CheckInResult] = []
+    var results: [CheckInResult] {
+        storedResults.filter { Calendar.current.isDateInToday($0.updatedAt) }
+    }
+
     /// 签到日志：最近若干条，持久化，供「签到日志」展示。
     private(set) var logEntries: [CheckInResult] = []
-    private var inFlight: Task<[CheckInResult], Never>?
+    private(set) var runningPlatforms: Set<CheckInPlatform> = []
+    private(set) var lastRequestFailed = false
+
+    private init() {
+        logEntries = loadLog() ?? []
+        for entry in logEntries where !storedResults.contains(where: { $0.platform == entry.platform }) {
+            storedResults.append(entry)
+        }
+    }
 
     /// 日志持久化的键与上限。
     private static let logKey = "checkin.log"
     private static let maxLog = 50
 
     /// 正在问服务端（页面据此把按钮换成「签到中…」）。
-    var isRunning: Bool { inFlight != nil }
+    var isRunning: Bool { !runningPlatforms.isEmpty }
 
     func result(for platform: CheckInPlatform) -> CheckInResult? {
         results.first { $0.platform == platform }
+    }
+
+    func clearSignInFailure(for platform: CheckInPlatform) {
+        guard let result = result(for: platform), result.outcome == .notSignedIn || result.reason == .signedOut else { return }
+        storedResults.removeAll { $0.platform == platform }
+        NotificationCenter.default.post(name: .checkInChanged, object: nil)
     }
 
     /// 今天已经签到的平台数。
@@ -56,7 +74,7 @@ final class CheckInStore {
 
     /// 把本次刷新得到的结果追加进签到日志，持久化，只留最近 `maxLog` 条。
     private func appendLog(results: [CheckInResult]) {
-        var log = loadLog()
+        guard var log = loadLog() else { return }
         for result in results {
             if log.contains(where: { $0.platform == result.platform && $0.updatedAt == result.updatedAt }) {
                 continue
@@ -69,10 +87,11 @@ final class CheckInStore {
         saveLog(log)
     }
 
-    private func loadLog() -> [CheckInResult] {
+    private func loadLog() -> [CheckInResult]? {
         guard let data = UserDefaults.standard.data(forKey: Self.logKey) else { return logEntries }
-        // 解码失败不回退空数组：下一次 save 不会把旧日志覆盖掉。
-        return (try? JSONDecoder().decode([CheckInResult].self, from: data)) ?? logEntries
+        // 不能读的旧记录留在原处，不在下一次签到时覆盖。
+        do { return try JSONDecoder().decode([CheckInResult].self, from: data) }
+        catch { return nil }
     }
 
     private func saveLog(_ log: [CheckInResult]) {
@@ -80,54 +99,46 @@ final class CheckInStore {
         UserDefaults.standard.set(data, forKey: Self.logKey)
     }
 
-    /// 读一次今天的结果，正在跑的请求直接复用。请求失败时保留上一次的数字，
+    /// 同一时间只跑一次请求。请求失败时保留上一次的结果，
     /// 不把页面清空。`platforms` 只填部分平台时，只刷新那几个。
     @discardableResult
     func refresh(platforms: [CheckInPlatform] = [], force: Bool = false) async -> [CheckInResult] {
-        if let inFlight {
-            return await inFlight.value
-        }
-        let previous = results
-        let task = Task<[CheckInResult], Never> {
-            do {
-                let results = try await ApelinService.app.agentCheckIn(platforms: platforms, force: force).results
-                Logger(subsystem: "wiki.qaq.apelin", category: "CheckIn")
-                    .info("签到刷新成功：\(results.count, privacy: .public) 个平台 \(force ? "强制" : "自动", privacy: .public)")
-                return results
-            } catch {
-                Logger(subsystem: "wiki.qaq.apelin", category: "CheckIn")
-                    .error("签到刷新失败：\(String(describing: error), privacy: .public)")
-                return previous
-            }
-        }
-        inFlight = task
-        let next = await task.value
-        inFlight = nil
-        results = next
-        appendLog(results: next)
+        guard !isRunning else { return [] }
+        runningPlatforms = Set(platforms.isEmpty ? CheckInPlatform.allCases : platforms)
+        lastRequestFailed = false
         NotificationCenter.default.post(name: .checkInChanged, object: nil)
-        return next
+        defer {
+            runningPlatforms.removeAll()
+            NotificationCenter.default.post(name: .checkInChanged, object: nil)
+        }
+        do {
+            let fresh = try await ApelinService.app.agentCheckIn(platforms: platforms, force: force).results
+            for result in fresh {
+                if let index = storedResults.firstIndex(where: { $0.platform == result.platform }) {
+                    storedResults[index] = result
+                } else {
+                    storedResults.append(result)
+                }
+            }
+            appendLog(results: fresh)
+            return fresh
+        } catch {
+            lastRequestFailed = true
+            Logger(subsystem: "wiki.qaq.apelin", category: "CheckIn").error("签到请求未能完成")
+            return []
+        }
     }
 
     /// 进入前台时调用：开着自动签到、且今天还没跑过，就安静地跑一遍。
     /// 今天跑过（无论成功失败）就等明天，失败可以手动点「全部签到」。
     func automaticRunIfNeeded() {
-        guard automaticEnabled else { return }
-        let today = Self.dayKey()
-        guard UserDefaults.standard.string(forKey: Key.automaticDay) != today else { return }
-        UserDefaults.standard.set(today, forKey: Key.automaticDay)
         Task { [weak self] in
-            await self?.refresh(force: false)
+            guard let self, automaticEnabled, !isRunning else { return }
+            let today = Self.dayKey()
+            guard UserDefaults.standard.string(forKey: Key.automaticDay) != today else { return }
+            UserDefaults.standard.set(today, forKey: Key.automaticDay)
+            await refresh(force: false)
         }
-    }
-
-    /// 今天自动签到跑过没有——开关打开时由页面问一次，用来决定是否立刻补跑。
-    static var automaticDay: String? {
-        UserDefaults.standard.string(forKey: Key.automaticDay)
-    }
-
-    static func markAutomaticRunToday() {
-        UserDefaults.standard.set(dayKey(), forKey: Key.automaticDay)
     }
 
     private static func dayKey(_ date: Date = Date()) -> String {

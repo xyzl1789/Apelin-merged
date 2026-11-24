@@ -1,39 +1,28 @@
 import ApelinProtocol
 import SPIndicator
-import Then
 import UIKit
 
-/// 设置 ▸ 自动签到：每天第一次打开 App 时为已登录的 WorkBuddy / WorkBuddy AI、
-/// Trae CN、Qoder / Qoder CN 账号领取当天积分。页面本身随时可以手动点「全部签到」再看一遍。
-///
-/// 结果行只说今天怎样（已领、领过了、没有活动、未登录、失败原因），不展示
-/// 服务端正文；换行显示领取到的积分数与连签天数，都是服务端给的数字。
+/// 设置 ▸ 签到：先看今天的进度，再处理各平台，历史与成长任务放在后面。
 final class CheckInController: TableController {
     private enum Section: Hashable {
-        case automatic
-        case actions
-        case platforms
-        case growth
-        case log
+        case today, growth, automatic, history
+        case platform(CheckInPlatform)
     }
 
     private enum Row: Hashable {
-        case automatic
-        case runAll
+        case overview, runAll, requestError, automatic, growth
         case platform(CheckInPlatform)
-        case detail(platform: CheckInPlatform, index: Int)
-        case logEntry(Int)
+        case detail(CheckInPlatform, Int)
+        case log(CheckInPlatform, Date)
     }
 
     private lazy var dataSource = TableDataSource<Section, Row, Row>(
-        tableView: tableView,
-        identifier: { $0 },
+        tableView: tableView, identifier: { $0 }
     ) { [weak self] table, _, row in
         self?.cell(in: table, for: row)
     }
 
-    private var runner: Task<Void, Never>?
-    /// 签到日志快照（最近 10 条，最新的在前），供日志 section 展示。
+    @objc private dynamic var growthExpanded = false
     private var logSnapshot: [CheckInResult] = []
 
     init() {
@@ -46,279 +35,339 @@ final class CheckInController: TableController {
     }
 
     deinit {
-        runner?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         title = String(localized: "Check In")
-        dataSource.headerTitle = { _ in nil }
-        dataSource.footerTitle = { [weak self] section in self?.footer(for: section) }
+        dataSource.headerTitle = { section in
+            switch section {
+            case .platform(.workBuddy): return String(localized: "Platforms")
+            case .history: return String(localized: "Recent Check-Ins")
+            default: return nil
+            }
+        }
+        dataSource.footerTitle = { section in
+            guard section == .automatic else { return nil }
+            return String(localized: "Automatic check-in runs the first time you open the app each day.")
+        }
         NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(updateRows),
-            name: .checkInChanged,
-            object: nil,
+            self, selector: #selector(updateRows), name: .checkInChanged, object: nil
         )
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
         updateRows()
-        load()
+        CheckInStore.shared.automaticRunIfNeeded()
     }
 
     @objc private dynamic func updateRows() {
-        var sections: [(Section, [Row])] = [
-            (.automatic, [.automatic]),
-            (.actions, [.runAll]),
-            (.platforms, CheckInPlatform.allCases.map { .platform($0) }),
-        ]
-        // 成长中心逐项明细：失败项有红灯，点开这一页就能看见为什么没做成。
-        var detailRows: [Row] = []
-        for platform in CheckInPlatform.allCases {
-            guard let details = CheckInStore.shared.result(for: platform)?.details else { continue }
-            for index in details.indices {
-                detailRows.append(.detail(platform: platform, index: index))
-            }
+        let store = CheckInStore.shared
+        var today: [Row] = [.overview, .runAll]
+        if store.lastRequestFailed { today.append(.requestError) }
+        var sections: [(Section, [Row])] = [(.today, today)]
+        sections += CheckInPlatform.allCases.map { (.platform($0), [.platform($0)]) }
+        let tasks = store.results.flatMap { result in
+            (result.details ?? []).indices.map { Row.detail(result.platform, $0) }
         }
-        if !detailRows.isEmpty { sections.append((.growth, detailRows)) }
-        // 签到日志：最近 10 条，最新的在前。
-        logSnapshot = Array(CheckInStore.shared.logEntries.prefix(10))
-        var logRows: [Row] = []
-        for index in logSnapshot.indices { logRows.append(.logEntry(index)) }
-        if !logRows.isEmpty { sections.append((.log, logRows)) }
-        dataSource.update(sections, reconfigure: true)
+        if !tasks.isEmpty {
+            sections.append((.growth, growthExpanded ? [.growth] + tasks : [.growth]))
+        }
+        sections.append((.automatic, [.automatic]))
+        logSnapshot = Array(store.logEntries.prefix(10))
+        if !logSnapshot.isEmpty {
+            sections.append((.history, logSnapshot.map { .log($0.platform, $0.updatedAt) }))
+        }
+        let changed = Set(sections.filter { $0.0 != .history }.flatMap { $0.1 })
+        dataSource.update(sections, changedItems: changed, animatingDifferences: false)
     }
 
-    /// 进页面先把今天的缓存读一遍；worker 对同一天不会再打服务端。
-    @objc(apelin_load) private dynamic func load() {
-        runner?.cancel()
-        runner = Task { [weak self] in
-            await self?.refresh(platforms: [], force: false)
-        }
-    }
-
-    private func refresh(platforms: [CheckInPlatform], force: Bool) {
-        Task { [weak self] in
-            await CheckInStore.shared.refresh(platforms: platforms, force: force)
-            self?.updateRows()
-        }
-    }
-
-    private func footer(for section: Section) -> String? {
-        switch section {
-        case .automatic:
-            String(localized: "Once a day, when you open Apelin, each signed-in WorkBuddy, Trae CN and Qoder CN account checks in for you.")
-        case .actions:
-            String(localized: "Each row shows today's result. Check In All asks the server again right away.")
-        case .platforms:
-            String(localized: "Growth tasks that need real use on the desktop stay red until they are done; the reason is listed below.")
-        case .growth:
-            String(localized: "Red means the action could not be finished automatically. A light means it was done or is harmless to skip.")
-        case .log:
-            "过去每次签到的结果，最新的一条排在最前。"
-        }
-    }
-
-    // MARK: - 单元格
-
-    private func cell(in tableView: UITableView, for row: Row) -> UITableViewCell {
+    private func cell(in table: UITableView, for row: Row) -> UITableViewCell {
+        let store = CheckInStore.shared
         switch row {
+        case .overview:
+            let cell = (table.dequeueReusableCell(withIdentifier: CheckInOverviewCell.reuseID) as? CheckInOverviewCell)
+                ?? CheckInOverviewCell(style: .default, reuseIdentifier: CheckInOverviewCell.reuseID)
+            let eligible = store.results.filter {
+                $0.isDone || ($0.outcome == .failed && $0.reason != .signedOut)
+            }.count
+            let done = store.doneCount
+            let progress = eligible == 0 ? 0 : Double(done) / Double(eligible)
+            let summary: String
+            if eligible > 0 {
+                summary = String(localized: "\(done) / \(eligible) checked in")
+            } else if store.results.isEmpty {
+                summary = String(localized: "No check-in results yet")
+            } else {
+                summary = String(localized: "No eligible platforms in these results")
+            }
+            let complete = store.results.count == CheckInPlatform.allCases.count && eligible > 0 && done == eligible
+            cell.configure(summary: summary, progress: progress, complete: complete)
+            return cell
+        case .runAll:
+            let running = store.isRunning
+            return listCell(title: running ? String(localized: "Checking In…") : String(localized: "Check In All"),
+                            icon: running ? "clock" : "checkmark.circle", color: .tintColor, actionable: !running)
+        case .requestError:
+            return listCell(title: String(localized: "Something went wrong. Try again."),
+                            icon: "exclamationmark.circle", color: .systemRed)
         case .automatic:
-            let cell = tableView.dequeueReusableCell(withIdentifier: "toggle") ?? UITableViewCell()
-            var content = UIListContentConfiguration.cell()
-            content.text = String(localized: "Automatic Check-In")
-            cell.contentConfiguration = content
-            cell.selectionStyle = .none
-            let toggle = (cell.accessoryView as? UISwitch) ?? UISwitch()
-            toggle.isOn = CheckInStore.shared.automaticEnabled
+            let cell = listCell(title: String(localized: "Automatic Check-In"))
+            let toggle = UISwitch()
+            toggle.isOn = store.automaticEnabled
             toggle.accessibilityLabel = String(localized: "Automatic Check-In")
-            toggle.accessibilityValue = CheckInStore.shared.automaticEnabled
-                ? String(localized: "On")
-                : String(localized: "Off")
-            toggle.removeTarget(nil, action: nil, for: .valueChanged)
             toggle.addTarget(self, action: #selector(toggleChanged(_:)), for: .valueChanged)
             cell.accessoryView = toggle
             return cell
-        case .runAll:
-            let cell = tableView.dequeueReusableCell(withIdentifier: "action") ?? UITableViewCell(style: .value1, reuseIdentifier: "action")
-            var content = UIListContentConfiguration.valueCell()
-            content.text = String(localized: "Check In All")
-            content.secondaryText = CheckInStore.shared.isRunning ? String(localized: "Checking In…") : nil
-            cell.contentConfiguration = content
-            cell.selectionStyle = .default
-            cell.accessoryType = .none
-            cell.isAccessibilityElement = true
-            cell.accessibilityLabel = String(localized: "Check In All")
-            cell.accessibilityValue = content.secondaryText
-            return cell
         case let .platform(platform):
-            let cell = tableView.dequeueReusableCell(withIdentifier: "platform")
-                ?? UITableViewCell(style: .subtitle, reuseIdentifier: "platform")
-            var content = UIListContentConfiguration.subtitleCell()
-            content.text = platform.brand
-            var parts: [String] = []
-            if let summary = summary(for: platform) { parts.append(summary) }
-            let red = CheckInStore.shared.result(for: platform)?.details?.filter { !$0.succeeded }.count ?? 0
-            if red > 0 { parts.append("🔴 \(red)") }
-            content.secondaryText = parts.isEmpty ? nil : parts.joined(separator: " · ")
-            content.secondaryTextProperties.color = .secondaryLabel
-            cell.contentConfiguration = content
-            cell.accessoryType = .none
-            cell.selectionStyle = .default
-            return cell
+            let result = store.result(for: platform)
+            let running = store.runningPlatforms.contains(platform)
+            let state = running ? PlatformState.running : PlatformState(result)
+            var lines = [state.title]
+            if let result { lines += metrics(for: result) }
+            if !store.isRunning { lines.append(state.action) }
+            return listCell(title: platform.brand, detail: lines.joined(separator: "\n"),
+                            icon: state.icon, color: state.color, actionable: !store.isRunning)
+        case .growth:
+            let details = store.results.flatMap { $0.details ?? [] }
+            let needsAttention = details.filter { !$0.succeeded }.count
+            let detail = needsAttention > 0 ? String(localized: "Needs attention: \(needsAttention)") : nil
+            return listCell(title: String(localized: "Growth Tasks"), detail: detail,
+                            icon: growthExpanded ? "chevron.down" : "chevron.right", color: .tintColor,
+                            actionable: true)
         case let .detail(platform, index):
-            let cell = tableView.dequeueReusableCell(withIdentifier: "detail")
-                ?? UITableViewCell(style: .subtitle, reuseIdentifier: "detail")
-            guard let details = CheckInStore.shared.result(for: platform)?.details,
-                  details.indices.contains(index) else { return cell }
-            let item = details[index]
-            var content = UIListContentConfiguration.subtitleCell()
-            content.text = "\(item.succeeded ? "🟢" : "🔴") \(item.title)"
-            content.secondaryText = item.note
-            content.secondaryTextProperties.color = item.succeeded ? .secondaryLabel : .systemRed
-            cell.contentConfiguration = content
-            cell.accessoryType = .none
-            cell.selectionStyle = .none
-            cell.isAccessibilityElement = true
-            cell.accessibilityLabel = item.title
-            cell.accessibilityValue = item.note
-            return cell
-        case let .logEntry(index):
-            guard index < logSnapshot.count else { return UITableViewCell() }
-            let entry = logSnapshot[index]
-            let cell = tableView.dequeueReusableCell(withIdentifier: "log")
-                ?? UITableViewCell(style: .subtitle, reuseIdentifier: "log")
-            var content = UIListContentConfiguration.subtitleCell()
-            content.text = entry.platform.brand
-            var parts: [String] = []
-            switch entry.outcome {
-            case .claimed:
-                parts.append("已签到")
-                if let credit = entry.credit { parts.append("\(credit) 积分") }
-            case .alreadyClaimed:
-                parts.append("已签过")
-                if let total = entry.total { parts.append("\(total) 积分") }
-            case .nothingToDo:
-                parts.append("今日无奖励")
-            case .notSignedIn:
-                parts.append("未登录")
-            case .failed:
-                parts.append("签到失败")
+            guard let details = store.result(for: platform)?.details, details.indices.contains(index) else {
+                return UITableViewCell()
             }
-            parts.append(relativeTime(entry.updatedAt))
-            content.secondaryText = parts.joined(separator: " · ")
-            content.secondaryTextProperties.color = .secondaryLabel
-            cell.contentConfiguration = content
-            cell.accessoryType = .none
-            cell.selectionStyle = .none
-            cell.isAccessibilityElement = true
-            cell.accessibilityLabel = entry.platform.brand
-            cell.accessibilityValue = content.secondaryText
-            return cell
+            let item = details[index]
+            let status = item.succeeded ? String(localized: "Done") : String(localized: "Needs Attention")
+            return listCell(title: item.title, detail: status + " · " + item.note,
+                            icon: item.succeeded ? "checkmark.circle" : "exclamationmark.circle",
+                            color: item.succeeded ? .systemGreen : .systemOrange)
+        case let .log(platform, date):
+            guard let entry = logSnapshot.first(where: { $0.platform == platform && $0.updatedAt == date }) else {
+                return UITableViewCell()
+            }
+            let state = PlatformState(entry)
+            let details = [state.title, date.formatted(date: .abbreviated, time: .shortened)] + metrics(for: entry)
+            return listCell(title: platform.brand, detail: details.joined(separator: " · "),
+                            icon: state.icon, color: state.color)
         }
     }
 
-    /// 「x 分钟/小时/天前」式的相对时间。
-    private func relativeTime(_ date: Date) -> String {
-        let interval = Date().timeIntervalSince(date)
-        if interval < 60 { return "刚刚" }
-        if interval < 3600 { return "\(Int(interval / 60))分钟前" }
-        if interval < 86_400 { return "\(Int(interval / 3600))小时前" }
-        return "\(Int(interval / 86_400))天前"
+    @objc private dynamic func listCell(title: String, detail: String? = nil, icon: String? = nil,
+                                        color: UIColor = .secondaryLabel, actionable: Bool = false) -> UITableViewCell {
+        let cell = UITableViewCell()
+        var content = UIListContentConfiguration.subtitleCell()
+        content.text = title
+        content.secondaryText = detail
+        content.secondaryTextProperties.numberOfLines = 0
+        content.secondaryTextProperties.color = .secondaryLabel
+        if let icon {
+            content.image = UIImage(systemName: icon)
+            content.imageProperties.tintColor = color
+        }
+        cell.contentConfiguration = content
+        cell.selectionStyle = actionable ? .default : .none
+        if actionable { cell.accessibilityTraits.insert(.button) }
+        return cell
+    }
+
+    private func metrics(for result: CheckInResult) -> [String] {
+        var lines: [String] = []
+        if let credit = result.credit {
+            lines.append(String(localized: "Points earned: \(credit)"))
+        }
+        if result.platform == .workBuddy || result.platform == .workBuddyAI, let total = result.total {
+            lines.append(String(localized: "Total check-in points earned: \(total)"))
+        }
+        if let streak = result.streak, streak > 0 {
+            lines.append(String(localized: "Streak \(streak) Days"))
+        }
+        return lines
     }
 
     @objc private dynamic func toggleChanged(_ toggle: UISwitch) {
         CheckInStore.shared.automaticEnabled = toggle.isOn
-        if toggle.isOn, CheckInStore.automaticDay != Self.todayKey() {
-            CheckInStore.markAutomaticRunToday()
-            refresh(platforms: [], force: false)
-        }
-        updateRows()
+        if toggle.isOn { CheckInStore.shared.automaticRunIfNeeded() }
     }
 
-    private static func todayKey() -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar.current
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
-    }
-
-    // MARK: - 状态文字
-
-    private func summary(for platform: CheckInPlatform) -> String? {
-        if CheckInStore.shared.isRunning {
-            return String(localized: "Checking In…")
-        }
-        guard let result = CheckInStore.shared.result(for: platform) else { return nil }
-        switch result.outcome {
-        case .claimed:
-            var parts = [String(localized: "Checked In")]
-            if let credit = result.credit {
-                parts.append("\(credit) \(String(localized: "Points"))")
-            }
-            if let streak = result.streak, streak > 0 {
-                parts.append(String(format: String(localized: "Streak %lld Days"), streak))
-            }
-            return parts.joined(separator: " · ")
-        case .alreadyClaimed:
-            var parts = [String(localized: "Checked In")]
-            if let total = result.total {
-                parts.append("\(total) \(String(localized: "Points"))")
-            }
-            if let streak = result.streak, streak > 0 {
-                parts.append(String(format: String(localized: "Streak %lld Days"), streak))
-            }
-            return parts.joined(separator: " · ")
-        case .nothingToDo:
-            return String(localized: "No Reward Today")
-        case .notSignedIn:
-            return String(localized: "Not Signed In")
-        case .failed:
-            switch result.reason {
-            case .signedOut:
-                return String(localized: "Sign-In Expired")
-            case .network:
-                return String(localized: "No Internet Connection")
-            case .rateLimited:
-                return String(localized: "Usage Limit Reached")
-            case .rejected:
-                return String(localized: "Request Refused")
-            case .server, .none:
-                return String(localized: "Something went wrong. Try again.")
-            }
+    private func run(_ platforms: [CheckInPlatform]) {
+        Task { [weak self] in
+            let results = await CheckInStore.shared.refresh(platforms: platforms, force: true)
+            guard self?.viewIfLoaded?.window != nil,
+                  results.contains(where: \.isDone),
+                  !results.contains(where: { $0.outcome == .failed }) else { return }
+            SPIndicator.present(title: String(localized: "Checked In"), preset: .done, haptic: .success)
         }
     }
 
-    // MARK: - 点击处理
+    private func openSignIn(for platform: CheckInPlatform) {
+        let provider: AgentProvider
+        switch platform {
+        case .workBuddy: provider = .workBuddy
+        case .workBuddyAI: provider = .workBuddyAI
+        case .traeCN: provider = .trae
+        case .qoderCN: provider = .qoderCN
+        case .qoder: provider = .qoder
+        }
+        Task { [weak self] in
+            let response = try? await ApelinService.app.agentAccountList(onlyExtraModels: true)
+            guard let self, viewIfLoaded?.window != nil, navigationController?.topViewController === self,
+                  presentedViewController == nil else { return }
+            guard let account = response?.accounts.first(where: { $0.provider == provider }) else {
+                navigationController?.pushViewController(ModelProvidersController(), animated: true)
+                return
+            }
+            let page = ProviderLoginController(account: account)
+            page.isModalInPresentation = true
+            // 登录结束后把状态交回手动按钮，不在登录回调里自动领取奖励。
+            page.onSuccessfulSignIn = {
+                CheckInStore.shared.clearSignInFailure(for: platform)
+            }
+            presentPageAsFormSheet(page)
+        }
+    }
 
     override func tableView(_: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
-        guard let row = dataSource.value(at: indexPath) else { return true }
+        guard let row = dataSource.value(at: indexPath) else { return false }
         switch row {
-        case .automatic: return false
-        case .runAll: return !CheckInStore.shared.isRunning
-        case .platform: return !CheckInStore.shared.isRunning
-        case .detail: return false
-        case .logEntry: return false
+        case .runAll, .platform: return !CheckInStore.shared.isRunning
+        case .growth: return true
+        default: return false
         }
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         guard let row = dataSource.value(at: indexPath) else { return }
+        let store = CheckInStore.shared
         switch row {
-        case .automatic:
-            break
-        case .runAll:
-            let notice = "开始自动签到"
-            SPIndicator.present(title: notice, preset: .done, haptic: .success)
-            UIAccessibility.post(notification: .announcement, argument: notice)
-            refresh(platforms: [], force: true)
-        case let .platform(platform):
-            refresh(platforms: [platform], force: true)
-        case .detail:
-            break
-        case .logEntry:
-            break
+        case .runAll where !store.isRunning: run([])
+        case let .platform(platform) where !store.isRunning:
+            let result = store.result(for: platform)
+            if result?.outcome == .notSignedIn || result?.reason == .signedOut {
+                openSignIn(for: platform)
+            } else {
+                run([platform])
+            }
+        case .growth:
+            growthExpanded.toggle()
+            updateRows()
+        default: break
         }
+    }
+}
+
+private enum PlatformState {
+    case pending, running, done, noReward, signedOut, failed(CheckInReason?)
+
+    init(_ result: CheckInResult?) {
+        guard let result else { self = .pending; return }
+        switch result.outcome {
+        case .claimed, .alreadyClaimed: self = .done
+        case .nothingToDo: self = .noReward
+        case .notSignedIn: self = .signedOut
+        case .failed: self = .failed(result.reason)
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .pending: return String(localized: "Waiting")
+        case .running: return String(localized: "Checking In…")
+        case .done: return String(localized: "Checked In")
+        case .noReward: return String(localized: "No Reward Today")
+        case .signedOut: return String(localized: "Not Signed In")
+        case .failed(.signedOut?): return String(localized: "Sign-In Expired")
+        case .failed(.network?): return String(localized: "No Internet Connection")
+        case .failed(.rateLimited?): return String(localized: "Usage Limit Reached")
+        case .failed(.rejected?): return String(localized: "Request Refused")
+        case .failed: return String(localized: "Failed")
+        }
+    }
+
+    var action: String {
+        switch self {
+        case .signedOut: return String(localized: "Sign In")
+        case .failed(.signedOut?): return String(localized: "Sign In Again")
+        case .failed: return String(localized: "Retry")
+        case .done, .noReward: return String(localized: "Check In Again")
+        case .pending, .running: return String(localized: "Check In")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .pending, .running: return "clock"
+        case .done: return "checkmark.circle.fill"
+        case .noReward: return "minus.circle"
+        case .signedOut, .failed(.signedOut?): return "person.crop.circle"
+        case .failed: return "exclamationmark.circle.fill"
+        }
+    }
+
+    var color: UIColor {
+        switch self {
+        case .done: return .systemGreen
+        case .running: return .tintColor
+        case .failed(.signedOut?), .signedOut: return .systemOrange
+        case .failed: return .systemRed
+        default: return .secondaryLabel
+        }
+    }
+}
+
+private final class CheckInOverviewCell: UITableViewCell {
+    static let reuseID = "check-in-overview"
+    private let heading = UILabel()
+    private let summary = UILabel()
+    private let ring = ProgressRing()
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        selectionStyle = .none
+        isAccessibilityElement = true
+        accessibilityTraits.insert(.header)
+        heading.text = String(localized: "Today’s Check-In")
+        heading.font = .preferredFont(forTextStyle: .headline)
+        summary.font = .preferredFont(forTextStyle: .title2)
+        summary.textColor = .secondaryLabel
+        for label in [heading, summary] {
+            label.numberOfLines = 0
+            label.adjustsFontForContentSizeCategory = true
+        }
+        let text = UIStackView(arrangedSubviews: [heading, summary])
+        text.axis = .vertical
+        text.spacing = 4
+        let row = UIStackView(arrangedSubviews: [text, ring])
+        row.alignment = .center
+        row.spacing = 12
+        row.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(row)
+        let guide = contentView.layoutMarginsGuide
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+            row.topAnchor.constraint(equalTo: guide.topAnchor, constant: 8),
+            row.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -8),
+            ring.widthAnchor.constraint(equalToConstant: 44),
+            ring.heightAnchor.constraint(equalToConstant: 44),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    @objc dynamic func configure(summary: String, progress: Double, complete: Bool) {
+        self.summary.text = summary
+        accessibilityLabel = heading.text
+        accessibilityValue = summary
+        ring.tintColor = complete ? .systemGreen : .tintColor
+        ring.set(complete ? .glyph("checkmark.circle.fill") : .progress(progress), animated: false)
     }
 }
