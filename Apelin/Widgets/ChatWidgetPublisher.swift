@@ -180,8 +180,13 @@ final class ChatWidgetPublisher {
         activity.transientResult = resultNotice
         if running.isEmpty {
             let batch = ChatActivityBatch(turns: records.flatMap(\.widgetTurns))
-            let participants = listed.filter { row in
-                UUID(uuidString: row.chat.id).map(batch.chatIDs.contains) == true
+            // 冷启动时历史还没读进内存的会话不在 `listed` 里，可这一批已经
+            // 结束了：直接按这一批的会话找记录，不再要求它列出过。否则列表
+            // 拼成空的，活动被立即收掉，锁屏上只剩一块没有内容的背景。
+            let participants: [(chat: ChatWidgetSnapshot.Chat, updated: Date)] = batch.chatIDs.compactMap { id in
+                guard let record = runtime.records[id] else { return nil }
+                let project = record.summary.projectName.map { projectNames[$0] ?? $0 }
+                return (chat: chatRow(record, projectName: project), updated: record.summary.lastInteraction)
             }
             activity = ChatWidgetSnapshot(chats: participants.map { ($0.chat, $0.updated) }).inProgress
             activity.batchOutcome = batch.outcome
