@@ -51,10 +51,15 @@ struct ChatsActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     if let chat = state.mostUrgent {
-                        ChatActivitySessionRow(chat: chat, state: state)
-                            .padding(.leading, 8)
-                            .padding(.trailing, 8)
-                            .padding(.top, 4)
+                        VStack(alignment: .leading, spacing: 5) {
+                            ChatActivitySessionRow(chat: chat, state: state)
+                            if let result = state.transientResult {
+                                ChatActivityResultRow(chat: result)
+                            }
+                        }
+                        .padding(.leading, 8)
+                        .padding(.trailing, 8)
+                        .padding(.top, 4)
                     }
                 }
             } compactLeading: {
@@ -92,6 +97,8 @@ private struct ChatActivityIslandIcon: View {
     var body: some View {
         if state.waitingCount > 0 {
             symbol("exclamationmark.triangle.fill", color: WidgetTheme.island.amber, label: String(localized: "Needs Approval"))
+        } else if let result = state.transientResult {
+            symbol(result.activitySymbol, color: result.activityColor, label: result.statusWord)
         } else if state.workingCount > 0 {
             if let tool = state.currentTool {
                 ChatActivityToolIcon(tool: tool, font: font)
@@ -233,6 +240,25 @@ private struct ChatActivitySessionRow: View {
 }
 
 @available(iOS 16.2, *)
+private struct ChatActivityResultRow: View {
+    let chat: ChatWidgetSnapshot.Chat
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: chat.activitySymbol)
+                .foregroundStyle(chat.activityColor)
+                .accessibilityHidden(true)
+            Text(verbatim: "\(chat.title) · \(chat.statusWord)")
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 6)
+        }
+        .font(.caption)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+@available(iOS 16.2, *)
 private struct ChatActivityToolIcon: View {
     let tool: ChatWidgetSnapshot.ToolActivity
     let font: Font
@@ -288,6 +314,9 @@ private struct ChatLockScreenView: View {
             }
             if let chat = state.mostUrgent {
                 ChatActivitySessionRow(chat: chat, state: state)
+                if let result = state.transientResult {
+                    ChatActivityResultRow(chat: result)
+                }
             }
         }
         .foregroundStyle(theme.ink)

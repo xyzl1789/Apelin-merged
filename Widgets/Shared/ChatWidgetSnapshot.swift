@@ -62,6 +62,8 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     var currentTool: ToolActivity?
     /// 仅实时活动携带的单行回答预览，不写进主屏小组件的快照。
     var answerPreview: String?
+    /// 某个会话刚完成或失败时的短暂提示；不计入进行中数量。
+    var transientResult: Chat?
     /// 只汇总同批运行的会话，终态不再读取历史失败卡片。
     var batchOutcome: BatchOutcome?
 
@@ -101,9 +103,8 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
 
     init() {}
 
-    /// What the Live Activity shows: the conversations in progress first,
-    /// with finished ones kept so the island wears ✅ or ❌ until the user
-    /// closes the activity by hand (or the app quits).
+    /// What the Live Activity shows: the Live Activity's current chats, with
+    /// an optional short-lived result notice kept separately from active counts.
     var inProgress: ChatWidgetSnapshot {
         var activity = self
         activity.chats = Array(chats.prefix(Self.activityLimit))
@@ -132,6 +133,11 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
             result.chats[0].approvalTool = result.chats[0].approvalTool.flatMap { $0.utf8.count <= 96 ? $0 : nil }
         }
         result.answerPreview = result.answerPreview.map { Self.activityText($0, bytes: 180) }
+        if var notice = result.transientResult {
+            notice.title = Self.activityText(notice.title, bytes: 160)
+            notice.project = notice.project.map { Self.activityText($0, bytes: 120) }
+            result.transientResult = notice
+        }
         if let tool = result.currentTool {
             result.currentTool = .init(symbol: Self.activityText(tool.symbol, bytes: 64), title: Self.activityText(tool.title, bytes: 180))
         }
@@ -139,6 +145,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         if !fits(result) {
             result.answerPreview = nil
             result.currentTool = nil
+            result.transientResult = nil
             if !result.chats.isEmpty {
                 result.chats[0].title = Self.activityText(result.chats[0].title, bytes: 160)
                 result.chats[0].project = result.chats[0].project.map { Self.activityText($0, bytes: 120) }

@@ -225,6 +225,13 @@ require(activity.totalCount == 6 && activity.inProgressCount == 3, "The active c
 let finishedActivity = ChatWidgetSnapshot(chats: [chat("a", .done, 1)]).inProgress
 require(finishedActivity.totalCount == 1 && finishedActivity.inProgressCount == 0,
         "Keep the final activity state without counting it as active")
+var transientActivity = ChatWidgetSnapshot(chats: [chat("working", .working, 1)]).inProgress
+transientActivity.transientResult = chat("finished", .failed, 0).chat
+require(transientActivity.inProgressCount == 1 && transientActivity.transientResult?.status == .failed,
+        "A failed notice does not change the active count or current session")
+let transientData = try JSONEncoder().encode(transientActivity)
+try require(JSONDecoder().decode(ChatWidgetSnapshot.self, from: transientData) == transientActivity,
+            "A transient result notice round-trips independently of the batch outcome")
 require(ChatWidgetSnapshot(chats: [chat("w", .working, 9), chat("v", .working, 1)]).inProgress.mostUrgent?.id == "v",
         "With nothing waiting, the latest working")
 

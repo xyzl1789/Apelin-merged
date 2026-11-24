@@ -29,6 +29,14 @@ final class ChatWidgetPublisher {
     /// Set once a quit has ended the activity: a change queued behind the
     /// quit must not bring one back.
     @objc private dynamic static var isClosedForQuit = false
+    private struct ActivityNotice {
+        let chat: ChatWidgetSnapshot.Chat
+        let expiresAt: Date
+    }
+    /// 活动会话结束时保留五秒；失败提示优先，但不改变进行中会话的排序和计数。
+    private var knownProgressIDs: Set<UUID>?
+    private var notices: [UUID: ActivityNotice] = [:]
+    private var noticeExpiryTask: Task<Void, Never>?
     private let writer = DispatchQueue(label: "wiki.qaq.apelin.widgets.writer", qos: .utility)
     private let log = Logger(subsystem: "wiki.qaq.apelin", category: "widgets")
 
@@ -117,9 +125,33 @@ final class ChatWidgetPublisher {
             write(snapshot)
         }
         let running = listed.filter { $0.chat.isInProgress }
+        let runningIDs = Set(running.compactMap { UUID(uuidString: $0.chat.id) })
+        if let knownProgressIDs {
+            let endedIDs = knownProgressIDs.subtracting(runningIDs)
+            for row in listed where endedIDs.contains(UUID(uuidString: row.chat.id) ?? UUID()) {
+                guard row.chat.status == .done || row.chat.status == .failed,
+                      let id = UUID(uuidString: row.chat.id) else { continue }
+                notices[id] = ActivityNotice(chat: row.chat, expiresAt: Date().addingTimeInterval(5))
+            }
+        }
+        knownProgressIDs = runningIDs
+        let now = Date()
+        notices = notices.filter { _, notice in
+            runningIDs.contains(UUID(uuidString: notice.chat.id) ?? UUID()) == false && notice.expiresAt > now
+        }
+        scheduleNoticeExpiry()
         var activity = ChatWidgetSnapshot(chats: running.map { ($0.chat, $0.updated) }).inProgress
+        if !running.isEmpty {
+            activity.transientResult = notices.values
+                .filter { $0.chat.status == .failed }
+                .sorted { $0.expiresAt > $1.expiresAt }
+                .first?.chat
+                ?? notices.values.sorted { $0.expiresAt > $1.expiresAt }.first?.chat
+        }
         if running.isEmpty {
             // 批次结果只在全部结束时才用。仍有任务时不重扫历史，也不把已结束的行送给组件。
+            notices.removeAll()
+            scheduleNoticeExpiry()
             let batch = ChatActivityBatch(turns: records.flatMap(\.widgetTurns))
             let participants = listed.filter { row in
                 UUID(uuidString: row.chat.id).map(batch.chatIDs.contains) == true
@@ -150,6 +182,20 @@ final class ChatWidgetPublisher {
         if activity != shownActivity {
             shownActivity = activity
             showActivity(activity)
+        }
+    }
+
+    private func scheduleNoticeExpiry() {
+        noticeExpiryTask?.cancel()
+        guard let expiry = notices.values.map(\.expiresAt).min() else {
+            noticeExpiryTask = nil
+            return
+        }
+        let delay = max(0, expiry.timeIntervalSinceNow)
+        noticeExpiryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.publishNow()
         }
     }
 
