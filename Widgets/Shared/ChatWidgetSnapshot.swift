@@ -189,6 +189,8 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         enum Status: String, Codable, Hashable, Sendable {
             /// A turn is running.
             case working
+            /// A turn is stopping and the host has not confirmed the end.
+            case stopping
             /// A turn is running and waits for the user's approval.
             case waiting
             /// The last turn ended, or none ran yet.
@@ -211,7 +213,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         var startedAt: Date?
 
         var isInProgress: Bool {
-            status == .working || status == .waiting
+            status == .working || status == .stopping || status == .waiting
         }
 
         var link: URL {
@@ -315,7 +317,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         }
         self.chats = Array(ordered.prefix(max(0, limit)).map(\.chat))
         totalCount = chats.count
-        workingCount = chats.count { $0.chat.status == .working }
+        workingCount = chats.count { $0.chat.status == .working || $0.chat.status == .stopping }
         waitingCount = chats.count { $0.chat.status == .waiting }
         inProgressCount = workingCount + waitingCount
     }
@@ -407,8 +409,9 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     private static func rank(_ status: Chat.Status) -> Int {
         switch status {
         case .waiting: 0
-        case .working: 1
-        case .done, .failed: 2
+        case .stopping: 1
+        case .working: 2
+        case .done, .failed: 3
         }
     }
 }

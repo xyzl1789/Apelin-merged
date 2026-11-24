@@ -199,7 +199,8 @@ final class ChatWidgetPublisher {
                     activity.answerPreview = runtime.records[id]?.widgetReply(completed: true)
                 }
             }
-        } else if let chat = activity.mostUrgent, chat.status == .working,
+        } else if let chat = activity.mostUrgent,
+                  (chat.status == .working || chat.status == .stopping),
                   let id = UUID(uuidString: chat.id), let record = runtime.records[id] {
             activity.progress = record.widgetProgress
             // 还没连上或正在停止时，先前的工具行与回答预览不该盖住这个状态。

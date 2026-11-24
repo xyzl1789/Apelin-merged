@@ -5,6 +5,7 @@ extension ChatWidgetSnapshot.Chat {
     var statusWord: String {
         switch status {
         case .working: String(localized: "Working")
+        case .stopping: String(localized: "Stopping…")
         case .waiting: String(localized: "Needs Approval")
         case .done: String(localized: "Done")
         case .failed: String(localized: "Failed")
@@ -52,6 +53,9 @@ extension ChatWidgetSnapshot {
     var summaryLine: String? {
         if waitingCount > 0 {
             return String(localized: "\(waitingCount) awaiting approval")
+        }
+        if chats.first?.status == .stopping {
+            return String(localized: "Stopping…")
         }
         if workingCount > 0 {
             return String(localized: "\(workingCount) working")

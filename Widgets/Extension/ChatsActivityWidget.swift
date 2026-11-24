@@ -148,6 +148,7 @@ private extension ChatWidgetSnapshot.Chat {
     var activitySymbol: String {
         switch status {
         case .working: return "arrow.triangle.2.circlepath"
+        case .stopping: return "stop.circle.fill"
         case .waiting: return "exclamationmark.triangle.fill"
         case .done: return "checkmark.circle.fill"
         case .failed: return "xmark.circle.fill"
@@ -157,6 +158,7 @@ private extension ChatWidgetSnapshot.Chat {
     var activityColor: Color {
         switch status {
         case .working: return WidgetTheme.island.green
+        case .stopping: return WidgetTheme.island.amber
         case .waiting: return WidgetTheme.island.amber
         case .done: return WidgetTheme.island.idle
         case .failed: return WidgetTheme.island.red
@@ -171,7 +173,21 @@ private struct ChatActivitySessionRow: View {
     let chat: ChatWidgetSnapshot.Chat
     let state: ChatWidgetSnapshot
 
+    private var currentPhase: (symbol: String, title: String, detail: String?) {
+        if let tool = state.currentTool {
+            return (tool.symbol, tool.title, nil)
+        }
+        if let progress = state.progress {
+            return (progress.symbol, progress.title, progress.detail)
+        }
+        if let answer = state.answerPreview {
+            return ("text.bubble", String(localized: "Replying…"), answer)
+        }
+        return (chat.activitySymbol, chat.statusLine, nil)
+    }
+
     var body: some View {
+        let phase = currentPhase
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
                 Image(systemName: "bubble.left.fill")
@@ -187,7 +203,7 @@ private struct ChatActivitySessionRow: View {
                 }
                 Spacer(minLength: 6)
                 // 照 Minis：计时胶囊在标题行右侧（Spacer 之后），caption2 字号。
-                if let start = chat.startedAt, chat.status == .working || chat.status == .waiting {
+                if let start = chat.startedAt, chat.status == .working || chat.status == .stopping || chat.status == .waiting {
                     Text("00:00")
                         .font(.caption2.monospacedDigit())
                         .hidden()
@@ -204,10 +220,10 @@ private struct ChatActivitySessionRow: View {
             }
             HStack(spacing: 5) {
                 let stopped = state.inProgressCount == 0 && state.batchOutcome == .stopped
-                Image(systemName: stopped ? "stop.circle.fill" : chat.activitySymbol)
+                Image(systemName: stopped ? "stop.circle.fill" : phase.symbol)
                     .font(.caption)
                     .foregroundStyle(stopped ? WidgetTheme.island.amber : chat.activityColor)
-                Text(verbatim: stopped ? String(localized: "Stopped") : chat.statusLine)
+                Text(verbatim: stopped ? String(localized: "Stopped") : phase.title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -217,20 +233,9 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
-            if chat.status != .waiting {
-                if let tool = state.currentTool {
-                    activityDetail(symbol: tool.symbol, title: tool.title)
-                } else if let progress = state.progress {
-                    // 实时进度行：思考显示实际流出的内容，工具阶段用详情页同款图标。
-                    activityDetail(symbol: progress.symbol,
-                                   title: progress.detail.map { "\(progress.title) — \($0)" } ?? progress.title)
-                        .privacySensitive()
-                } else if let answer = state.answerPreview {
-                    activityDetail(symbol: "text.bubble", title: answer)
-                        .privacySensitive()
-                } else if chat.status == .working {
-                    activityDetail(symbol: "ellipsis.bubble", title: String(localized: "Thinking…"))
-                }
+            if chat.status != .waiting, let detail = phase.detail {
+                activityDetail(symbol: phase.symbol, title: detail)
+                    .privacySensitive()
             }
         }
     }

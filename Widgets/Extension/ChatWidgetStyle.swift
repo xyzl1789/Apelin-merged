@@ -51,6 +51,7 @@ struct WidgetTheme {
     func color(for status: ChatWidgetSnapshot.Chat.Status) -> Color {
         switch status {
         case .working: green
+        case .stopping: amber
         case .waiting: amber
         case .done: idle
         case .failed: red

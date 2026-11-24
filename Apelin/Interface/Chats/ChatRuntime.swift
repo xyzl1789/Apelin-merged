@@ -1662,6 +1662,20 @@ final class ChatRuntime {
                     if !fresh.isEmpty { eventCounts[id] = records[id]?.events.count ?? 0 }
                     for event in fresh { activity.apply(event) }
                     let realtime = fresh.filter { !ChatFork.isHistorical($0) }
+                    // Stop 的回执可能晚于下一轮消息；新回合一旦真正开始，
+                    // 旧的 stopping 只能失效，不能继续覆盖顶部状态。
+                    if realtime.contains(where: {
+                        switch $0.kind {
+                        case "prompt", "steer", "messageStarted", "compactionStarted": true
+                        default: false
+                        }
+                    }) {
+                        // An old abort may answer after the next prompt. Once
+                        // the new turn is recorded, that continuation no longer
+                        // owns the row or the live activity.
+                        stopContinuations[id] = nil
+                        records[id]?.run = .running
+                    }
                     // 有事件到达就说明模型还在动：看门狗重新计时。
                     if !realtime.isEmpty {
                         self.lastActivity[id] = .now

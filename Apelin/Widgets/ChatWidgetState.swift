@@ -97,9 +97,9 @@ extension ChatRecord {
     /// 再是流式思考内容，最后是回答预览。
     var widgetProgress: ChatWidgetProgress? {
         guard summary.isWorking else { return nil }
-        // 已点停止、host 还没确认：这一轮真正在做的就是收尾。
+        // 只认运行时的停止标记，不把旧回合最后一段输出误认成新回合。
         if run == .stopping {
-            return .init(stage: .stopping, symbol: "stop.circle",
+            return .init(stage: .stopping, symbol: "stop.circle.fill",
                          title: String(localized: "Stopping…"), detail: nil)
         }
         var completed: Set<String> = []
@@ -390,7 +390,11 @@ extension ChatRecord {
         }
         let approval = summary.isWorking ? widgetPendingApproval : nil
         let status: ChatWidgetSnapshot.Chat.Status = if summary.isWorking {
-            approval == nil ? .working : .waiting
+            if run == .stopping {
+                .stopping
+            } else {
+                approval == nil ? .working : .waiting
+            }
         } else {
             failed ? .failed : .done
         }

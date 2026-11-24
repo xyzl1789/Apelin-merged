@@ -100,8 +100,9 @@ do {
     precondition(compacted?.stage != .compacting, "a finished compaction is not running")
 
     let stopping = progress([event(2, "messageStarted")], run: .stopping)
-    precondition(stopping?.stage == .stopping && stopping?.symbol == "stop.circle")
+    precondition(stopping?.stage == .stopping && stopping?.symbol == "stop.circle.fill")
     precondition(stopping?.hidesToolAndPreview == true)
+    precondition(record.widgetChat(projectName: nil).status == .stopping, "the row status matches the stopping phase")
 
     // 前面还有一轮时，本轮的进度不能被上一轮的结束事件清掉（这就是
     // 「只有第一轮能看到思考内容」的由来）。
