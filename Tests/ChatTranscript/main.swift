@@ -130,6 +130,20 @@ do {
     precondition(progress([event(2, "reconnecting")]) == nil, "so does a conversation at rest")
 }
 
+// 被收回的回答消失时留一行说明，而不是凭空不见、再从头出现。
+do {
+    let events = [
+        event(1, "prompt"), event(2, "messageStarted"),
+        event(3, "text", ["text": .string("写到一半")]),
+        event(4, "messageDiscarded"),
+        event(5, "messageStarted"), event(6, "text", ["text": .string("写完了")]),
+    ]
+    let rows = ChatTranscript(events: events) { _ in nil }.messages
+    precondition(rows.contains { $0.failure?.title == "Reply Interrupted" }, "the take-back leaves a note")
+    precondition(!rows.contains { $0.text == "写到一半" }, "and the abandoned text is gone")
+    precondition(rows.contains { $0.text == "写完了" }, "the reply asked again is the one shown")
+}
+
 // 实时活动的回答预览取自当前助手消息，且批次结果与历史失败隔离。
 do {
     var record = ChatRecord(summary: ChatSummary(title: "日期", lastInteraction: Date()))

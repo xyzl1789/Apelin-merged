@@ -306,6 +306,14 @@ struct ChatTranscript {
                 assistant = nil
                 unanswered = attempt.unanswered
                 self.attempt = nil
+                // 收回去的内容不留，但要留一句为什么：否则读者只看到
+                // 回答凭空消失，再从头出现一遍。
+                var notice = ChatMessage(id: id, role: .assistant, text: String(localized: "Reply Interrupted"))
+                notice.failure = ChatFailure(
+                    title: String(localized: "Reply Interrupted"),
+                    detail: String(localized: "The model provider ended this reply before it finished. Asking again."),
+                )
+                add(notice)
             case "reconnecting":
                 reconnecting = true
             case "thinking":

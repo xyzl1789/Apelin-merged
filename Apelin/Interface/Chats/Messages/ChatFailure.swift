@@ -12,6 +12,13 @@ struct ChatFailure: Hashable {
     var title: String
     var detail: String
 
+    /// A failure whose two lines this file does not make: the row a reply
+    /// kwwk took back leaves behind (`messageDiscarded`).
+    init(title: String, detail: String) {
+        self.title = title
+        self.detail = detail
+    }
+
     /// An `error` event's failure: `message` as it was recorded, `reason`
     /// when the agent gave one.
     init(message: String, reason: ApelinError.Reason?) {
