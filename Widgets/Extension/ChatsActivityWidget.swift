@@ -74,17 +74,21 @@ struct ChatsActivityWidget: Widget {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(state.summaryLine ?? ""))
             } compactTrailing: {
-                // 照 minis 的 CompactTrailingView：右侧显示工作状态符号，
-                // 颜色随状态（等待琥珀、失败红、进行中绿），切换时淡入淡出。
-                Image(systemName: state.statusSymbol)
-                    .font(.body)
-                    .foregroundStyle(state.statusColor)
-                    .id(state.statusSymbol)
-                    .transition(.opacity.animation(.easeInOut(duration: 0.35)))
+                if let tool = state.currentTool {
+                    ChatActivityToolIcon(tool: tool, font: .body)
+                } else {
+                    Image(systemName: state.statusSymbol)
+                        .font(.body)
+                        .foregroundStyle(state.statusColor)
+                        .id(state.statusSymbol)
+                        .transition(.opacity.animation(.easeInOut(duration: 0.35)))
+                }
             } minimal: {
-                // 多个实时活动折叠成一点时只画标记本体。原先在图标右上角
-                // 叠的计数小字（9pt，offset 8,-8）在小岛里又挤又难看，去掉。
-                MarkView(size: 26, braces: .white)
+                if let tool = state.currentTool {
+                    ChatActivityToolIcon(tool: tool, font: .caption)
+                } else {
+                    MarkView(size: 26, braces: .white)
+                }
             }
             .widgetURL(state.mostUrgent?.link)
         }
@@ -138,8 +142,8 @@ private extension ChatWidgetSnapshot.Chat {
     }
 }
 
-/// 展开岛底部与锁屏共用的当前会话行：会话气泡 + 标题，状态图标 + 状态词，
-/// 多于一个进行中会话时带上序号。
+/// 展开岛底部与锁屏共用的当前会话行：保留原有的标题与状态布局，
+/// 有工具正在运行时在状态行下方单列操作说明。
 @available(iOS 16.2, *)
 private struct ChatActivitySessionRow: View {
     let chat: ChatWidgetSnapshot.Chat
@@ -190,7 +194,33 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
+            if chat.status == .working, let tool = state.currentTool {
+                HStack(spacing: 5) {
+                    ChatActivityToolIcon(tool: tool, font: .caption)
+                        .accessibilityHidden(true)
+                    Text(verbatim: tool.title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
+    }
+}
+
+@available(iOS 16.2, *)
+private struct ChatActivityToolIcon: View {
+    let tool: ChatWidgetSnapshot.ToolActivity
+    let font: Font
+
+    var body: some View {
+        Image(systemName: tool.symbol)
+            .font(font)
+            .foregroundStyle(.blue)
+            .id(tool.symbol)
+            .transition(.opacity.animation(.easeInOut(duration: 0.35)))
+            .accessibilityLabel(Text(verbatim: tool.title))
     }
 }
 

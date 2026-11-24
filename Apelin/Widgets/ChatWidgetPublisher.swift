@@ -103,7 +103,11 @@ final class ChatWidgetPublisher {
             written = snapshot
             write(snapshot)
         }
-        let activity = snapshot.inProgress
+        var activity = snapshot.inProgress
+        if let chat = activity.mostUrgent, chat.status == .working,
+           let id = UUID(uuidString: chat.id) {
+            activity.currentTool = runtime.records[id]?.widgetCurrentTool
+        }
         if activity != shownActivity {
             shownActivity = activity
             showActivity(activity, rebuild: !hasRebuiltLegacyActivity)

@@ -965,7 +965,7 @@ struct ChatTranscript {
     /// A call's title, by the tool it names: today's name or one an earlier
     /// release recorded (`AgentToolName.canonical`), so an old conversation
     /// reads as a new one does. A tool added without a title does not build.
-    private static func toolTitle(_ name: String, arguments: String?) -> String {
+    static func toolTitle(_ name: String, arguments: String?) -> String {
         guard let tool = AgentToolName.canonical(name) else {
             return name.replacingOccurrences(of: "_", with: " ").capitalized
         }

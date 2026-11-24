@@ -219,16 +219,21 @@ require(snapshot.totalCount == 6 && snapshot.workingCount == 2 && snapshot.waiti
 require(snapshot.mostUrgent?.id == "waiting", "The one waiting most needs a look")
 
 let activity = snapshot.inProgress
-require(activity.chats.map(\.id) == ["waiting", "working-new", "working-old"], "The activity lists only chats in progress")
-require(activity.totalCount == 3, "Its count is of chats in progress")
-require(ChatWidgetSnapshot(chats: [chat("a", .done, 1)]).inProgress.totalCount == 0, "Nothing in progress, no activity")
+require(activity.chats.map(\.id) == ["waiting", "working-new", "working-old", "new-done"],
+        "Activity puts live chats first and keeps finished chats up to its display limit")
+require(activity.totalCount == 6 && activity.inProgressCount == 3, "The active count excludes finished chats")
+let finishedActivity = ChatWidgetSnapshot(chats: [chat("a", .done, 1)]).inProgress
+require(finishedActivity.totalCount == 1 && finishedActivity.inProgressCount == 0,
+        "Keep the final activity state without counting it as active")
 require(ChatWidgetSnapshot(chats: [chat("w", .working, 9), chat("v", .working, 1)]).inProgress.mostUrgent?.id == "v",
         "With nothing waiting, the latest working")
 
 let many = ChatWidgetSnapshot(chats: (0 ..< 20).map { chat("c\($0)", .done, TimeInterval($0)) })
 require(many.chats.count == ChatWidgetSnapshot.listLimit && many.totalCount == 20, "The list is capped, the count is not")
-let busy = ChatWidgetSnapshot(chats: (0 ..< 9).map { chat("w\($0)", .working, TimeInterval($0)) }).inProgress
-require(busy.chats.count == ChatWidgetSnapshot.activityLimit && busy.totalCount == 9, "The activity's payload is capped")
+var busy = ChatWidgetSnapshot(chats: (0 ..< 9).map { chat("w\($0)", .working, TimeInterval($0)) }).inProgress
+require(busy.chats.count == ChatWidgetSnapshot.activityLimit && busy.inProgressCount == 9,
+        "The activity caps its listed chats without losing the active count")
+busy.currentTool = .init(symbol: "doc.text", title: "Read Widget.swift")
 let encoded = try JSONEncoder().encode(busy)
 require(encoded.count < 4096, "The activity's payload stays within ActivityKit's 4 KB")
 try require(JSONDecoder().decode(ChatWidgetSnapshot.self, from: encoded) == busy, "The snapshot round-trips")

@@ -10,6 +10,57 @@ checkStreamPresentation()
 checkPendingQueuePresentation()
 try checkShareTransfer()
 
+// 实时活动只显示本回合尚未返回结果的工具，也不显示路径或私密参数。
+do {
+    var record = ChatRecord(summary: ChatSummary(title: "Work", lastInteraction: Date()))
+    record.summary.isWorking = true
+    let read = event(2, "toolCall", [
+        "id": .string("read"), "tool": .string("file_read"),
+        "arguments": .string(#"{"path":"Sources/Widget.swift","reason":"private reason"}"#),
+    ])
+    record.events = [event(1, "prompt"), read]
+    let current = record.widgetCurrentTool
+    precondition(current?.symbol == "doc.text")
+    precondition(current?.title.contains("Widget.swift") == true)
+    precondition(current?.title.contains("Sources/") == false && current?.title.contains("private reason") == false)
+
+    record.events.append(event(3, "toolCall", [
+        "id": .string("shell"), "tool": .string("shell_run"),
+        "arguments": .string(#"{"command":"private command"}"#),
+    ]))
+    precondition(record.widgetCurrentTool?.symbol == "terminal")
+    precondition(record.widgetCurrentTool?.title.contains("private command") == false)
+    record.events.append(event(4, "toolResult", ["id": .string("shell")]))
+    precondition(record.widgetCurrentTool == current)
+    record.events.append(event(5, "toolResult", ["id": .string("read")]))
+    precondition(record.widgetCurrentTool == nil)
+
+    for end in [event(3, "finished"), event(3, "prompt"), event(3, TaskEvent.stateKind, ["state": .string("interrupted")])] {
+        record.events = [event(1, "prompt"), read, end]
+        precondition(record.widgetCurrentTool == nil)
+    }
+    record.events = [event(1, "toolCall", [
+        "id": .string("old"), "tool": .string("file_read"), "historical": .bool(true),
+    ])]
+    precondition(record.widgetCurrentTool == nil)
+    record.events = [event(1, "toolCall", [
+        "id": .string("absolute"), "tool": .string("file_read"),
+        "arguments": .string(#"{"path":"/private/folder/secret.txt"}"#),
+    ])]
+    precondition(record.widgetCurrentTool?.symbol == "doc.text")
+    precondition(record.widgetCurrentTool?.title.contains("secret.txt") == false)
+    record.summary.isWorking = false
+    precondition(record.widgetCurrentTool == nil)
+
+    let legacy = try JSONEncoder().encode(ChatWidgetSnapshot.empty)
+    var snapshot = try JSONDecoder().decode(ChatWidgetSnapshot.self, from: legacy)
+    precondition(snapshot.currentTool == nil)
+    snapshot.currentTool = current
+    let encoded = try JSONEncoder().encode(snapshot)
+    let decoded = try JSONDecoder().decode(ChatWidgetSnapshot.self, from: encoded)
+    precondition(decoded == snapshot)
+}
+
 let userID = UUID()
 let events = [
     event(1, "prompt", ["id": .string(userID.uuidString), "text": .string("Make a change")]),

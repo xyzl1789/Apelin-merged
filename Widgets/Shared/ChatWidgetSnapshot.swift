@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import UIKit
 
 /// What the widgets show of the conversations, written by the app and read
 /// by the widget extension; the Live Activity's payload is the same shape,
@@ -11,6 +10,11 @@ import UIKit
 /// the order before it writes. No date is kept, so a conversation that only
 /// streams more text writes nothing and reloads no widget.
 struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
+    struct ToolActivity: Codable, Hashable, Sendable {
+        let symbol: String
+        let title: String
+    }
+
     struct Chat: Codable, Hashable, Sendable, Identifiable {
         enum Status: String, Codable, Hashable, Sendable {
             /// A turn is running.
@@ -54,6 +58,8 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     var inProgressCount = 0
     var workingCount = 0
     var waitingCount = 0
+    /// 仅实时活动携带，且只保留当前显示的一个会话的工具信息。
+    var currentTool: ToolActivity?
 
     static let empty = ChatWidgetSnapshot()
 
