@@ -79,7 +79,7 @@ struct ChatsActivityWidget: Widget {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(state.summaryLine ?? ""))
             } compactTrailing: {
-                ChatActivityIslandIcon(state: state, font: .body)
+                ChatActivityIslandIcon(state: state, font: .callout)
             } minimal: {
                 ChatActivityIslandIcon(state: state, font: .caption)
             }
@@ -88,30 +88,18 @@ struct ChatsActivityWidget: Widget {
     }
 }
 
-/// 审批优先，其次是单会话短提示；没有运行会话时才显示批次结果。
+/// 收起态跟随锁屏主行；另一条会话的短提示留在卡片自己的结果行。
 @available(iOS 16.2, *)
 private struct ChatActivityIslandIcon: View {
     let state: ChatWidgetSnapshot
     let font: Font
 
     var body: some View {
-        if state.waitingCount > 0 {
-            symbol("exclamationmark.triangle.fill", color: WidgetTheme.island.amber, label: String(localized: "Needs Approval"))
-        } else if let result = state.transientResult {
-            let failed = result.chat.status == .failed
-            symbol(failed ? "xmark" : "checkmark", color: failed ? WidgetTheme.island.red : WidgetTheme.island.green,
-                   label: "\(result.chat.statusWord) · \(result.chat.title)")
-        } else if state.workingCount > 0 {
-            if let tool = state.currentTool {
-                ChatActivityToolIcon(tool: tool, font: font)
-            } else if let progress = state.progress {
-                symbol(progress.symbol, color: .blue, label: progress.title)
-                    .privacySensitive(progress.stage == .tool)
-            } else if state.answerPreview != nil {
-                symbol("text.bubble", color: .blue, label: String(localized: "Replying…"))
-            } else {
-                symbol("ellipsis.bubble", color: WidgetTheme.island.green, label: String(localized: "Thinking…"))
-            }
+        if let chat = state.mostUrgent {
+            let phase = state.sessionPhase(for: chat)
+            // 工具图标本身不含参数；不让隐私遮盖把整个图标藏起来。
+            symbol(phase.symbol, color: phase.color,
+                   label: phase.isTool ? chat.statusWord : phase.title)
         } else if let result = state.finishedBadge {
             symbol(result.symbol, color: result.color, label: result.label)
         } else {
@@ -166,36 +154,40 @@ private extension ChatWidgetSnapshot.Chat {
     }
 }
 
-/// 展开岛底部与锁屏共用的当前会话行：保留原有的标题与状态布局，
-/// 下方的一行随思考、工具调用和回答进度切换。
+/// 锁屏、展开岛和收起岛从同一主会话阶段选图标，不混入其他会话的结果。
+@available(iOS 16.2, *)
+private extension ChatWidgetSnapshot {
+    func sessionPhase(for chat: Chat) -> (symbol: String, color: Color, title: String, detail: String?, isTool: Bool) {
+        if let badge = finishedBadge {
+            let detail = batchOutcome == .succeeded ? answerPreview : nil
+            let title = batchOutcome == .stopped ? badge.label : chat.statusLine
+            return (badge.symbol, badge.color, title, detail, false)
+        }
+        if chat.isInProgress, let progress {
+            if progress.stage == .waitingForApproval {
+                let detail = [progress.title, progress.detail].compactMap { $0 }.joined(separator: " — ")
+                return (progress.symbol, chat.activityColor, chat.statusWord, detail, false)
+            }
+            return (progress.symbol, chat.activityColor, progress.title, progress.detail, progress.stage == .tool)
+        }
+        if chat.status == .working, let tool = currentTool {
+            return (tool.symbol, chat.activityColor, tool.title, tool.detail, true)
+        }
+        if chat.status == .working, let answer = answerPreview {
+            return ("text.bubble", chat.activityColor, String(localized: "Replying…"), answer, false)
+        }
+        return (chat.activitySymbol, chat.activityColor, chat.statusLine, nil, false)
+    }
+}
+
+/// 展开岛底部与锁屏共用的当前会话行。
 @available(iOS 16.2, *)
 private struct ChatActivitySessionRow: View {
     let chat: ChatWidgetSnapshot.Chat
     let state: ChatWidgetSnapshot
 
-    private var currentPhase: (symbol: String, title: String, detail: String?) {
-        if chat.isInProgress, let progress = state.progress {
-            if progress.stage == .waitingForApproval {
-                return (progress.symbol, chat.statusWord, [progress.title, progress.detail].compactMap { $0 }.joined(separator: " — "))
-            }
-            return (progress.symbol, progress.title, progress.detail)
-        }
-        // 完成后的回答只作预览，不能把会话状态改回「正在回答」。
-        guard chat.status == .working || chat.status == .stopping else {
-            let detail = chat.status == .done && state.batchOutcome == .succeeded ? state.answerPreview : nil
-            return (chat.activitySymbol, chat.statusLine, detail)
-        }
-        if let tool = state.currentTool {
-            return (tool.symbol, tool.title, tool.detail)
-        }
-        if let answer = state.answerPreview {
-            return ("text.bubble", String(localized: "Replying…"), answer)
-        }
-        return (chat.activitySymbol, chat.statusLine, nil)
-    }
-
     var body: some View {
-        let phase = currentPhase
+        let phase = state.sessionPhase(for: chat)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
                 Image(systemName: "bubble.left.fill")
@@ -229,18 +221,17 @@ private struct ChatActivitySessionRow: View {
                 }
             }
             HStack(spacing: 5) {
-                let stopped = state.inProgressCount == 0 && state.batchOutcome == .stopped
-                Image(systemName: stopped ? "stop.circle.fill" : phase.symbol)
+                Image(systemName: phase.symbol)
                     .font(.caption)
-                    .foregroundStyle(stopped ? WidgetTheme.island.amber : chat.activityColor)
+                    .foregroundStyle(phase.color)
                     .frame(width: 16)
                     .accessibilityHidden(true)
-                Text(verbatim: stopped ? String(localized: "Stopped") : phase.title)
+                Text(verbatim: phase.title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .layoutPriority(1)
-                    .privacySensitive(chat.isInProgress && state.progress?.stage == .tool)
+                    .privacySensitive(phase.isTool)
                 Spacer(minLength: 6)
                 Text(verbatim: chat.projectName)
                     .font(.caption2)
@@ -294,21 +285,6 @@ private struct ChatActivityResultRow: View {
         }
         .font(.caption)
         .accessibilityElement(children: .combine)
-    }
-}
-
-@available(iOS 16.2, *)
-private struct ChatActivityToolIcon: View {
-    let tool: ChatWidgetSnapshot.ToolActivity
-    let font: Font
-
-    var body: some View {
-        Image(systemName: tool.symbol)
-            .font(font)
-            .foregroundStyle(.blue)
-            .id(tool.symbol)
-            .transition(.opacity.animation(.easeInOut(duration: 0.35)))
-            .accessibilityLabel(Text(verbatim: tool.title))
     }
 }
 
