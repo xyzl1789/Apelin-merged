@@ -12,6 +12,8 @@ struct ChatWidgetProgress: Codable, Hashable, Sendable {
         case waitingForNetwork
         /// 压缩上下文。
         case compacting
+        /// 已完成当前工具，等待下一阶段事件。
+        case waitingForNextStep
         /// 已请求停止，host 还没确认。
         case stopping
     }
@@ -22,11 +24,10 @@ struct ChatWidgetProgress: Codable, Hashable, Sendable {
     /// Thinking text is the actual streamed reasoning, not a placeholder.
     let detail: String?
 
-    /// 还没连上或正在停止时，先前的工具行和回答预览不该盖住这个状态：
-    /// 那正是「明明没连上却显示在思考」的来源。
+    /// 还没连上、已完成当前步骤或正在停止时，先前的工具行和回答预览不该盖住这个状态。
     var hidesToolAndPreview: Bool {
         switch stage {
-        case .reconnecting, .waitingForNetwork, .stopping: true
+        case .reconnecting, .waitingForNetwork, .waitingForNextStep, .stopping: true
         case .thinking, .tool, .replying, .compacting: false
         }
     }

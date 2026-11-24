@@ -131,6 +131,39 @@ do {
     precondition(progress([event(2, "reconnecting")]) == nil, "so does a conversation at rest")
 }
 
+// 工具没结束时不闪回旧思考；结果只结束对应的调用。
+do {
+    var record = ChatRecord(summary: ChatSummary(title: "阶段切换", lastInteraction: Date()))
+    record.summary.isWorking = true
+    record.events = [event(1, "prompt"), event(2, "thinking", ["text": .string("旧思考")])]
+    let thinkingSignal = record.widgetStepSignal
+    record.events.append(event(3, "thinking", ["text": .string("，继续")]))
+    precondition(record.widgetStepSignal == thinkingSignal, "同一段正文不绕过节流")
+    record.events.append(event(4, "toolCallPreparing"))
+    precondition(record.widgetProgress?.stage == .tool && record.widgetProgress?.detail == nil)
+    let preparingSignal = record.widgetStepSignal
+    record.events.append(event(5, "toolCall", ["id": .string("read"), "tool": .string("file_read")]))
+    let reading = record.widgetProgress
+    let readingSignal = record.widgetStepSignal
+    precondition(reading?.stage == .tool && reading?.symbol == "doc.text" && readingSignal != preparingSignal)
+    record.events.append(event(6, "contextUsage"))
+    precondition(record.widgetProgress == reading && record.widgetStepSignal == readingSignal)
+    record.events.append(event(7, "toolCall", ["id": .string("find"), "tool": .string("file_find")]))
+    precondition(record.widgetProgress?.symbol == "magnifyingglass" && record.widgetStepSignal != readingSignal)
+    record.events.append(event(8, "toolResult", ["id": .string("find")]))
+    precondition(record.widgetProgress == reading, "并行搜索返回后仍有读取在运行")
+    record.events.append(event(9, "toolResult", ["id": .string("read")]))
+    precondition(record.widgetProgress?.stage == .waitingForNextStep && record.widgetProgress?.detail == nil)
+    let waitingSignal = record.widgetStepSignal
+    record.events.append(event(10, "thinking", ["text": .string("新思考")]))
+    precondition(record.widgetProgress?.stage == .thinking && record.widgetProgress?.detail == "新思考")
+    precondition(record.widgetStepSignal != waitingSignal)
+    record.events.append(event(11, "text", ["text": .string("正在回答")]))
+    precondition(record.widgetProgress?.stage == .replying && record.widgetProgress?.detail == "正在回答")
+    record.events.append(event(12, "finished"))
+    precondition(record.widgetProgress == nil)
+}
+
 // 被收回的回答消失时留一行说明，而不是凭空不见、再从头出现。
 do {
     let events = [
@@ -693,19 +726,18 @@ let cutOff = [
     event(4, "text", ["text": .string("The hook ch")]),
     event(5, "messageDiscarded"), event(6, "reconnecting"),
 ]
-let answeringRows = ChatTranscript(events: Array(cutOff.prefix(2))) { _ in nil }.messages
-let cutOffRows = ChatTranscript(events: cutOff) { _ in nil }.messages
-precondition(cutOffRows.map(\.role) == [.user, .thinking(seconds: nil, tools: 0)], "the partial reply goes: \(cutOffRows)")
-precondition(cutOffRows.last?.id == answeringRows.last?.id, "the summary keeps its id")
-precondition(cutOffRows.last?.text.isEmpty == true, "and the given-up thought goes with it")
+let cutOffRows = ChatTranscript(events: cutOff, now: Date(timeIntervalSince1970: 10)) { _ in nil }.messages
+precondition(cutOffRows.filter { $0.failure != nil }.count == 1, "the interruption leaves a notice")
+precondition(!cutOffRows.contains { $0.text == "The hook ch" || $0.text == "It chains" }, "the abandoned answer and thought are gone")
+precondition(cutOffRows.last?.role.isThinking == true && cutOffRows.last?.text.isEmpty == true)
 precondition(cutOffRows.last?.recovery == .reconnecting && cutOffRows.last?.activityTitle == "Reconnecting…")
 let cutOffRetried = cutOff + [
     event(7, "messageStarted"), event(8, "text", ["text": .string("The hook chains to the original.")]),
     event(9, "message", ["text": .string("The hook chains to the original.")]), event(10, "finished"),
 ]
 let retriedRunning = ChatTranscript(events: Array(cutOffRetried.prefix(7))) { _ in nil }.messages.last
-precondition(retriedRunning?.id == answeringRows.last?.id && retriedRunning?.activityTitle == "Thinking…", "a new attempt ends it")
-let retriedReplies = ChatTranscript(events: cutOffRetried) { _ in nil }.messages.filter { $0.role == .assistant }
+precondition(retriedRunning?.id == cutOffRows.last?.id && retriedRunning?.activityTitle == "Thinking…", "a new attempt takes the retry summary's ID")
+let retriedReplies = ChatTranscript(events: cutOffRetried) { _ in nil }.messages.filter(\.isReply)
 precondition(retriedReplies.map(\.text) == ["The hook chains to the original."], "the reply is drawn once: \(retriedReplies.map(\.text))")
 let callThenRetry = [
     event(1, "prompt", ["text": .string("Build it")]), event(2, "messageStarted"),

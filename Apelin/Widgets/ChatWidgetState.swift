@@ -62,12 +62,24 @@ struct ChatActivityFocus: Hashable {
     let id: UUID
     let lastInteraction: Date
     let approvalID: String?
+    let isStopping: Bool
+
+    /// 与实时活动的排序一致，不必为选出首行扫描每条会话的历史。
+    static func precedes(_ lhs: Self, _ rhs: Self) -> Bool {
+        if lhs.rank != rhs.rank { return lhs.rank < rhs.rank }
+        if lhs.lastInteraction != rhs.lastInteraction { return lhs.lastInteraction > rhs.lastInteraction }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+
+    private var rank: Int { approvalID != nil ? 0 : (isStopping ? 1 : 2) }
 }
 
 extension ChatRecord {
     var widgetFocus: ChatActivityFocus? {
         guard summary.isWorking else { return nil }
-        return .init(id: summary.id, lastInteraction: summary.lastInteraction, approvalID: widgetPendingApproval?.id)
+        let stopping = run == .stopping
+        return .init(id: summary.id, lastInteraction: summary.lastInteraction,
+                     approvalID: stopping ? nil : widgetPendingApproval?.id, isStopping: stopping)
     }
 
     /// 从尾部查最后一张未处理的审批卡，不为每段流式文字重扫整份历史。
@@ -93,99 +105,93 @@ extension ChatRecord {
         return nil
     }
 
-    /// 当前会话在详情页下方的实际阶段：连接状态与收尾优先，其次是工具，
-    /// 再是流式思考内容，最后是回答预览。
+    /// 忽略用量等辅助事件，只跟随实际改变展示步骤的事件。
+    private static func isWidgetStep(_ event: TaskEvent) -> Bool {
+        guard !ChatFork.isHistorical(event) else { return false }
+        switch event.kind {
+        case "prompt", "steer", "messageStarted", "messageDiscarded", "finished",
+             "reconnecting", "waitingForNetwork", "compactionStarted", "compactionFinished",
+             "toolCallPreparing", "toolCall", "toolResult", "approvalRequested", "approvalResolved",
+             "error", "thinking", "text", "message", "historyRewound": return true
+        case TaskEvent.stateKind: return ChatTranscript.endsTask(event)
+        default: return false
+        }
+    }
+
+    /// 同一段流的文字仍合并发布；工具开始、结果和其他阶段边界不等节流。
+    var widgetStepSignal: String? {
+        guard summary.isWorking else { return nil }
+        if run == .stopping { return "stopping" }
+        guard let index = events.lastIndex(where: Self.isWidgetStep) else { return nil }
+        switch events[index].kind {
+        case "thinking": return "thinking"
+        case "text", "message": return "replying"
+        default: return "event:\(index)"
+        }
+    }
+
     var widgetProgress: ChatWidgetProgress? {
         guard summary.isWorking else { return nil }
-        // 只认运行时的停止标记，不把旧回合最后一段输出误认成新回合。
         if run == .stopping {
             return .init(stage: .stopping, symbol: "stop.circle.fill",
                          title: String(localized: "Stopping…"), detail: nil)
         }
-        var completed: Set<String> = []
-        var latestThinking = ""
-        var sawReply = false
-        var sawTurn = false
-        // 连接状态只在它是这一轮最新的说法时成立：之后任何推进回合的事件都把它清掉。
-        var linking = true
-        var compacted = false
-        scan: for event in events.reversed() where !ChatFork.isHistorical(event) {
-            let payload = event.payload
-            switch event.kind {
-            case "prompt", "steer":
-                sawTurn = true
-                // 本轮从这里开始：再往前是别的回合，它自己的结束事件不能清掉这一轮。
-                break scan
-            case "finished":
-                return nil
-            case TaskEvent.stateKind:
-                if let state = payload? ["state"]?.stringValue.flatMap(TaskState.init(rawValue:)), state.isTerminal { return nil }
-                linking = false
-            case "reconnecting" where linking:
-                return .init(stage: .reconnecting, symbol: "arrow.triangle.2.circlepath",
-                             title: String(localized: "Reconnecting…"), detail: nil)
-            case "waitingForNetwork" where linking:
-                return .init(stage: .waitingForNetwork, symbol: "wifi.exclamationmark",
-                             title: String(localized: "Waiting for Network…"), detail: nil)
-            case "compactionStarted":
-                // 倒着读：先遇到 compactionFinished 说明压缩已经结束。
-                if !compacted {
-                    return .init(stage: .compacting, symbol: "rectangle.compress.vertical",
-                                 title: String(localized: "Compacting Chat"), detail: nil)
+        let steps = events.reversed().lazy.filter(Self.isWidgetStep)
+        guard let step = steps.first else { return nil }
+        switch step.kind {
+        case "finished", TaskEvent.stateKind: return nil
+        case "reconnecting":
+            return .init(stage: .reconnecting, symbol: "arrow.triangle.2.circlepath",
+                         title: String(localized: "Reconnecting…"), detail: nil)
+        case "waitingForNetwork":
+            return .init(stage: .waitingForNetwork, symbol: "wifi.exclamationmark",
+                         title: String(localized: "Waiting for Network…"), detail: nil)
+        case "compactionStarted":
+            return .init(stage: .compacting, symbol: "rectangle.compress.vertical",
+                         title: String(localized: "Compacting Chat"), detail: nil)
+        case "prompt", "steer", "messageStarted":
+            return .init(stage: .thinking, symbol: "brain.head.profile", title: String(localized: "Thinking"), detail: nil)
+        case "compactionFinished", "approvalRequested", "error", "messageDiscarded", "historyRewound":
+            return Self.widgetWaitingForNextStep
+        default: break
+        }
+
+        // 某个并行工具返回时，仍保留尚未结束的调用，而不是回到更早的思考。
+        if let tool = widgetCurrentTool {
+            return .init(stage: .tool, symbol: tool.symbol, title: tool.title, detail: nil)
+        }
+        switch step.kind {
+        case "toolCallPreparing":
+            return .init(stage: .tool, symbol: "wrench.and.screwdriver",
+                         title: String(localized: "Executing tool…"), detail: nil)
+        case "thinking":
+            var text = ""
+            for event in steps.prefix(while: { $0.kind == "thinking" }) {
+                if let part = event.payload?["text"]?.stringValue {
+                    text = String((String(part.suffix(260)) + text).suffix(260))
+                    if text.count == 260 { break }
                 }
-                linking = false
-            case "compactionFinished":
-                compacted = true
-                linking = false
-            case "toolResult":
-                if let id = payload? ["id"]?.stringValue { completed.insert(id) }
-                linking = false
-            case "approvalRequested", "approvalResolved", "error":
-                linking = false
-            case "toolCall":
-                guard let id = payload? ["id"]?.stringValue, !completed.contains(id),
-                      let name = payload? ["tool"]?.stringValue, !name.isEmpty else { continue }
-                let title = Self.widgetToolTitle(name, arguments: payload? ["arguments"]?.stringValue)
-                return .init(stage: .tool, symbol: ChatWidgetToolStyle.symbol(for: name), title: title, detail: nil)
-            case "text", "message":
-                sawReply = true
-            case "thinking":
-                if let text = payload? ["text"]?.stringValue, !text.isEmpty {
-                    latestThinking = String((text + latestThinking).prefix(260))
-                }
-            case "messageStarted", "toolCallPreparing":
-                sawTurn = true
-            default:
-                break
             }
+            let detail = Self.widgetProgressText(text)
+            return .init(stage: .thinking, symbol: "brain.head.profile",
+                         title: String(localized: "Thinking"), detail: detail.isEmpty ? nil : detail)
+        case "text", "message":
+            return .init(stage: .replying, symbol: "text.bubble",
+                         title: String(localized: "Replying…"), detail: widgetReply(completed: false))
+        default:
+            return Self.widgetWaitingForNextStep
         }
-        guard sawTurn || !latestThinking.isEmpty else { return nil }
-        if !latestThinking.isEmpty {
-            return .init(stage: .thinking, symbol: "brain.head.profile", title: String(localized: "Thinking"), detail: Self.widgetProgressText(latestThinking))
-        }
-        if sawReply {
-            return .init(stage: .replying, symbol: "text.bubble", title: String(localized: "Replying…"), detail: widgetReply(completed: false))
-        }
-        return .init(stage: .thinking, symbol: "brain.head.profile", title: String(localized: "Thinking"), detail: nil)
+    }
+
+    private static var widgetWaitingForNextStep: ChatWidgetProgress {
+        .init(stage: .waitingForNextStep, symbol: "ellipsis.circle",
+              title: String(localized: "Waiting for Next Step…"), detail: nil)
     }
 
     private static func widgetProgressText(_ text: String) -> String {
         let line = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard line.count > 220 else { return line }
         return String(line.prefix(219)) + "…"
-    }
-
-    private static func widgetToolTitle(_ name: String, arguments: String?) -> String {
-        guard let tool = AgentToolName.canonical(name) else { return name.replacingOccurrences(of: "_", with: " ").capitalized }
-        let values = arguments.flatMap { try? JSONCoding.decode(JSONValue.self, from: Data($0.utf8)) }
-        switch tool {
-        case .fileRead:
-            return values? ["path"]?.stringValue.map { String(localized: "Read \($0)") } ?? String(localized: "Read a file")
-        case .fileGrep, .fileFind: return String(localized: "Search files")
-        case .fileList: return String(localized: "List files")
-        case .fileShow: return String(localized: "Show files")
-        default: return ChatTranscript.toolTitle(name, arguments: nil)
-        }
     }
 
     /// 结束后，回到仍在运行的那一个；旧回合和分叉继承的调用不显示。
@@ -195,7 +201,8 @@ extension ChatRecord {
         for event in events.reversed() where !ChatFork.isHistorical(event) {
             let payload = event.payload
             switch event.kind {
-            case "prompt", "finished": return nil
+            case "prompt", "steer", "messageStarted", "finished", "messageDiscarded",
+                 "compactionStarted", "compactionFinished", "historyRewound": return nil
             case TaskEvent.stateKind:
                 if let state = payload?["state"]?.stringValue.flatMap(TaskState.init(rawValue:)), state.isTerminal {
                     return nil

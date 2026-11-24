@@ -21,6 +21,7 @@ final class ChatWidgetPublisher {
     private let streamClock = ContinuousClock()
     private var lastLook: ContinuousClock.Instant?
     private var lastFocus: Set<ChatActivityFocus>?
+    private var lastStepSignal: String?
     private var written: ChatWidgetSnapshot?
     private var shownActivity: ChatWidgetSnapshot?
     /// 最多一个 ActivityKit 调用在执行，后面只留最新快照，不排队重播旧回答。
@@ -34,6 +35,7 @@ final class ChatWidgetPublisher {
     private struct CachedChat {
         let events: Int
         let working: Bool
+        let isStopping: Bool
         let title: String
         let project: String?
         let chat: ChatWidgetSnapshot.Chat
@@ -42,9 +44,10 @@ final class ChatWidgetPublisher {
     private func chatRow(_ record: ChatRecord, projectName: String?) -> ChatWidgetSnapshot.Chat {
         let id = record.summary.id
         let title = record.summary.displayTitle
+        let isStopping = record.run == .stopping
         if let cached = chatRows[id], cached.events == record.events.count,
-           cached.working == record.summary.isWorking, cached.title == title,
-           cached.project == projectName
+           cached.working == record.summary.isWorking, cached.isStopping == isStopping,
+           cached.title == title, cached.project == projectName
         {
             return cached.chat
         }
@@ -52,6 +55,7 @@ final class ChatWidgetPublisher {
         chatRows[id] = CachedChat(
             events: record.events.count,
             working: record.summary.isWorking,
+            isStopping: isStopping,
             title: title,
             project: projectName,
             chat: chat,
@@ -101,8 +105,13 @@ final class ChatWidgetPublisher {
     @objc dynamic func chatsChanged() {
         guard let runtime, runtime.isReconciled, !Self.isClosedForQuit else { return }
         let focus = Set(runtime.records.values.compactMap(\.widgetFocus))
-        if focus != lastFocus {
+        let front = focus.min(by: ChatActivityFocus.precedes)
+        let stepSignal = front.flatMap { item in
+            item.approvalID == nil ? runtime.records[item.id]?.widgetStepSignal : nil
+        }
+        if focus != lastFocus || stepSignal != lastStepSignal {
             lastFocus = focus
+            lastStepSignal = stepSignal
             publishNow()
             return
         }
@@ -202,12 +211,8 @@ final class ChatWidgetPublisher {
         } else if let chat = activity.mostUrgent,
                   (chat.status == .working || chat.status == .stopping),
                   let id = UUID(uuidString: chat.id), let record = runtime.records[id] {
+            // 进行中的工具、正文和等待状态都来自同一阶段，旧字段不再覆盖它。
             activity.progress = record.widgetProgress
-            // 还没连上或正在停止时，先前的工具行与回答预览不该盖住这个状态。
-            activity.currentTool = activity.progress?.hidesToolAndPreview == true ? nil : record.widgetCurrentTool
-            if activity.currentTool == nil, activity.progress?.hidesToolAndPreview != true {
-                activity.answerPreview = record.widgetReply(completed: false)
-            }
         }
         // 启动时历史按需读入。暂时没投影出任何回合，不等于用户清空了会话。
         if activity.chats.isEmpty, records.contains(where: { !runtime.historyIsReady($0.summary.id) }) {

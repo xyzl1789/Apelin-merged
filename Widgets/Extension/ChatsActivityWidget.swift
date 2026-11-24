@@ -174,6 +174,11 @@ private struct ChatActivitySessionRow: View {
     let state: ChatWidgetSnapshot
 
     private var currentPhase: (symbol: String, title: String, detail: String?) {
+        // 完成后的回答只作预览，不能把会话状态改回「正在回答」。
+        guard chat.status == .working || chat.status == .stopping else {
+            let detail = chat.status == .done && state.batchOutcome == .succeeded ? state.answerPreview : nil
+            return (chat.activitySymbol, chat.statusLine, detail)
+        }
         if let tool = state.currentTool {
             return (tool.symbol, tool.title, nil)
         }
