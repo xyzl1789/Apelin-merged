@@ -50,7 +50,7 @@ struct ChatsActivityWidget: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    if let chat = state.mostUrgent {
+                    if let chat = state.mostUrgent, state.finishedBadge == nil {
                         VStack(alignment: .leading, spacing: 5) {
                             ChatActivitySessionRow(chat: chat, state: state)
                             if let result = state.transientResult {
@@ -336,7 +336,7 @@ private struct ChatLockScreenView: View {
                         .background(.white.opacity(0.15), in: Capsule())
                 }
             }
-            if let chat = state.mostUrgent {
+            if let chat = state.mostUrgent, state.finishedBadge == nil {
                 ChatActivitySessionRow(chat: chat, state: state)
                 if let result = state.transientResult {
                     ChatActivityResultRow(chat: result.chat)
