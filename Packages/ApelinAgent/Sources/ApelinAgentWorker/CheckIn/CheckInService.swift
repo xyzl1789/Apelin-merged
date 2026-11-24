@@ -141,7 +141,9 @@ public enum CheckInService {
                 base = "https://www.workbuddy.ai"
             }
         } else {
-            base = extra(credentials, "baseUrl") ?? "https://copilot.tencent.com"
+            base = extra(credentials, "billingBase")
+                ?? extra(credentials, "baseUrl")
+                ?? "https://www.codebuddy.cn"
         }
         guard let baseURL = URL(string: base) else { throw CheckInProblem(.server, "base 地址无效") }
         let emptyObject = Data("{}".utf8)
@@ -165,15 +167,21 @@ public enum CheckInService {
         let data = statusJSON["data"] as? [String: Any] ?? [:]
         let streak = number(data["streak_days"])
         let total = numberText(data["total_credits"])
+        let balance = await workBuddyBalance(baseURL: baseURL, headers: headers)
+        let todayCredit = numberText(data["today_credit"]) ?? numberText(data["daily_credit"])
+        var available = balance?.available
+        var used = balance?.used
         // active 为 false 表示当前没有签到活动（国际版常见），不是失败。
         if let active = data["active"] as? Bool, !active {
             logger.info("\(platform.rawValue, privacy: .public)：当前没有签到活动")
-            return CheckInResult(platform: platform, outcome: .nothingToDo, total: total, streak: streak)
+            return CheckInResult(platform: platform, outcome: .nothingToDo,
+                                 available: available, used: used, total: total, streak: streak)
         }
         if flag(data["today_checked_in"]) {
             logger.info("\(platform.rawValue, privacy: .public)：今天已签到")
             let details = await runGrowthIfNeeded(platform: platform, baseURL: baseURL, headers: headers)
             return CheckInResult(platform: platform, outcome: .alreadyClaimed,
+                                 credit: todayCredit, available: available, used: used,
                                  total: total, streak: streak, details: details)
         }
 
@@ -190,13 +198,17 @@ public enum CheckInService {
             throw CheckInProblem(.rejected, "领取 code \(code)")
         }
         let claimed = claimJSON["data"] as? [String: Any]
-        let credit = numberText(claimed?["credit"]) ?? numberText(claimJSON["credit"])
+        let credit = numberText(claimed?["credit"]) ?? numberText(claimJSON["credit"]) ?? todayCredit
         logger.info("\(platform.rawValue, privacy: .public)：签到成功")
 
         // 签到之后再跑一遍成长中心：能自动领的都领，做不了的写清原因进明细。
         let details = await runGrowthIfNeeded(platform: platform, baseURL: baseURL, headers: headers)
+        let refreshed = await workBuddyBalance(baseURL: baseURL, headers: headers)
+        available = refreshed?.available ?? available
+        used = refreshed?.used ?? used
         return CheckInResult(platform: platform, outcome: .claimed,
-                             credit: credit, total: total, streak: streak, details: details)
+                             credit: credit, available: available, used: used,
+                             total: total, streak: streak, details: details)
     }
 
     /// 只有国内 WorkBuddy 有成长中心；国际版没有这套活动接口。
@@ -229,10 +241,17 @@ public enum CheckInService {
         if let device = digits(extra(credentials, "checkinDeviceId")) ?? digits(extra(credentials, "deviceId")) {
             headers["x-device-id"] = device
         }
+        headers["x-device-type"] = extra(credentials, "deviceType") ?? "ios"
+        headers["x-os-version"] = extra(credentials, "osVersion") ?? ProcessInfo.processInfo.operatingSystemVersionString
+        headers["x-app-version"] = extra(credentials, "appVersion") ?? "2.0.0"
+        headers["x-device-brand"] = extra(credentials, "deviceBrand") ?? "iPhone"
+        headers["Origin"] = "https://work.trae.cn"
+        headers["Referer"] = "https://work.trae.cn/"
         guard let base = URL(string: "https://api.trae.cn/trae/api/v2/ug/checkin_credits") else {
             throw CheckInProblem(.server, "地址无效")
         }
         let body = Data("{\"req_source\":1}".utf8)
+        var usage = await traeUsage(token: token, headers: headers)
 
         let status = try await reply(
             method: "POST",
@@ -248,7 +267,8 @@ public enum CheckInService {
         if code != 0 { throw CheckInProblem(.server, "状态查询 code \(code)") }
         if flag(statusJSON["checked_in"]) {
             logger.info("trae-cn：今天已签到")
-            return CheckInResult(platform: .traeCN, outcome: .alreadyClaimed)
+            return CheckInResult(platform: .traeCN, outcome: .alreadyClaimed,
+                                 available: usage?.available, used: usage?.used)
         }
 
         for wait in rateLimitWaits {
@@ -271,9 +291,12 @@ public enum CheckInService {
             if claimCode == 0 {
                 let credits = number(claimJSON["credits"]) ?? 0
                 let extraCredits = number(claimJSON["extra_credits"]) ?? 0
+                let gained = credits + extraCredits
+                usage = await traeUsage(token: token, headers: headers)
                 logger.info("trae-cn：签到成功")
                 return CheckInResult(platform: .traeCN, outcome: .claimed,
-                                     credit: String(credits + extraCredits))
+                                     credit: gained > 0 ? String(gained) : nil,
+                                     available: usage?.available, used: usage?.used)
             }
             if claimCode == 9074 { continue }
             if claimCode == 1001 { throw CheckInProblem(.signedOut, "登录态失效") }
@@ -281,6 +304,52 @@ public enum CheckInService {
             throw CheckInProblem(.rejected, "领取 code \(claimCode)")
         }
         throw CheckInProblem(.rateLimited, "连续被限流")
+    }
+
+    private struct Usage {
+        var available: String?
+        var used: String?
+    }
+
+    private static func workBuddyBalance(baseURL: URL, headers: [String: String]) async -> Usage? {
+        guard let reply = try? await reply(method: "POST", url: baseURL.appendingPathComponent("v2/billing/meter/get-user-resource"), headers: headers, body: Data("{}".utf8)),
+              reply.status == 200, let root = reply.json else { return nil }
+        let accounts = (((root["data"] as? [String: Any])?["Response"] as? [String: Any])?["Data"] as? [String: Any])?["Accounts"] as? [[String: Any]]
+            ?? (root["data"] as? [String: Any])?["Accounts"] as? [[String: Any]] ?? []
+        guard !accounts.isEmpty else { return nil }
+        let values = accounts.reduce(into: (remaining: 0.0, used: 0.0)) { result, account in
+            let remain = Double(numberText(account["CapacityRemainPrecise"]) ?? "0") ?? 0
+            let cycle = Double(numberText(account["CycleCapacityRemainPrecise"]) ?? "0") ?? 0
+            let cycleSize = Double(numberText(account["CycleCapacitySizePrecise"]) ?? "0") ?? 0
+            result.remaining += cycleSize > 0 ? min(remain, cycle) : remain
+            result.used += Double(numberText(account["CapacityUsedPrecise"]) ?? "0") ?? 0
+        }
+        return Usage(available: String(Int(values.remaining)), used: String(Int(values.used)))
+    }
+
+    private static func traeUsage(token: String, headers: [String: String]) async -> Usage? {
+        var requestHeaders = headers
+        requestHeaders["User-Agent"] = "Mozilla/5.0"
+        requestHeaders["Origin"] = "https://work.trae.cn"
+        requestHeaders["Referer"] = "https://work.trae.cn/"
+        let body = Data("{\"require_usage\":true,\"req_source\":2}".utf8)
+        guard let reply = try? await reply(method: "POST", url: URL(string: "https://api.trae.cn/trae/api/v2/pay/ide_user_ent_usage")!, headers: requestHeaders, body: body),
+              reply.status == 200, let root = reply.json,
+              let packs = root["user_entitlement_pack_list"] as? [[String: Any]] else { return nil }
+        var remaining = 0.0
+        var used = 0.0
+        var found = false
+        for pack in packs {
+            let base = pack["entitlement_base_info"] as? [String: Any] ?? [:]
+            let quota = base["quota"] as? [String: Any] ?? [:]
+            let limit = Double(numberText(quota["credits_limit"]) ?? "0") ?? 0
+            guard limit > 0 else { continue }
+            let consumed = Double(numberText((pack["usage"] as? [String: Any])?["credits_amount"]) ?? "0") ?? 0
+            remaining += max(limit - consumed, 0)
+            used += consumed
+            found = true
+        }
+        return found ? Usage(available: String(Int(remaining)), used: String(Int(used))) : nil
     }
 
     // MARK: - Qoder（国内版与国际版同一套接口）
@@ -297,7 +366,7 @@ public enum CheckInService {
             "Cosy-MachineHostname": "iPhone",
         ]
         if let machine = extra(credentials, "machineId") { headers["Cosy-MachineId"] = machine }
-        // 国际版走 openapi.qoder.sh，国内版走 openapi.qoder.com.cn。
+        // Qoder 国际版和国内版共用活动接口；国际版额外设备风控若缺失，会由服务端返回拒绝。
         let baseString = platform == .qoder ? "https://openapi.qoder.sh" : "https://openapi.qoder.com.cn"
         guard let base = URL(string: baseString) else { throw CheckInProblem(.server, "地址无效") }
 
@@ -318,6 +387,7 @@ public enum CheckInService {
             throw CheckInProblem(.signedOut, "登录态失效")
         }
         let campaigns = (listingJSON["campaigns"] as? [[String: Any]]) ?? []
+        var usage = await qoderUsage(base: base, headers: headers)
         var claimable: [String] = []
         var claimedBefore = false
         for campaign in campaigns {
@@ -331,18 +401,49 @@ public enum CheckInService {
         }
         if claimable.isEmpty {
             logger.info("\(platform.rawValue, privacy: .public)：没有可领取的活动")
-            return CheckInResult(platform: platform, outcome: claimedBefore ? .alreadyClaimed : .nothingToDo)
+            return CheckInResult(platform: platform, outcome: claimedBefore ? .alreadyClaimed : .nothingToDo,
+                                 available: usage?.available, used: usage?.used)
         }
         var claimed = 0
+        var claimedCredit = 0
         for id in claimable {
             let path = "sash/api/v1/me/campaigns/\(id)/claim"
+            var claimHeaders = headers
+            claimHeaders["Content-Type"] = "application/json"
             let claim = try await reply(method: "POST", url: base.appendingPathComponent(path),
-                                        headers: headers, body: Data())
-            if claim.status == 200 { claimed += 1 }
+                                        headers: claimHeaders, body: Data("{}".utf8))
+            if claim.status == 200, let json = claim.json {
+                let code = number(json["code"])
+                if code == nil || code == 0 {
+                    claimed += 1
+                    claimedCredit += number(json["amount"]) ?? number((json["benefit"] as? [String: Any])?["amount"]) ?? 0
+                }
+            }
         }
         guard claimed > 0 else { throw CheckInProblem(.rejected, "活动领取全部失败") }
+        usage = await qoderUsage(base: base, headers: headers)
         logger.info("\(platform.rawValue, privacy: .public)：领取到 \(claimed, privacy: .public) 个活动")
-        return CheckInResult(platform: platform, outcome: .claimed)
+        let claimedAmount = claimedCredit > 0
+            ? claimedCredit
+            : claimable.reduce(0) { $0 + (number(($1["benefit"] as? [String: Any])?["amount"]) ?? 0) }
+        return CheckInResult(platform: platform, outcome: .claimed,
+                             credit: claimedAmount > 0 ? String(claimedAmount) : nil,
+                             available: usage?.available, used: usage?.used)
+    }
+
+    private static func qoderUsage(base: URL, headers: [String: String]) async -> Usage? {
+        guard let reply = try? await reply(method: "GET", url: base.appendingPathComponent("api/v1/me/usage"), headers: headers, body: nil),
+              reply.status == 200, let root = reply.json else { return nil }
+        func value(_ key: String) -> String? {
+            numberText(root[key]) ?? numberText((root["data"] as? [String: Any])?[key])
+        }
+        let user = root["user_quota"] as? [String: Any] ?? [:]
+        let addon = root["add_on_quota"] as? [String: Any] ?? [:]
+        let available = (Double(numberText(user["remaining"]) ?? "0") ?? 0) + (Double(numberText(addon["remaining"]) ?? "0") ?? 0)
+        let used = (Double(numberText(user["used"]) ?? "0") ?? 0) + (Double(numberText(addon["used"]) ?? "0") ?? 0)
+        if !user.isEmpty || !addon.isEmpty { return Usage(available: String(Int(available)), used: String(Int(used))) }
+        guard let total = value("total") else { return nil }
+        return Usage(available: total, used: value("used"))
     }
 
     // MARK: - 网络请求

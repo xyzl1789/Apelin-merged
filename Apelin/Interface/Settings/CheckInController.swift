@@ -180,8 +180,14 @@ final class CheckInController: TableController {
         if let credit = result.credit {
             lines.append(String(localized: "Points earned: \(credit)"))
         }
-        if result.platform == .workBuddy || result.platform == .workBuddyAI, let total = result.total {
-            lines.append(String(localized: "Total check-in points earned: \(total)"))
+        if let available = result.available {
+            lines.append(String(localized: "Current balance: \(available)"))
+        }
+        if let used = result.used {
+            lines.append(String(localized: "Used: \(used)"))
+        }
+        if let total = result.total {
+            lines.append(String(localized: "Activity total: \(total)"))
         }
         if let streak = result.streak, streak > 0 {
             lines.append(String(localized: "Streak \(streak) Days"))

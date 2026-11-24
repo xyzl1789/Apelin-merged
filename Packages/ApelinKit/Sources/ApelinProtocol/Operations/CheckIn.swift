@@ -66,7 +66,11 @@ public struct CheckInResult: Codable, Sendable, Equatable {
     public var outcome: CheckInOutcome
     /// 本次或今日领到的积分，服务端给的写法，最多 32 字符。
     public var credit: String?
-    /// 账户累计积分，只有服务端给了才有。
+    /// 账户当前可用积分/额度；查不到时保持 nil，绝不写成 0。
+    public var available: String?
+    /// 账户累计已用积分/额度；查不到时保持 nil。
+    public var used: String?
+    /// 活动累计积分等平台额外统计，不能当作当前余额。
     public var total: String?
     /// 连续签到天数。
     public var streak: Int?
@@ -78,16 +82,51 @@ public struct CheckInResult: Codable, Sendable, Equatable {
     public var updatedAt: Date
 
     public init(platform: CheckInPlatform, outcome: CheckInOutcome, credit: String? = nil,
-                total: String? = nil, streak: Int? = nil, reason: CheckInReason? = nil,
+                available: String? = nil, used: String? = nil, total: String? = nil,
+                streak: Int? = nil, reason: CheckInReason? = nil,
                 details: [CheckInDetail]? = nil, updatedAt: Date = Date()) {
         self.platform = platform
         self.outcome = outcome
         self.credit = credit
+        self.available = available
+        self.used = used
         self.total = total
         self.streak = streak
         self.reason = reason
         self.details = details
         self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case platform, outcome, credit, available, used, total, streak, reason, details, updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        platform = try values.decode(CheckInPlatform.self, forKey: .platform)
+        outcome = try values.decode(CheckInOutcome.self, forKey: .outcome)
+        credit = try values.decodeIfPresent(String.self, forKey: .credit)
+        available = try values.decodeIfPresent(String.self, forKey: .available)
+        used = try values.decodeIfPresent(String.self, forKey: .used)
+        total = try values.decodeIfPresent(String.self, forKey: .total)
+        streak = try values.decodeIfPresent(Int.self, forKey: .streak)
+        reason = try values.decodeIfPresent(CheckInReason.self, forKey: .reason)
+        details = try values.decodeIfPresent([CheckInDetail].self, forKey: .details)
+        updatedAt = try values.decode(Date.self, forKey: .updatedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(platform, forKey: .platform)
+        try values.encode(outcome, forKey: .outcome)
+        try values.encodeIfPresent(credit, forKey: .credit)
+        try values.encodeIfPresent(available, forKey: .available)
+        try values.encodeIfPresent(used, forKey: .used)
+        try values.encodeIfPresent(total, forKey: .total)
+        try values.encodeIfPresent(streak, forKey: .streak)
+        try values.encodeIfPresent(reason, forKey: .reason)
+        try values.encodeIfPresent(details, forKey: .details)
+        try values.encode(updatedAt, forKey: .updatedAt)
     }
 
     /// 今天已经签过（领取成功或服务端说领过了）。
