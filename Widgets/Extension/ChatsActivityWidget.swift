@@ -105,8 +105,8 @@ private struct ChatActivityIslandIcon: View {
             if let tool = state.currentTool {
                 ChatActivityToolIcon(tool: tool, font: font)
             } else if let progress = state.progress {
-                symbol(progress.symbol, color: .blue,
-                       label: progress.detail.map { "\(progress.title) — \($0)" } ?? progress.title)
+                symbol(progress.symbol, color: .blue, label: progress.title)
+                    .privacySensitive(progress.stage == .tool)
             } else if state.answerPreview != nil {
                 symbol("text.bubble", color: .blue, label: String(localized: "Replying…"))
             } else {
@@ -174,16 +174,19 @@ private struct ChatActivitySessionRow: View {
     let state: ChatWidgetSnapshot
 
     private var currentPhase: (symbol: String, title: String, detail: String?) {
+        if chat.isInProgress, let progress = state.progress {
+            if progress.stage == .waitingForApproval {
+                return (progress.symbol, chat.statusWord, [progress.title, progress.detail].compactMap { $0 }.joined(separator: " — "))
+            }
+            return (progress.symbol, progress.title, progress.detail)
+        }
         // 完成后的回答只作预览，不能把会话状态改回「正在回答」。
         guard chat.status == .working || chat.status == .stopping else {
             let detail = chat.status == .done && state.batchOutcome == .succeeded ? state.answerPreview : nil
             return (chat.activitySymbol, chat.statusLine, detail)
         }
         if let tool = state.currentTool {
-            return (tool.symbol, tool.title, nil)
-        }
-        if let progress = state.progress {
-            return (progress.symbol, progress.title, progress.detail)
+            return (tool.symbol, tool.title, tool.detail)
         }
         if let answer = state.answerPreview {
             return ("text.bubble", String(localized: "Replying…"), answer)
@@ -198,6 +201,8 @@ private struct ChatActivitySessionRow: View {
                 Image(systemName: "bubble.left.fill")
                     .font(.caption)
                     .foregroundStyle(.blue)
+                    .frame(width: 16)
+                    .accessibilityHidden(true)
                 Text(verbatim: chat.title)
                     .font(.callout.bold())
                     .lineLimit(1)
@@ -228,34 +233,48 @@ private struct ChatActivitySessionRow: View {
                 Image(systemName: stopped ? "stop.circle.fill" : phase.symbol)
                     .font(.caption)
                     .foregroundStyle(stopped ? WidgetTheme.island.amber : chat.activityColor)
+                    .frame(width: 16)
+                    .accessibilityHidden(true)
                 Text(verbatim: stopped ? String(localized: "Stopped") : phase.title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .layoutPriority(1)
+                    .privacySensitive(chat.isInProgress && state.progress?.stage == .tool)
                 Spacer(minLength: 6)
                 Text(verbatim: chat.projectName)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
-            if chat.status != .waiting, let detail = phase.detail {
-                activityDetail(symbol: phase.symbol, title: detail)
+            if let detail = phase.detail {
+                Text(verbatim: detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 21)
                     .privacySensitive()
             }
-        }
-    }
-
-    private func activityDetail(symbol: String, title: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol)
-                .foregroundStyle(.blue)
-                .accessibilityHidden(true)
-            Text(verbatim: title)
+            ForEach(state.recentTools.indices, id: \.self) { index in
+                let tool = state.recentTools[index]
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Image(systemName: tool.symbol)
+                        .frame(width: 16)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: tool.title).lineLimit(1)
+                        if let detail = tool.detail {
+                            Text(verbatim: detail).lineLimit(1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .font(.caption2)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .privacySensitive()
+            }
         }
-        .font(.caption)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

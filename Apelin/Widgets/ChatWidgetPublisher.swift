@@ -204,15 +204,17 @@ final class ChatWidgetPublisher {
                 row.status = batch.outcome == .failed ? .failed : .done
                 activity.chats.insert(row, at: 0)
                 activity.chats = Array(activity.chats.prefix(ChatWidgetSnapshot.activityLimit))
-                if batch.outcome == .succeeded {
-                    activity.answerPreview = runtime.records[id]?.widgetReply(completed: true)
+                if let record = runtime.records[id] {
+                    activity.recentTools = record.widgetRecentTools(completed: true)
+                    if batch.outcome == .succeeded {
+                        activity.answerPreview = record.widgetReply(completed: true)
+                    }
                 }
             }
-        } else if let chat = activity.mostUrgent,
-                  (chat.status == .working || chat.status == .stopping),
+        } else if let chat = activity.mostUrgent, chat.isInProgress,
                   let id = UUID(uuidString: chat.id), let record = runtime.records[id] {
-            // 进行中的工具、正文和等待状态都来自同一阶段，旧字段不再覆盖它。
             activity.progress = record.widgetProgress
+            activity.recentTools = record.widgetRecentTools()
         }
         // 启动时历史按需读入。暂时没投影出任何回合，不等于用户清空了会话。
         if activity.chats.isEmpty, records.contains(where: { !runtime.historyIsReady($0.summary.id) }) {

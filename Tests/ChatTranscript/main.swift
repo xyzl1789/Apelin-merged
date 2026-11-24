@@ -10,19 +10,19 @@ checkStreamPresentation()
 checkPendingQueuePresentation()
 try checkShareTransfer()
 
-// 实时活动只显示本回合尚未返回结果的工具，也不显示路径或私密参数。
+// 实时活动显示本回合的工具摘要，但不公开完整网址、命令或绝对路径。
 do {
     var record = ChatRecord(summary: ChatSummary(title: "Work", lastInteraction: Date()))
     record.summary.isWorking = true
     let read = event(2, "toolCall", [
         "id": .string("read"), "tool": .string("file_read"),
-        "arguments": .string(#"{"path":"Sources/Widget.swift","reason":"private reason"}"#),
+        "arguments": .string(#"{"path":"Sources/Widget.swift","reason":"查看组件阶段逻辑"}"#),
     ])
     record.events = [event(1, "prompt"), read]
     let current = record.widgetCurrentTool
     precondition(current?.symbol == "doc.text")
-    precondition(current?.title.contains("Widget.swift") == true)
-    precondition(current?.title.contains("Sources/") == false && current?.title.contains("private reason") == false)
+    precondition(current?.title.contains("Sources/Widget.swift") == true)
+    precondition(current?.detail == "查看组件阶段逻辑")
 
     record.events.append(event(3, "toolCall", [
         "id": .string("shell"), "tool": .string("shell_run"),
@@ -49,13 +49,41 @@ do {
     ])]
     precondition(record.widgetCurrentTool?.symbol == "doc.text")
     precondition(record.widgetCurrentTool?.title.contains("secret.txt") == false)
+    let fetch = event(2, "toolCall", [
+        "id": .string("fetch"), "tool": .string("apelin_web_fetch"),
+        "arguments": .string(#"{"url":"https://github.com/private?token=private-value","reason":"读取发布说明"}"#),
+    ])
+    record.events = [event(1, "prompt"), fetch, event(3, "message", ["text": .string(" \n ")])]
+    precondition(record.widgetProgress?.stage == .tool, "空正文不能把工具改成正在回答")
+    precondition(record.widgetProgress?.title.contains("github.com") == true)
+    precondition(record.widgetProgress?.title.contains("private") == false)
+    precondition(record.widgetProgress?.detail == "读取发布说明")
+    record.events.append(event(4, "toolResult", ["id": .string("fetch")]))
+    precondition(record.widgetRecentTools().first?.detail == "读取发布说明", "同批完成的短调用仍有记录")
+    record.events.append(event(5, "finished"))
+    precondition(record.widgetRecentTools(completed: true).first?.title.contains("github.com") == true)
+
+    record.events = [event(1, "prompt"), event(2, "toolCall", [
+        "id": .string("mode"), "tool": .string("apelin_run_mode"),
+        "arguments": .string(#"{"mode":"build","why":"开始实现签到页改版"}"#),
+    ])]
+    precondition(record.widgetProgress?.title == "Switch to build mode")
+    precondition(record.widgetProgress?.detail == "开始实现签到页改版")
+    record.events.append(event(3, "approvalRequested", [
+        "approvalID": .string("mode-approval"), "tool": .string("apelin_run_mode"),
+        "arguments": .string(#"{"mode":"build","why":"开始实现签到页改版"}"#),
+    ]))
+    precondition(record.widgetProgress?.stage == .waitingForApproval)
+    precondition(record.widgetProgress?.detail == "开始实现签到页改版")
+
     record.summary.isWorking = false
     precondition(record.widgetCurrentTool == nil)
 
     let legacy = try JSONEncoder().encode(ChatWidgetSnapshot.empty)
     var snapshot = try JSONDecoder().decode(ChatWidgetSnapshot.self, from: legacy)
-    precondition(snapshot.currentTool == nil)
+    precondition(snapshot.currentTool == nil && snapshot.recentTools.isEmpty)
     snapshot.currentTool = current
+    snapshot.recentTools = [current].compactMap { $0 }
     let encoded = try JSONEncoder().encode(snapshot)
     let decoded = try JSONDecoder().decode(ChatWidgetSnapshot.self, from: encoded)
     precondition(decoded == snapshot)

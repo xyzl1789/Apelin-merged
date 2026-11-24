@@ -5,7 +5,7 @@ import SwiftUI
 /// Symbol as the conversation detail rows.
 struct ChatWidgetProgress: Codable, Hashable, Sendable {
     enum Stage: String, Codable, Hashable, Sendable {
-        case thinking, tool, replying
+        case thinking, tool, replying, waitingForApproval
         /// 这一轮正在重新连上模型服务；请求还没发出去。
         case reconnecting
         /// 请求失败了，正在等网络回来。
@@ -27,7 +27,7 @@ struct ChatWidgetProgress: Codable, Hashable, Sendable {
     /// 还没连上、已完成当前步骤或正在停止时，先前的工具行和回答预览不该盖住这个状态。
     var hidesToolAndPreview: Bool {
         switch stage {
-        case .reconnecting, .waitingForNetwork, .waitingForNextStep, .stopping: true
+        case .reconnecting, .waitingForNetwork, .waitingForNextStep, .waitingForApproval, .stopping: true
         case .thinking, .tool, .replying, .compacting: false
         }
     }
@@ -184,6 +184,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     struct ToolActivity: Codable, Hashable, Sendable {
         let symbol: String
         let title: String
+        var detail: String? = nil
     }
 
     struct Chat: Codable, Hashable, Sendable, Identifiable {
@@ -224,7 +225,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case chats, totalCount, inProgressCount, workingCount, waitingCount
-        case currentTool, progress, answerPreview, transientResult, batchOutcome
+        case currentTool, progress, answerPreview, transientResult, batchOutcome, recentTools
     }
 
     init(from decoder: Decoder) throws {
@@ -237,6 +238,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         currentTool = try container.decodeIfPresent(ToolActivity.self, forKey: .currentTool)
         progress = try container.decodeIfPresent(ChatWidgetProgress.self, forKey: .progress)
         answerPreview = try container.decodeIfPresent(String.self, forKey: .answerPreview)
+        recentTools = try container.decodeIfPresent([ToolActivity].self, forKey: .recentTools) ?? []
         transientResult = try container.decodeIfPresent(ResultNotice.self, forKey: .transientResult)
         batchOutcome = try container.decodeIfPresent(BatchOutcome.self, forKey: .batchOutcome)
     }
@@ -251,6 +253,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         try container.encodeIfPresent(currentTool, forKey: .currentTool)
         try container.encodeIfPresent(progress, forKey: .progress)
         try container.encodeIfPresent(answerPreview, forKey: .answerPreview)
+        if !recentTools.isEmpty { try container.encode(recentTools, forKey: .recentTools) }
         try container.encodeIfPresent(transientResult, forKey: .transientResult)
         try container.encodeIfPresent(batchOutcome, forKey: .batchOutcome)
     }
@@ -268,6 +271,8 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     var currentTool: ToolActivity?
     /// 仅实时活动携带的当前阶段；主屏小组件不读取。
     var progress: ChatWidgetProgress?
+    /// 仅实时活动携带：短时间内完成的工具不会随当前阶段切换而消失。
+    var recentTools: [ToolActivity] = []
     /// 仅实时活动携带的单行回答预览，不写进主屏小组件的快照。
     var answerPreview: String?
     /// 某个会话刚完成或失败时的短暂提示；不计入进行中数量。
@@ -347,6 +352,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
 
         var result = self
         while !fits(result), result.chats.count > 1 { result.chats.removeLast() }
+        while !fits(result), !result.recentTools.isEmpty { result.recentTools.removeLast() }
         if fits(result) { return result }
 
         if !result.chats.isEmpty {
@@ -372,17 +378,20 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         if let tool = result.currentTool {
             result.currentTool = .init(symbol: Self.activityText(tool.symbol, bytes: 64), title: Self.activityText(tool.title, bytes: 180))
         }
-        // JSON 转义可能把每字节放大六倍；最后的兜底仍保留会话和状态。
+        // 优先保留当前步骤的详情；先去掉短提示和旧版兼容字段。
         if !fits(result) {
-            result.answerPreview = nil
             result.currentTool = nil
-            result.progress = result.progress.map {
-                .init(stage: $0.stage, symbol: $0.symbol, title: $0.title, detail: nil)
-            }
             result.transientResult = nil
             if !result.chats.isEmpty {
                 result.chats[0].title = Self.activityText(result.chats[0].title, bytes: 160)
                 result.chats[0].project = result.chats[0].project.map { Self.activityText($0, bytes: 120) }
+            }
+        }
+        // 极端转义文本仍可能超限，最后才舍弃当前正文。
+        if !fits(result) {
+            result.answerPreview = nil
+            result.progress = result.progress.map {
+                .init(stage: $0.stage, symbol: $0.symbol, title: $0.title, detail: nil)
             }
         }
         return result

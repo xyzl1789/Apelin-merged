@@ -1008,10 +1008,13 @@ struct ChatTranscript {
     /// release recorded (`AgentToolName.canonical`), so an old conversation
     /// reads as a new one does. A tool added without a title does not build.
     static func toolTitle(_ name: String, arguments: String?) -> String {
+        toolTitle(name, values: arguments.flatMap { try? JSONCoding.decode(JSONValue.self, from: Data($0.utf8)) })
+    }
+
+    static func toolTitle(_ name: String, values: JSONValue?) -> String {
         guard let tool = AgentToolName.canonical(name) else {
             return name.replacingOccurrences(of: "_", with: " ").capitalized
         }
-        let values = arguments.flatMap { try? JSONCoding.decode(JSONValue.self, from: Data($0.utf8)) }
         let path = values?["path"]?.stringValue ?? ""
         switch tool {
         case .fileRead: return path.isEmpty ? String(localized: "Read a file") : String(localized: "Read \(path)")
@@ -1098,7 +1101,12 @@ struct ChatTranscript {
         case .conversationCompact: return String(localized: "Compact the context")
         case .notificationSend: return String(localized: "Send a notification")
         case .questionAsk: return String(localized: "Ask a question")
-        case .runMode: return String(localized: "Switch the run mode")
+        case .runMode:
+            switch values?["mode"]?.stringValue {
+            case "build": return String(localized: "Switch to build mode")
+            case "plan": return String(localized: "Switch to plan mode")
+            default: return String(localized: "Switch the run mode")
+            }
         case .webSearch:
             let query = values?["query"]?.stringValue ?? ""
             return query.isEmpty ? String(localized: "Search the web") : String(localized: "Search for \(query)")

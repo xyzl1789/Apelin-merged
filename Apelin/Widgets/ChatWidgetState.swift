@@ -83,7 +83,7 @@ extension ChatRecord {
     }
 
     /// 从尾部查最后一张未处理的审批卡，不为每段流式文字重扫整份历史。
-    private var widgetPendingApproval: (id: String, tool: String)? {
+    private var widgetPendingApproval: (id: String, tool: String, payload: JSONValue?)? {
         var resolved: Set<String> = []
         for event in events.reversed() where !ChatFork.isHistorical(event) {
             let payload = event.payload
@@ -98,7 +98,7 @@ extension ChatRecord {
             case "approvalRequested":
                 guard let id = payload?["approvalID"]?.stringValue, !resolved.contains(id) else { continue }
                 let tool = payload?["tool"]?.stringValue ?? ""
-                return (id, AgentToolName.canonical(tool)?.rawValue ?? tool)
+                return (id, AgentToolName.canonical(tool)?.rawValue ?? tool, payload)
             default: break
             }
         }
@@ -109,10 +109,13 @@ extension ChatRecord {
     private static func isWidgetStep(_ event: TaskEvent) -> Bool {
         guard !ChatFork.isHistorical(event) else { return false }
         switch event.kind {
+        case "text", "message":
+            // 只调用工具的助手消息也会结束，但正文为空，不是正在回答。
+            return event.payload?["text"]?.stringValue?.contains(where: { !$0.isWhitespace }) == true
         case "prompt", "steer", "messageStarted", "messageDiscarded", "finished",
              "reconnecting", "waitingForNetwork", "compactionStarted", "compactionFinished",
              "toolCallPreparing", "toolCall", "toolResult", "approvalRequested", "approvalResolved",
-             "error", "thinking", "text", "message", "historyRewound": return true
+             "error", "thinking", "historyRewound": return true
         case TaskEvent.stateKind: return ChatTranscript.endsTask(event)
         default: return false
         }
@@ -136,6 +139,12 @@ extension ChatRecord {
             return .init(stage: .stopping, symbol: "stop.circle.fill",
                          title: String(localized: "Stopping…"), detail: nil)
         }
+        if let approval = widgetPendingApproval {
+            let mode = ApprovalCardText.runModeSwitch(approval.payload)
+            let tool = Self.widgetTool(approval.tool, arguments: approval.payload?["arguments"]?.stringValue,
+                                       mode: mode)
+            return .init(stage: .waitingForApproval, symbol: "exclamationmark.triangle.fill", title: tool.title, detail: tool.detail)
+        }
         let steps = events.reversed().lazy.filter(Self.isWidgetStep)
         guard let step = steps.first else { return nil }
         switch step.kind {
@@ -158,7 +167,7 @@ extension ChatRecord {
 
         // 某个并行工具返回时，仍保留尚未结束的调用，而不是回到更早的思考。
         if let tool = widgetCurrentTool {
-            return .init(stage: .tool, symbol: tool.symbol, title: tool.title, detail: nil)
+            return .init(stage: .tool, symbol: tool.symbol, title: tool.title, detail: tool.detail)
         }
         switch step.kind {
         case "toolCallPreparing":
@@ -219,6 +228,36 @@ extension ChatRecord {
         return nil
     }
 
+    /// 保留本轮最近完成的工具，短到来不及单独绘制也能看到摘要。
+    func widgetRecentTools(completed: Bool = false) -> [ChatWidgetSnapshot.ToolActivity] {
+        var resultOrder: [String] = []
+        var summaries: [String: ChatWidgetSnapshot.ToolActivity] = [:]
+        var reachedTurn = !completed
+        for event in events.reversed() where !ChatFork.isHistorical(event) {
+            if ChatTranscript.endsTask(event) {
+                if reachedTurn { break }
+                continue
+            }
+            if event.kind == "finished" {
+                if reachedTurn { break }
+                reachedTurn = true
+                continue
+            }
+            if event.kind == "prompt" { break }
+            if !reachedTurn { reachedTurn = true }
+            guard let id = event.payload?["id"]?.stringValue else { continue }
+            if event.kind == "toolResult", resultOrder.count < 2, !resultOrder.contains(id) {
+                resultOrder.append(id)
+            }
+            if event.kind == "toolCall", resultOrder.contains(id), summaries[id] == nil,
+               let name = event.payload?["tool"]?.stringValue {
+                summaries[id] = Self.widgetTool(name, arguments: event.payload?["arguments"]?.stringValue)
+                if summaries.count == 2 { break }
+            }
+        }
+        return resultOrder.compactMap { summaries[$0] }
+    }
+
     /// 只取本轮最后一段对外回答，不取推理、工具输出或旧回合。
     func widgetReply(completed: Bool) -> String? {
         var text = ""
@@ -234,8 +273,9 @@ extension ChatRecord {
                 return Self.widgetReplyPreview(text)
             case "message":
                 guard !completed || seenFinish else { return nil }
-                if text.isEmpty, let message = event.payload?["text"]?.stringValue, !message.isEmpty {
-                    return Self.widgetReplyPreview(message)
+                if text.isEmpty, let message = event.payload?["text"]?.stringValue,
+                   let preview = Self.widgetReplyPreview(message) {
+                    return preview
                 }
             case "text" where !completed:
                 if let part = event.payload?["text"]?.stringValue {
@@ -261,9 +301,14 @@ extension ChatRecord {
         return text.count > 192 ? result + "…" : result
     }
 
-    private static func widgetTool(_ name: String, arguments: String?) -> ChatWidgetSnapshot.ToolActivity {
-        guard let tool = AgentToolName.canonical(name) else {
-            return .init(symbol: "wrench.and.screwdriver", title: String(localized: "Executing tool…"))
+    private static func widgetTool(_ name: String, arguments: String?, mode: AgentRunModeRequest? = nil) -> ChatWidgetSnapshot.ToolActivity {
+        let values = arguments.flatMap { try? JSONCoding.decode(JSONValue.self, from: Data($0.utf8)) }
+        let canonical = AgentToolName.canonical(name)
+        let modeReason = canonical == .runMode ? (mode?.reason ?? values?["why"]?.stringValue) : nil
+        let detail = (modeReason ?? values?["reason"]?.stringValue).flatMap(Self.widgetToolDetail)
+        guard let tool = canonical else {
+            let title = name.isEmpty ? String(localized: "Executing tool…") : ChatTranscript.toolTitle(name, values: nil)
+            return .init(symbol: ChatWidgetToolStyle.symbol(for: name), title: title, detail: detail)
         }
         let symbol: String = switch tool {
         case .fileRead, .fileShow: "doc.text"
@@ -279,31 +324,48 @@ extension ChatRecord {
         case .gitStatus, .gitDiff, .gitLog, .gitCommit, .gitStage, .gitUnstage, .gitCommitDetail: "arrow.triangle.branch"
         case .screenReadTree, .screenInteract, .screenCapture: "iphone"
         case .logRead, .crashList, .crashRead, .crashSymbolicate: "list.bullet.rectangle"
-        default: "wrench.and.screwdriver"
+        default: ChatWidgetToolStyle.symbol(for: tool.rawValue)
         }
-        let title: String
+        var safe: [String: JSONValue] = [:]
         switch tool {
         case .fileRead, .fileWrite, .fileEdit, .fileCreate:
-            if let file = widgetFileName(arguments) {
-                title = tool == .fileRead ? String(localized: "Read \(file)") : String(localized: "Edit \(file)")
-            } else {
-                title = ChatTranscript.toolTitle(tool.rawValue, arguments: nil)
+            if let path = values?["path"]?.stringValue.flatMap(Self.widgetRelativePath) { safe["path"] = .string(path) }
+        case .fileShow:
+            if case let .array(paths)? = values?["paths"] {
+                let relative = paths.compactMap { $0.stringValue.flatMap(Self.widgetRelativePath) }
+                if !relative.isEmpty { safe["paths"] = .array(relative.map { .string($0) }) }
             }
-        default:
-            // 锁屏只用操作名称，不带命令、网址、查询、理由或工具输出。
-            title = ChatTranscript.toolTitle(tool.rawValue, arguments: nil)
+        case .webFetch:
+            if let raw = values?["url"]?.stringValue, let url = URLComponents(string: raw),
+               let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme), let host = url.host {
+                var address = URLComponents()
+                address.scheme = scheme
+                address.host = host
+                if let site = address.string { safe["url"] = .string(site) }
+            }
+        case .runMode:
+            if let target = mode?.mode.rawValue ?? values?["mode"]?.stringValue { safe["mode"] = .string(target) }
+        default: break
         }
-        return .init(symbol: symbol, title: title)
+        let title = ChatTranscript.toolTitle(tool.rawValue, values: .object(safe))
+        return .init(symbol: symbol, title: title, detail: detail == title ? nil : detail)
     }
 
-    private static func widgetFileName(_ arguments: String?) -> String? {
-        let values = arguments.flatMap { try? JSONCoding.decode(JSONValue.self, from: Data($0.utf8)) }
-        guard let path = values?["path"]?.stringValue, !path.hasPrefix("/"), !path.hasPrefix("~"),
-              !path.contains("://"), !path.contains("\\"),
+    private static let widgetRedaction = LogRedaction(home: nil, installRoot: nil)
+
+    private static func widgetToolDetail(_ text: String) -> String? {
+        let summary = String(text.prefix(1_024))
+            .replacingOccurrences(of: #"https?://[^\s]+"#, with: "…", options: [.regularExpression, .caseInsensitive])
+        let redacted = widgetRedaction.redacted(summary)
+        let line = widgetProgressText(redacted)
+        return line.isEmpty ? nil : line
+    }
+
+    private static func widgetRelativePath(_ path: String) -> String? {
+        guard !path.isEmpty, !path.hasPrefix("/"), !path.hasPrefix("~"), !path.contains("://"), !path.contains("\\"),
               !path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
-              !path.split(separator: "/").contains(".."),
-              let name = path.split(separator: "/").last, name != ".", !name.hasPrefix(".") else { return nil }
-        return name.utf8.count <= 120 ? String(name) : nil
+              !path.split(separator: "/").contains(where: { $0.hasPrefix(".") }), path.utf8.count <= 160 else { return nil }
+        return path
     }
 
     /// 只用当前设备真实跑过的回合。整段回合用开始和结束时间表示，避免
