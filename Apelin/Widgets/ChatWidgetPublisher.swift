@@ -163,6 +163,7 @@ final class ChatWidgetPublisher {
             }
         } else if let chat = activity.mostUrgent, chat.status == .working,
                   let id = UUID(uuidString: chat.id), let record = runtime.records[id] {
+            activity.progress = record.widgetProgress
             activity.currentTool = record.widgetCurrentTool
             if activity.currentTool == nil {
                 activity.answerPreview = record.widgetReply(completed: false)

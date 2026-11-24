@@ -104,6 +104,9 @@ private struct ChatActivityIslandIcon: View {
         } else if state.workingCount > 0 {
             if let tool = state.currentTool {
                 ChatActivityToolIcon(tool: tool, font: font)
+            } else if let progress = state.progress {
+                symbol(progress.symbol, color: .blue,
+                       label: progress.detail.map { "\(progress.title) — \($0)" } ?? progress.title)
             } else if state.answerPreview != nil {
                 symbol("text.bubble", color: .blue, label: String(localized: "Replying…"))
             } else {
@@ -217,6 +220,11 @@ private struct ChatActivitySessionRow: View {
             if chat.status != .waiting {
                 if let tool = state.currentTool {
                     activityDetail(symbol: tool.symbol, title: tool.title)
+                } else if let progress = state.progress {
+                    // 实时进度行：思考显示实际流出的内容，工具阶段用详情页同款图标。
+                    activityDetail(symbol: progress.symbol,
+                                   title: progress.detail.map { "\(progress.title) — \($0)" } ?? progress.title)
+                        .privacySensitive()
                 } else if let answer = state.answerPreview {
                     activityDetail(symbol: "text.bubble", title: answer)
                         .privacySensitive()

@@ -93,7 +93,72 @@ extension ChatRecord {
         return nil
     }
 
-    /// 从本回合末尾倒查仍未返回结果的最近一次调用。并行时最新的调用
+    /// 当前会话在详情页下方的实际阶段：工具优先，其次是流式思考内容，再是回答预览。
+    var widgetProgress: ChatWidgetProgress? {
+        guard summary.isWorking else { return nil }
+        var completed: Set<String> = []
+        var latestThinking = ""
+        var sawReply = false
+        var sawTurn = false
+        for event in events.reversed() where !ChatFork.isHistorical(event) {
+            let payload = event.payload
+            switch event.kind {
+            case "prompt", "steer":
+                sawTurn = true
+                if latestThinking.isEmpty { latestThinking = payload? ["text"]?.stringValue ?? "" }
+                break
+            case "finished":
+                return nil
+            case TaskEvent.stateKind:
+                if let state = payload? ["state"]?.stringValue.flatMap(TaskState.init(rawValue)), state.isTerminal { return nil }
+            case "toolResult":
+                if let id = payload? ["id"]?.stringValue { completed.insert(id) }
+            case "toolCall":
+                guard let id = payload? ["id"]?.stringValue, !completed.contains(id),
+                      let name = payload? ["tool"]?.stringValue, !name.isEmpty else { continue }
+                let title = Self.widgetToolTitle(name, arguments: payload? ["arguments"]?.stringValue)
+                return .init(stage: .tool, symbol: ChatWidgetToolStyle.symbol(for: name), title: title, detail: nil)
+            case "text", "message":
+                sawReply = true
+            case "thinking":
+                if let text = payload? ["text"]?.stringValue, !text.isEmpty {
+                    latestThinking = String((text + latestThinking).prefix(260))
+                }
+            case "messageStarted", "toolCallPreparing":
+                sawTurn = true
+            default:
+                break
+            }
+        }
+        guard sawTurn || !latestThinking.isEmpty else { return nil }
+        if !latestThinking.isEmpty {
+            return .init(stage: .thinking, symbol: "brain.head.profile", title: String(localized: "Thinking"), detail: Self.widgetProgressText(latestThinking))
+        }
+        if sawReply {
+            return .init(stage: .replying, symbol: "text.bubble", title: String(localized: "Replying…"), detail: widgetReply(completed: false))
+        }
+        return .init(stage: .thinking, symbol: "brain.head.profile", title: String(localized: "Thinking"), detail: nil)
+    }
+
+    private static func widgetProgressText(_ text: String) -> String {
+        let line = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard line.count > 220 else { return line }
+        return String(line.prefix(219)) + "…"
+    }
+
+    private static func widgetToolTitle(_ name: String, arguments: String?) -> String {
+        guard let tool = AgentToolName.canonical(name) else { return name.replacingOccurrences(of: "_", with: " ").capitalized }
+        let values = arguments.flatMap { try? JSONCoding.decode(JSONValue.self, from: Data($0.utf8)) }
+        switch tool {
+        case .fileRead:
+            return values? ["path"]?.stringValue.map { String(localized: "Read \($0)") } ?? String(localized: "Read a file")
+        case .fileGrep, .fileFind: return String(localized: "Search files")
+        case .fileList: return String(localized: "List files")
+        case .fileShow: return String(localized: "Show files")
+        default: return ChatTranscript.toolTitle(name, arguments: nil)
+        }
+    }
+
     /// 结束后，回到仍在运行的那一个；旧回合和分叉继承的调用不显示。
     var widgetCurrentTool: ChatWidgetSnapshot.ToolActivity? {
         guard summary.isWorking else { return nil }

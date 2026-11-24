@@ -1,6 +1,159 @@
 import Foundation
 import SwiftUI
 
+/// What Apelin shows beside a running turn: the same semantic stage and SF
+/// Symbol as the conversation detail rows.
+struct ChatWidgetProgress: Codable, Hashable, Sendable {
+    enum Stage: String, Codable, Hashable, Sendable {
+        case thinking, tool, replying
+    }
+
+    let stage: Stage
+    let symbol: String
+    let title: String
+    /// Thinking text is the actual streamed reasoning, not a placeholder.
+    let detail: String?
+}
+
+/// The shared icon families used by `ChatToolCallRow` in the transcript.
+///
+/// The widgets cannot reach `ApelinProtocol`, so the mapping is by the tool's
+/// recorded name (current names and the earlier releases' legacy names),
+/// keeping the same SF Symbol per family the detail rows draw.
+enum ChatWidgetToolStyle {
+    static func symbol(for name: String?) -> String {
+        guard let name, let tool = symbols[name] else { return "wrench.and.screwdriver" }
+        return tool
+    }
+
+    private static let symbols: [String: String] = {
+        var map: [String: String] = [:]
+        for name in gitNames { map[name] = "arrow.triangle.branch" }
+        register(fileReadNames, "doc.text.magnifyingglass", into: &map)
+        register(fileWriteNames, "square.and.pencil", into: &map)
+        register(buildNames, "hammer", into: &map)
+        register(packageNames, "shippingbox", into: &map)
+        register(screenNames, "iphone", into: &map)
+        register(logNames, "text.alignleft", into: &map)
+        register(crashNames, "exclamationmark.triangle", into: &map)
+        register(memoryNames, "externaldrive", into: &map)
+        register(skillNames, "book", into: &map)
+        register(conversationNames, "bubble.left.and.bubble.right", into: &map)
+        register(webNames, "globe", into: &map)
+        register(todoNames, "checklist", into: &map)
+        for (name, symbol) in miscNames { map[name] = symbol }
+        for (legacy, current) in legacyNames { map[legacy] = map[current] ?? defaultSymbol }
+        return map
+    }()
+
+    private static let gitNames: [String] = [
+        "git_status", "git_diff", "git_log", "git_commit_detail", "git_branches",
+        "git_stage", "git_unstage", "git_commit", "git_init", "git_branch_create",
+        "git_branch_checkout", "git_branch_rename", "git_merge", "git_merge_abort",
+        "git_fetch", "git_pull", "git_push", "git_clone", "git_squash",
+        "git_remote_set", "git_remote_remove", "git_reset_to_remote",
+        "git_tag", "git_stash", "git_restore", "git_clean", "git_remote_list",
+        "apelin_git_read_settings", "apelin_git_set_author", "apelin_git_save_credential",
+        "apelin_git_remove_credential", "apelin_git_create_repository", "apelin_git_create_issue",
+    ]
+
+    /// Names of the tools the detail rows map to the remaining symbols, by family.
+    private static let fileReadNames = ["file_read", "file_list", "file_grep", "file_find", "file_show"]
+    private static let fileWriteNames = ["file_write", "file_edit", "file_create"]
+    private static let buildNames = ["apelin_project_build", "apelin_toolchain_self_test"]
+    private static let packageNames = ["apelin_package_install", "apelin_package_remove", "apelin_package_list",
+                                       "apelin_package_publish", "apelin_package_release", "apelin_package_confirm_loaded"]
+    private static let screenNames = ["apelin_screen_capture", "apelin_screen_read_tree", "apelin_screen_interact",
+                                      "apelin_device_respring"]
+    private static let logNames = ["apelin_log_read"]
+    private static let crashNames = ["apelin_crash_list", "apelin_crash_read", "apelin_crash_symbolicate"]
+    private static let memoryNames = ["apelin_memory_list", "apelin_memory_save", "apelin_memory_delete"]
+    private static let skillNames = ["apelin_skill_list", "apelin_skill_read", "apelin_skill_save", "apelin_skill_remove"]
+    private static let conversationNames = ["apelin_conversation_create", "apelin_conversation_send",
+                                            "apelin_conversation_list", "apelin_conversation_read",
+                                            "apelin_conversation_stop"]
+    private static let webNames = ["web_search", "apelin_web_fetch"]
+    private static let todoNames = ["apelin_todo_list", "apelin_todo_write", "apelin_conversation_plan"]
+    private static let miscNames: [String: String] = [
+        "apelin_notification_send": "bell",
+        "apelin_conversation_compact": "rectangle.compress.vertical",
+        "apelin_question_ask": "questionmark.bubble",
+        "apelin_run_mode": "slider.horizontal.3",
+        "apelin_feedback_send": "exclamationmark.bubble",
+        "apelin_feedback_read": "exclamationmark.bubble",
+        "apelin_feedback_edit": "exclamationmark.bubble",
+        "apelin_template_list": "square.grid.2x2",
+        "apelin_project_list": "square.grid.2x2",
+        "apelin_project_create": "square.grid.2x2",
+        "apelin_project_rename": "square.grid.2x2",
+        "apelin_project_delete": "square.grid.2x2",
+        "apelin_project_check_distribution": "square.grid.2x2",
+        "apelin_project_set_environment": "square.grid.2x2",
+        "apelin_toolchain_list": "gearshape.2",
+        "apelin_sdk_list": "gearshape.2",
+        "apelin_toolchain_setup": "gearshape.2",
+        "apelin_sdk_import": "gearshape.2",
+        "apelin_sdk_analyze_framework": "gearshape.2",
+        "apelin_sdk_read_header": "gearshape.2",
+        "shell_run": "terminal",
+    ]
+
+    private static let defaultSymbol = "wrench.and.screwdriver"
+
+    private static let legacyNames: [String: String] = [
+        "write_file": "file_write",
+        "patch_file": "file_edit",
+        "create_file": "file_create",
+        "read_file": "file_read",
+        "list": "file_list",
+        "grep": "file_grep",
+        "find": "file_find",
+        "run_code": "shell_run",
+        "analyze_framework": "apelin_sdk_analyze_framework",
+        "framework_header": "apelin_sdk_read_header",
+        "build": "apelin_project_build",
+        "install": "apelin_package_install",
+        "remove_package": "apelin_package_remove",
+        "respring": "apelin_device_respring",
+        "confirm_loaded": "apelin_package_confirm_loaded",
+        "read_logs": "apelin_log_read",
+        "list_crashes": "apelin_crash_list",
+        "read_crash": "apelin_crash_read",
+        "symbolicate_crash": "apelin_crash_symbolicate",
+        "capture_screen": "apelin_screen_capture",
+        "read_ui_tree": "apelin_screen_read_tree",
+        "ui_action": "apelin_screen_interact",
+        "memory_list": "apelin_memory_list",
+        "memory_save": "apelin_memory_save",
+        "memory_delete": "apelin_memory_delete",
+        "read_skill": "apelin_skill_read",
+        "notify_user": "apelin_notification_send",
+        "check_distribution": "apelin_project_check_distribution",
+        "project_template_list": "apelin_template_list",
+        "project_create": "apelin_project_create",
+        "git_settings": "apelin_git_read_settings",
+        "git_set_author": "apelin_git_set_author",
+        "git_save_credential": "apelin_git_save_credential",
+        "git_remove_credential": "apelin_git_remove_credential",
+        "conversation_create": "apelin_conversation_create",
+        "conversation_send": "apelin_conversation_send",
+        "conversation_list": "apelin_conversation_list",
+        "conversation_read": "apelin_conversation_read",
+        "conversation_stop": "apelin_conversation_stop",
+        "conversation_plan": "apelin_conversation_plan",
+        "toolchain_list": "apelin_toolchain_list",
+        "sdk_list": "apelin_sdk_list",
+        "toolchain_setup": "apelin_toolchain_setup",
+        "sdk_import": "apelin_sdk_import",
+        "toolchain_self_test": "apelin_toolchain_self_test",
+        "project_environment_set": "apelin_project_set_environment",
+    ]
+
+    private static func register(_ names: [String], _ symbol: String, into map: inout [String: String]) {
+        for name in names { map[name] = symbol }
+    }
+}
+
 /// What the widgets show of the conversations, written by the app and read
 /// by the widget extension; the Live Activity's payload is the same shape,
 /// cut to the conversations in progress.
@@ -51,7 +204,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case chats, totalCount, inProgressCount, workingCount, waitingCount
-        case currentTool, answerPreview, transientResult, batchOutcome
+        case currentTool, progress, answerPreview, transientResult, batchOutcome
     }
 
     init(from decoder: Decoder) throws {
@@ -62,6 +215,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         workingCount = try container.decodeIfPresent(Int.self, forKey: .workingCount) ?? 0
         waitingCount = try container.decodeIfPresent(Int.self, forKey: .waitingCount) ?? 0
         currentTool = try container.decodeIfPresent(ToolActivity.self, forKey: .currentTool)
+        progress = try container.decodeIfPresent(ChatWidgetProgress.self, forKey: .progress)
         answerPreview = try container.decodeIfPresent(String.self, forKey: .answerPreview)
         transientResult = try container.decodeIfPresent(ResultNotice.self, forKey: .transientResult)
         batchOutcome = try container.decodeIfPresent(BatchOutcome.self, forKey: .batchOutcome)
@@ -75,6 +229,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         try container.encode(workingCount, forKey: .workingCount)
         try container.encode(waitingCount, forKey: .waitingCount)
         try container.encodeIfPresent(currentTool, forKey: .currentTool)
+        try container.encodeIfPresent(progress, forKey: .progress)
         try container.encodeIfPresent(answerPreview, forKey: .answerPreview)
         try container.encodeIfPresent(transientResult, forKey: .transientResult)
         try container.encodeIfPresent(batchOutcome, forKey: .batchOutcome)
@@ -91,6 +246,8 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     var waitingCount = 0
     /// 仅实时活动携带，且只保留当前显示的一个会话的工具信息。
     var currentTool: ToolActivity?
+    /// 仅实时活动携带的当前阶段；主屏小组件不读取。
+    var progress: ChatWidgetProgress?
     /// 仅实时活动携带的单行回答预览，不写进主屏小组件的快照。
     var answerPreview: String?
     /// 某个会话刚完成或失败时的短暂提示；不计入进行中数量。
@@ -178,6 +335,15 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
             result.chats[0].approvalTool = result.chats[0].approvalTool.flatMap { $0.utf8.count <= 96 ? $0 : nil }
         }
         result.answerPreview = result.answerPreview.map { Self.activityText($0, bytes: 180) }
+        if var progress = result.progress {
+            progress = .init(
+                stage: progress.stage,
+                symbol: Self.activityText(progress.symbol, bytes: 64),
+                title: Self.activityText(progress.title, bytes: 120),
+                detail: progress.detail.map { Self.activityText($0, bytes: 220) },
+            )
+            result.progress = progress
+        }
         if var notice = result.transientResult {
             notice.chat.title = Self.activityText(notice.chat.title, bytes: 120)
             notice.chat.project = nil
@@ -190,6 +356,9 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         if !fits(result) {
             result.answerPreview = nil
             result.currentTool = nil
+            result.progress = result.progress.map {
+                .init(stage: $0.stage, symbol: $0.symbol, title: $0.title, detail: nil)
+            }
             result.transientResult = nil
             if !result.chats.isEmpty {
                 result.chats[0].title = Self.activityText(result.chats[0].title, bytes: 160)
