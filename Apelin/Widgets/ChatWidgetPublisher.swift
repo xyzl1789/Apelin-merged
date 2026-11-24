@@ -29,13 +29,9 @@ final class ChatWidgetPublisher {
     /// Set once a quit has ended the activity: a change queued behind the
     /// quit must not bring one back.
     @objc private dynamic static var isClosedForQuit = false
-    private struct ActivityNotice {
-        let chat: ChatWidgetSnapshot.Chat
-        let expiresAt: Date
-    }
-    /// 活动会话结束时保留五秒；失败提示优先，但不改变进行中会话的排序和计数。
-    private var knownProgressIDs: Set<UUID>?
-    private var notices: [UUID: ActivityNotice] = [:]
+    /// 提示只占展示位置，不改变进行中会话的排序、计数或跳转目标。
+    private var knownProgressIDs: Set<String> = []
+    private var noticeQueue = ChatActivityResultQueue()
     private var noticeExpiryTask: Task<Void, Never>?
     private let writer = DispatchQueue(label: "wiki.qaq.apelin.widgets.writer", qos: .utility)
     private let log = Logger(subsystem: "wiki.qaq.apelin", category: "widgets")
@@ -125,33 +121,31 @@ final class ChatWidgetPublisher {
             write(snapshot)
         }
         let running = listed.filter { $0.chat.isInProgress }
-        let runningIDs = Set(running.compactMap { UUID(uuidString: $0.chat.id) })
-        if let knownProgressIDs {
-            let endedIDs = knownProgressIDs.subtracting(runningIDs)
-            for row in listed where endedIDs.contains(UUID(uuidString: row.chat.id) ?? UUID()) {
-                guard row.chat.status == .done || row.chat.status == .failed,
-                      let id = UUID(uuidString: row.chat.id) else { continue }
-                notices[id] = ActivityNotice(chat: row.chat, expiresAt: Date().addingTimeInterval(5))
-            }
-        }
+        let runningIDs = Set(running.map { $0.chat.id })
+        let endedIDs = knownProgressIDs.subtracting(runningIDs)
         knownProgressIDs = runningIDs
-        let now = Date()
-        notices = notices.filter { _, notice in
-            runningIDs.contains(UUID(uuidString: notice.chat.id) ?? UUID()) == false && notice.expiresAt > now
-        }
-        scheduleNoticeExpiry()
+        let ended = listed.compactMap { row -> ChatWidgetSnapshot.Chat? in
+            guard !running.isEmpty, endedIDs.contains(row.chat.id),
+                  let id = UUID(uuidString: row.chat.id),
+                  let outcome = runtime.records[id]?.widgetTurns.last?.outcome,
+                  outcome == .succeeded || outcome == .failed else { return nil }
+            var chat = row.chat
+            chat.status = outcome == .failed ? .failed : .done
+            chat.project = nil
+            chat.approvalTool = nil
+            chat.startedAt = nil
+            return chat
+        }.sorted { $0.id < $1.id }
+        let resultNotice = noticeQueue.update(
+            ended: ended,
+            runningIDs: runningIDs,
+            waiting: running.contains { $0.chat.status == .waiting },
+            now: .now,
+        )
+        scheduleNoticeExpiry(resultNotice?.expiresAt)
         var activity = ChatWidgetSnapshot(chats: running.map { ($0.chat, $0.updated) }).inProgress
-        if !running.isEmpty {
-            activity.transientResult = notices.values
-                .filter { $0.chat.status == .failed }
-                .sorted { $0.expiresAt > $1.expiresAt }
-                .first?.chat
-                ?? notices.values.sorted { $0.expiresAt > $1.expiresAt }.first?.chat
-        }
+        activity.transientResult = resultNotice
         if running.isEmpty {
-            // 批次结果只在全部结束时才用。仍有任务时不重扫历史，也不把已结束的行送给组件。
-            notices.removeAll()
-            scheduleNoticeExpiry()
             let batch = ChatActivityBatch(turns: records.flatMap(\.widgetTurns))
             let participants = listed.filter { row in
                 UUID(uuidString: row.chat.id).map(batch.chatIDs.contains) == true
@@ -185,9 +179,9 @@ final class ChatWidgetPublisher {
         }
     }
 
-    private func scheduleNoticeExpiry() {
+    private func scheduleNoticeExpiry(_ expiry: Date?) {
         noticeExpiryTask?.cancel()
-        guard let expiry = notices.values.map(\.expiresAt).min() else {
+        guard let expiry else {
             noticeExpiryTask = nil
             return
         }
@@ -245,7 +239,8 @@ final class ChatWidgetPublisher {
             }
             return true
         }
-        let content = ActivityContent(state: state, staleDate: nil)
+        // 让系统到期重绘；组件只隐藏提示，不清除运行中的会话。
+        let content = ActivityContent(state: state, staleDate: state.transientResult?.expiresAt)
         if let activity = existing.first {
             await activity.update(content)
             return true

@@ -10,9 +10,9 @@ import WidgetKit
 struct ChatsActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ChatActivityAttributes.self) { context in
-            ChatLockScreenView(state: context.state)
+            ChatLockScreenView(state: context.state.forActivityDisplay(isStale: context.isStale))
         } dynamicIsland: { context in
-            let state = context.state
+            let state = context.state.forActivityDisplay(isStale: context.isStale)
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     HStack(spacing: 3) {
@@ -54,7 +54,7 @@ struct ChatsActivityWidget: Widget {
                         VStack(alignment: .leading, spacing: 5) {
                             ChatActivitySessionRow(chat: chat, state: state)
                             if let result = state.transientResult {
-                                ChatActivityResultRow(chat: result)
+                                ChatActivityResultRow(chat: result.chat)
                             }
                         }
                         .padding(.leading, 8)
@@ -88,7 +88,7 @@ struct ChatsActivityWidget: Widget {
     }
 }
 
-/// 审批优先；运行中的符号只反映当前阶段；批次结束才显示结果。
+/// 审批优先，其次是单会话短提示；没有运行会话时才显示批次结果。
 @available(iOS 16.2, *)
 private struct ChatActivityIslandIcon: View {
     let state: ChatWidgetSnapshot
@@ -98,7 +98,9 @@ private struct ChatActivityIslandIcon: View {
         if state.waitingCount > 0 {
             symbol("exclamationmark.triangle.fill", color: WidgetTheme.island.amber, label: String(localized: "Needs Approval"))
         } else if let result = state.transientResult {
-            symbol(result.activitySymbol, color: result.activityColor, label: result.statusWord)
+            let failed = result.chat.status == .failed
+            symbol(failed ? "xmark" : "checkmark", color: failed ? WidgetTheme.island.red : WidgetTheme.island.green,
+                   label: "\(result.chat.statusWord) · \(result.chat.title)")
         } else if state.workingCount > 0 {
             if let tool = state.currentTool {
                 ChatActivityToolIcon(tool: tool, font: font)
@@ -315,7 +317,7 @@ private struct ChatLockScreenView: View {
             if let chat = state.mostUrgent {
                 ChatActivitySessionRow(chat: chat, state: state)
                 if let result = state.transientResult {
-                    ChatActivityResultRow(chat: result)
+                    ChatActivityResultRow(chat: result.chat)
                 }
             }
         }

@@ -63,7 +63,21 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     /// 仅实时活动携带的单行回答预览，不写进主屏小组件的快照。
     var answerPreview: String?
     /// 某个会话刚完成或失败时的短暂提示；不计入进行中数量。
-    var transientResult: Chat?
+    struct ResultNotice: Codable, Hashable, Sendable {
+        var chat: Chat
+        let expiresAt: Date
+    }
+    var transientResult: ResultNotice?
+
+    /// 应用挂起时由系统触发重绘；过期只隐藏短提示，不隐藏运行进度。
+    func forActivityDisplay(isStale: Bool, now: Date = .now) -> Self {
+        guard let transientResult,
+              isStale || waitingCount > 0 || inProgressCount == 0 || now >= transientResult.expiresAt else { return self }
+        var display = self
+        display.transientResult = nil
+        return display
+    }
+
     /// 只汇总同批运行的会话，终态不再读取历史失败卡片。
     var batchOutcome: BatchOutcome?
 
@@ -134,8 +148,8 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         }
         result.answerPreview = result.answerPreview.map { Self.activityText($0, bytes: 180) }
         if var notice = result.transientResult {
-            notice.title = Self.activityText(notice.title, bytes: 160)
-            notice.project = notice.project.map { Self.activityText($0, bytes: 120) }
+            notice.chat.title = Self.activityText(notice.chat.title, bytes: 120)
+            notice.chat.project = nil
             result.transientResult = notice
         }
         if let tool = result.currentTool {
@@ -179,6 +193,40 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         case .working: 1
         case .done, .failed: 2
         }
+    }
+}
+
+/// 运行中的会话不变；待审批时暂停展示，整批结束时丢弃短提示。
+struct ChatActivityResultQueue {
+    private var pending: [ChatWidgetSnapshot.Chat] = []
+    private var active: ChatWidgetSnapshot.ResultNotice?
+
+    mutating func update(
+        ended: [ChatWidgetSnapshot.Chat], runningIDs: Set<String>, waiting: Bool, now: Date
+    ) -> ChatWidgetSnapshot.ResultNotice? {
+        guard !runningIDs.isEmpty else {
+            self = Self()
+            return nil
+        }
+        pending.removeAll { runningIDs.contains($0.id) }
+        if let notice = active {
+            if runningIDs.contains(notice.chat.id) || now >= notice.expiresAt {
+                active = nil
+            } else if waiting {
+                pending.insert(notice.chat, at: 0)
+                active = nil
+            }
+        }
+        for chat in ended where !runningIDs.contains(chat.id) {
+            guard active?.chat.id != chat.id, !pending.contains(where: { $0.id == chat.id }) else { continue }
+            pending.append(chat)
+        }
+        guard !waiting else { return nil }
+        if active == nil, !pending.isEmpty {
+            let index = pending.firstIndex { $0.status == .failed } ?? pending.startIndex
+            active = .init(chat: pending.remove(at: index), expiresAt: now.addingTimeInterval(5))
+        }
+        return active
     }
 }
 

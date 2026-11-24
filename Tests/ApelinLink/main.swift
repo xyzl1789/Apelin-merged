@@ -226,14 +226,37 @@ let finishedActivity = ChatWidgetSnapshot(chats: [chat("a", .done, 1)]).inProgre
 require(finishedActivity.totalCount == 1 && finishedActivity.inProgressCount == 0,
         "Keep the final activity state without counting it as active")
 var transientActivity = ChatWidgetSnapshot(chats: [chat("working", .working, 1)]).inProgress
-transientActivity.transientResult = chat("finished", .failed, 0).chat
-require(transientActivity.inProgressCount == 1 && transientActivity.transientResult?.status == .failed,
+transientActivity.transientResult = .init(chat: chat("finished", .failed, 0).chat, expiresAt: now.addingTimeInterval(5))
+require(transientActivity.inProgressCount == 1 && transientActivity.transientResult?.chat.status == .failed,
         "A failed notice does not change the active count or current session")
 let transientData = try JSONEncoder().encode(transientActivity)
 try require(JSONDecoder().decode(ChatWidgetSnapshot.self, from: transientData) == transientActivity,
             "A transient result notice round-trips independently of the batch outcome")
 require(ChatWidgetSnapshot(chats: [chat("w", .working, 9), chat("v", .working, 1)]).inProgress.mostUrgent?.id == "v",
         "With nothing waiting, the latest working")
+var resultQueue = ChatActivityResultQueue()
+let resultTime = now
+let completedChat = chat("completed", .done, 0).chat
+let failedChat = chat("failed-now", .failed, 0).chat
+let firstResult = resultQueue.update(ended: [completedChat, failedChat], runningIDs: ["running"], waiting: false, now: resultTime)
+precondition(firstResult?.chat.id == failedChat.id && firstResult?.expiresAt == resultTime.addingTimeInterval(5),
+             "Failures are shown first for five seconds")
+let approvalResult = resultQueue.update(ended: [], runningIDs: ["running"], waiting: true, now: resultTime.addingTimeInterval(1))
+precondition(approvalResult == nil, "Approval suppresses result notices")
+let resumedResult = resultQueue.update(ended: [], runningIDs: ["running"], waiting: false, now: resultTime.addingTimeInterval(1))
+precondition(resumedResult?.chat.id == failedChat.id, "A suspended result resumes after approval")
+let nextResult = resultQueue.update(ended: [], runningIDs: ["running"], waiting: false, now: resultTime.addingTimeInterval(6))
+precondition(nextResult?.chat.id == completedChat.id && nextResult?.expiresAt == resultTime.addingTimeInterval(11),
+             "The successful result gets its own five seconds")
+precondition(resultQueue.update(ended: [], runningIDs: ["running"], waiting: false, now: resultTime.addingTimeInterval(11)) == nil,
+             "Running progress resumes when the last notice expires")
+precondition(resultQueue.update(ended: [failedChat], runningIDs: ["running"], waiting: false, now: resultTime.addingTimeInterval(12)) != nil)
+precondition(resultQueue.update(ended: [], runningIDs: [], waiting: false, now: resultTime.addingTimeInterval(13)) == nil,
+             "All results clear when no session remains")
+require(transientActivity.forActivityDisplay(isStale: true, now: now).transientResult == nil,
+        "A stale activity hides only the notice")
+require(transientActivity.forActivityDisplay(isStale: false, now: now.addingTimeInterval(5)).mostUrgent?.id == "working",
+        "Expiry preserves the running chat and its link")
 
 let many = ChatWidgetSnapshot(chats: (0 ..< 20).map { chat("c\($0)", .done, TimeInterval($0)) })
 require(many.chats.count == ChatWidgetSnapshot.listLimit && many.totalCount == 20, "The list is capped, the count is not")
