@@ -49,6 +49,37 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         }
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case chats, totalCount, inProgressCount, workingCount, waitingCount
+        case currentTool, answerPreview, transientResult, batchOutcome
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        chats = try container.decodeIfPresent([Chat].self, forKey: .chats) ?? []
+        totalCount = try container.decodeIfPresent(Int.self, forKey: .totalCount) ?? chats.count
+        inProgressCount = try container.decodeIfPresent(Int.self, forKey: .inProgressCount) ?? 0
+        workingCount = try container.decodeIfPresent(Int.self, forKey: .workingCount) ?? 0
+        waitingCount = try container.decodeIfPresent(Int.self, forKey: .waitingCount) ?? 0
+        currentTool = try container.decodeIfPresent(ToolActivity.self, forKey: .currentTool)
+        answerPreview = try container.decodeIfPresent(String.self, forKey: .answerPreview)
+        transientResult = try container.decodeIfPresent(ResultNotice.self, forKey: .transientResult)
+        batchOutcome = try container.decodeIfPresent(BatchOutcome.self, forKey: .batchOutcome)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(chats, forKey: .chats)
+        try container.encode(totalCount, forKey: .totalCount)
+        try container.encode(inProgressCount, forKey: .inProgressCount)
+        try container.encode(workingCount, forKey: .workingCount)
+        try container.encode(waitingCount, forKey: .waitingCount)
+        try container.encodeIfPresent(currentTool, forKey: .currentTool)
+        try container.encodeIfPresent(answerPreview, forKey: .answerPreview)
+        try container.encodeIfPresent(transientResult, forKey: .transientResult)
+        try container.encodeIfPresent(batchOutcome, forKey: .batchOutcome)
+    }
+
     /// The conversations to list, the one that most needs a look first.
     var chats: [Chat] = []
     /// Every conversation, listed or not.
