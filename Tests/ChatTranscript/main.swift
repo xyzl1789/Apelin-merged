@@ -103,6 +103,26 @@ do {
     precondition(stopping?.stage == .stopping && stopping?.symbol == "stop.circle")
     precondition(stopping?.hidesToolAndPreview == true)
 
+    // 前面还有一轮时，本轮的进度不能被上一轮的结束事件清掉（这就是
+    // 「只有第一轮能看到思考内容」的由来）。
+    record.run = nil
+    record.events = [
+        event(1, "prompt"), event(2, "message", ["text": .string("上一轮的回答")]),
+        event(3, "finished", ["reason": .string("completed")]),
+        event(4, "prompt"), event(5, "messageStarted"),
+        event(6, "thinking", ["text": .string("先看项目结构")]),
+    ]
+    let second = record.widgetProgress
+    precondition(second?.stage == .thinking && second?.detail == "先看项目结构",
+                 "a later turn still shows its own thinking")
+    // 提问本身不是思考内容：刚发出、模型还没产出时不编造详情。
+    record.events = [
+        event(1, "prompt"), event(2, "finished", ["reason": .string("completed")]),
+        event(3, "prompt", ["text": .string("帮我改一下这个文件")]),
+    ]
+    let justSent = record.widgetProgress
+    precondition(justSent?.stage == .thinking && justSent?.detail == nil, "the reader's own words are not thinking")
+
     precondition(progress([event(2, "reconnecting"), event(3, "finished")]) == nil, "a finished turn shows nothing")
     precondition(progress([event(2, "reconnecting"), event(3, TaskEvent.stateKind,
                                                           ["state": .string(TaskState.interrupted.rawValue)])]) == nil)

@@ -109,12 +109,13 @@ extension ChatRecord {
         // 连接状态只在它是这一轮最新的说法时成立：之后任何推进回合的事件都把它清掉。
         var linking = true
         var compacted = false
-        for event in events.reversed() where !ChatFork.isHistorical(event) {
+        scan: for event in events.reversed() where !ChatFork.isHistorical(event) {
             let payload = event.payload
             switch event.kind {
             case "prompt", "steer":
                 sawTurn = true
-                if latestThinking.isEmpty { latestThinking = payload? ["text"]?.stringValue ?? "" }
+                // 本轮从这里开始：再往前是别的回合，它自己的结束事件不能清掉这一轮。
+                break scan
             case "finished":
                 return nil
             case TaskEvent.stateKind:
