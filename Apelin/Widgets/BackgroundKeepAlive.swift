@@ -57,8 +57,8 @@ enum BackgroundKeepAlive {
     }()
 
     private static func signatureMatches(_ method: Method, returns result: String, arguments: [String]) -> Bool {
-        guard method_getNumberOfArguments(method) == UInt32(arguments.count),
-              let returnType = method_copyReturnType(method) else { return false }
+        guard method_getNumberOfArguments(method) == UInt32(arguments.count) else { return false }
+        let returnType = method_copyReturnType(method)
         defer { free(returnType) }
         guard String(cString: returnType) == result else { return false }
         for (index, expected) in arguments.enumerated() {
