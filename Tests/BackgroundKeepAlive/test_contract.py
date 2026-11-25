@@ -180,6 +180,38 @@ print("通过：24组当前会话、其他会话、不可见、未知会话的�
         self.assertIn("APFRefreshContainers();", self.module)
         self.assertIn("APFRefreshMarks();", self.module)
 
+    def test_background_cards_and_matching_footers(self):
+        page = source("Apelin/Interface/Settings/ForegroundBackgroundController.swift")
+        self.assertIn("numberOfSections(in _: UITableView) -> Int { Row.allCases.count }", page)
+        self.assertIn("numberOfRowsInSection _: Int) -> Int { 1 }", page)
+        self.assertIn("Row(rawValue: indexPath.section)", page)
+        self.assertIn("IndexPath(row: 0, section: $0.rawValue)", page)
+        footer = block(page, "titleForFooterInSection section:")
+        for row in ("enabled", "notifications", "locked", "indicators", "lockIndicator", "status", "protectionStatus"):
+            self.assertIn("case ." + row + ":", footer)
+        self.assertIn("未开启后台保活", footer)
+        self.assertIn("任务进度实时活动与灵动岛实时显示", footer)
+        self.assertNotIn("开源许可见设置", page)
+
+    def test_provider_note_has_own_trailing_label_and_reserved_menu(self):
+        page = source("Apelin/Interface/Settings/Accounts/ModelProvidersController.swift")
+        self.assertNotIn("func providerTitle", page)
+        self.assertIn("cell.accessoryView = menuButton(account)", page)
+        self.assertIn("width: 32, height: 44", block(page, "private func menuButton"))
+        row = block(page, "private final class ProviderAccountCell")
+        for requirement in ("heading.alignment = .firstBaseline", "heading.addArrangedSubview(noteLabel)",
+                            "title.setContentHuggingPriority(.defaultLow", "noteLabel.setContentHuggingPriority(.defaultHigh",
+                            "multiplier: 0.45", "noteLabel.lineBreakMode = .byTruncatingTail",
+                            "contentView.layoutMarginsGuide", "row.trailingAnchor.constraint(equalTo: margins.trailingAnchor)"):
+            self.assertIn(requirement, row)
+        self.assertNotIn("accessoryView =", row)
+        self.assertEqual(row.count("adjustsFontForContentSizeCategory = true"), 3)
+
+    def test_lock_mark_is_only_icon(self):
+        name = block(self.module, "static id APFDisplayName")
+        self.assertIn('stringByAppendingString:@" 🔒"', name)
+        self.assertNotIn("已锁定", name)
+
     def test_unified_license_is_reviewed_and_gpl_gate_stays_closed(self):
         import copy
         import importlib.util

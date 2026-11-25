@@ -5897,6 +5897,22 @@ over ssh.
 默认开启；卡片锁定、运行状态标记及锁定标记各自独立，默认关闭。完整 Immortalizer
 许可由 collect-licenses.py 从 Background/LICENSE 收集到关于 ▸ 许可证，绑定精确哈希的
 standalone/Immortalizer 例外，不放宽链接依赖规则；后台页不再维护第二个许可阅读器。
+2026-11-25 用户确认运行标记、卡片锁定、锁定标记在注销后生效，三个功能保留。
+后台页每个功能/状态占一个 insetGrouped section，单节一行；对应说明用该节 footer，
+状态刷新索引必须是 row=0、section=功能枚举值。保活说明提示：退到后台后的任务进度
+实时活动和灵动岛持续实时显示依赖后台保活，并说明耗电、首次安装/更新模块需注销，
+灵动岛需要设备支持。页面不再写“开源许可见设置→关于→许可证”，统一许可列表保留。
+锁定名称后缀只追加空格与 🔒，不再加“已锁定”或分隔点；SceneCheck 精确验证全名称。
+
+模型服务商列表备注不能再拼进名称富文本。ModelProvidersController 的 ProviderAccountCell
+将标题和独立备注标签按 firstBaseline 横排；标题低 hugging 吸收余量，备注高 hugging
+贴行尾、最多占标题区45%、单行尾部截断，使用与 ComposerChoiceSheet 相同的强调色及
+动态字体。只在 contentView.layoutMarginsGuide 内布局；省略号仍是32×44 accessoryView，
+不能被备注占用，登录状态另起下一行。不要把整个cell设为无障碍元素而隐藏菜单按钮。
+本轮20项契约中19项通过、1项macOS Swift执行待Xcode；后台页及新服务商行片段语法
+解析、无障碍静态检查、双架构模块编译及签名SceneCheck通过。完整App类型检查、
+卡片页脚外观、长备注/大字体/省略号点击及新纯锁图标仍需完整新包上机验收。
+
 App 的 `ForegroundBackground.swift` 通过 `notify` 模块发送 PID 与开关位，SpringBoard
 核对实际本应用 PID 后才接受；App 退出清除请求，旧 PID 不继续生效。五秒状态询问
 只用于模块连通性和真实可见性，不能当作防挂起措施或保活成功证据。

@@ -202,49 +202,21 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
         }
     }
 
-    /// The provider's mark and name on one line; a note, when present, is
-    /// highlighted at the end of that line. Signed-in status stays below and
-    /// the content configuration reserves the trailing `…` menu's space.
+    /// 备注独占标题行尾；菜单始终留在 UIKit 的 accessoryView 区域。
     private func accountCell(_ account: AgentAccount, note: String?) -> UITableViewCell {
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-        var content: UIListContentConfiguration
+        let cell = ProviderAccountCell(
+            name: account.provider.displayName,
+            icon: account.provider.icon,
+            note: note,
+            detail: account.signedIn ? Self.signedInLine(account) : nil
+        )
         if account.signedIn {
-            content = .stackedValueCell()
-            content.secondaryText = Self.signedInLine(account)
-            content.secondaryTextProperties.color = .secondaryLabel
-            content.secondaryTextProperties.numberOfLines = 1
-
             cell.accessoryView = menuButton(account)
             cell.selectionStyle = .none
         } else {
-            content = .cell()
             cell.accessoryType = .disclosureIndicator
         }
-        if let note, !note.isEmpty {
-            content.text = nil
-            content.attributedText = Self.providerTitle(account.provider.displayName, note: note)
-        } else {
-            content.text = account.provider.displayName
-        }
-        content.textProperties.numberOfLines = 1
-        content.image = account.provider.icon
-        content.imageProperties.maximumSize = CGSize(width: 29, height: 29)
-        content.imageProperties.reservedLayoutSize = CGSize(width: 29, height: 29)
-        cell.contentConfiguration = content
         return cell
-    }
-
-    private static func providerTitle(_ name: String, note: String) -> NSAttributedString {
-        let titleFont = UIFont.preferredFont(forTextStyle: .body)
-        let result = NSMutableAttributedString(
-            string: name,
-            attributes: [.font: titleFont, .foregroundColor: UIColor.label],
-        )
-        result.append(NSAttributedString(
-            string: "  ·  \(note)",
-            attributes: [.font: titleFont, .foregroundColor: UIColor.systemBlue],
-        ))
-        return result
     }
 
     /// Who is signed in, and until when where the sign-in ends: one phrase,
@@ -400,4 +372,75 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             }
         }
     }
+}
+
+/// 标题和备注同基线；标题吸收剩余宽度，备注贴行尾且最多占标题区域的45%。
+/// 内容只约束在 contentView 内，UIKit 会在它之外给省略号或箭头留位置。
+private final class ProviderAccountCell: UITableViewCell {
+    init(name: String, icon: UIImage?, note: String?, detail: String?) {
+        super.init(style: .default, reuseIdentifier: nil)
+        let title = UILabel()
+        title.text = name
+        title.font = .preferredFont(forTextStyle: .body)
+        title.adjustsFontForContentSizeCategory = true
+        title.textColor = .label
+        title.numberOfLines = 1
+        title.lineBreakMode = .byTruncatingMiddle
+        title.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let heading = UIStackView(arrangedSubviews: [title])
+        heading.axis = .horizontal
+        heading.alignment = .firstBaseline
+        heading.spacing = 8
+        if let text = note, !text.isEmpty {
+            let noteLabel = UILabel()
+            noteLabel.text = text
+            noteLabel.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(for: .systemFont(ofSize: 13, weight: .semibold))
+            noteLabel.adjustsFontForContentSizeCategory = true
+            noteLabel.textColor = AppAccent.color(glass: .tintColor)
+            noteLabel.textAlignment = .natural
+            noteLabel.numberOfLines = 1
+            noteLabel.lineBreakMode = .byTruncatingTail
+            noteLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+            noteLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+            heading.addArrangedSubview(noteLabel)
+            noteLabel.widthAnchor.constraint(lessThanOrEqualTo: heading.widthAnchor, multiplier: 0.45).isActive = true
+        }
+
+        let column = UIStackView(arrangedSubviews: [heading])
+        column.axis = .vertical
+        column.spacing = 3
+        if let detail {
+            let subtitle = UILabel()
+            subtitle.text = detail
+            subtitle.font = .preferredFont(forTextStyle: .subheadline)
+            subtitle.adjustsFontForContentSizeCategory = true
+            subtitle.textColor = .secondaryLabel
+            subtitle.numberOfLines = 1
+            subtitle.lineBreakMode = .byTruncatingTail
+            column.addArrangedSubview(subtitle)
+        }
+        let mark = UIImageView(image: icon)
+        mark.contentMode = .scaleAspectFit
+        mark.isAccessibilityElement = false
+        mark.widthAnchor.constraint(equalToConstant: 29).isActive = true
+        mark.heightAnchor.constraint(equalToConstant: 29).isActive = true
+        let row = UIStackView(arrangedSubviews: [mark, column])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = 16
+        row.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(row)
+        let margins = contentView.layoutMarginsGuide
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: margins.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: margins.trailingAnchor),
+            row.topAnchor.constraint(equalTo: margins.topAnchor),
+            row.bottomAnchor.constraint(equalTo: margins.bottomAnchor)
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) { fatalError("init(coder:) is not used") }
 }

@@ -168,7 +168,7 @@ static id APFDisplayName(id self, SEL cmd) {
     id original = APFOriginalName(self, cmd);
     if (APFMarksReady && (APFOptions & 16) && (APFOptions & 4) && APFLockReady &&
         [APFObject(self, "bundleIdentifier") isEqual:APFBundle] && [original isKindOfClass:NSString.class])
-        return [original stringByAppendingString:@" · 已锁定 🔒"];
+        return [original stringByAppendingString:@" 🔒"];
     return original;
 }
 

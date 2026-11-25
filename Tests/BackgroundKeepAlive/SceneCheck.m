@@ -154,7 +154,7 @@ static void APFCheckProtection(uint64_t pid) {
     APFOptions = 0;
     NSCAssert(APFAccessory(item, NULL, nil) == 77 && APFViewAccessory(view, NULL) == 78, @"关闭标记必须恢复系统原值");
     APFOptions = 28;
-    NSCAssert([APFDisplayName(item, NULL) containsString:@"已锁定"] && [APFDisplayName(other, NULL) isEqual:@"原始应用名称"], @"锁定名称只改本应用");
+    NSCAssert([APFDisplayName(item, NULL) isEqual:@"原始应用名称 🔒"] && [APFDisplayName(other, NULL) isEqual:@"原始应用名称"], @"锁定名称只为本应用追加锁图标，不追加文字");
     APFOptions = 12;
     NSCAssert([APFDisplayName(item, NULL) isEqual:@"原始应用名称"], @"关闭锁定标记必须恢复原名称");
     APFOptions = 24;
