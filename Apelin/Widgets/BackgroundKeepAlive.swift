@@ -8,6 +8,24 @@ import os
 enum BackgroundKeepAlive {
     private static let log = Logger(subsystem: "wiki.qaq.apelin", category: "keepalive")
     private static var assertion: NSObject?
+    private static var runningCount = 0
+    private static var requestID: UUID?
+    private static var isAcquiring = false
+    private static var wasValid = false
+    private static var retryNotBefore: TimeInterval = 0
+    private static var acquisitionTimeout: Task<Void, Never>?
+
+    /// 应用启动时接入持久日志；独立回归不依赖 Dog 或 UIKit。
+    static var diagnosticHandler: ((String, Bool) -> Void)?
+
+    private static func record(_ message: String, isError: Bool = false) {
+        if isError {
+            log.error("\(message, privacy: .public)")
+        } else {
+            log.notice("\(message, privacy: .public)")
+        }
+        diagnosticHandler?(message, isError)
+    }
 
     private typealias Allocate = @convention(c) (UnsafeRawPointer, Selector) -> UnsafeMutableRawPointer?
     private typealias Initialize = @convention(c) (
@@ -44,7 +62,7 @@ enum BackgroundKeepAlive {
               signatureMatches(initialize, returns: "@", arguments: ["@", ":", "i", "I", "I", "@", "@?"]),
               signatureMatches(valid, returns: "B", arguments: ["@", ":"]),
               signatureMatches(invalidate, returns: "v", arguments: ["@", ":"]) else {
-            log.error("后台保活接口缺失或签名不兼容，已跳过保活")
+            record("后台保活接口缺失或签名不兼容，已跳过保活", isError: true)
             return nil
         }
         return Bridge(
@@ -70,58 +88,121 @@ enum BackgroundKeepAlive {
         return true
     }
 
-    /// 计数式请求保活。零会话释放；失效后下次有事件时可以重新申请。
+    /// 计数式请求保活。申请回调到来之前保留对象，不把暂时的 valid=false 当成拒绝。
     static func setRunningCount(_ count: Int) {
+        let count = max(0, count)
+        if runningCount != count {
+            runningCount = count
+            record("进行中会话数变为 \(count)")
+        }
         guard count > 0 else {
-            release()
+            release(reason: "没有进行中的会话")
+            retryNotBefore = 0
             return
         }
-        guard !isHolding else { return }
-        release()
+        guard !isAcquiring, !isHolding,
+              ProcessInfo.processInfo.systemUptime >= retryNotBefore else { return }
+        release(reason: "旧断言已失效，准备重新申请")
         acquire()
     }
 
-    /// 返回系统实际有效性，而不是仅判断保存的对象是否非空。
+    /// 返回系统实际有效性；申请中仍为 false，但不会因此释放尚未回调的对象。
     static var isHolding: Bool {
         guard let assertion, let bridge else { return false }
-        return bridge.isValid(Unmanaged.passUnretained(assertion).toOpaque(), validSelector)
+        let valid = bridge.isValid(Unmanaged.passUnretained(assertion).toOpaque(), validSelector)
+        if wasValid, !valid {
+            record("后台保活断言已失效", isError: true)
+        }
+        wasValid = valid
+        return valid
     }
 
     private static func acquire() {
         guard let bridge else { return }
+        let id = UUID()
+        requestID = id
+        isAcquiring = true
+        record("开始申请后台保活断言（PreventSuspend），进行中会话 \(runningCount)")
         let classPointer = Unmanaged.passUnretained(bridge.cls as AnyObject).toOpaque()
         guard let allocated = bridge.allocate(classPointer, allocateSelector) else {
-            log.error("后台保活对象分配失败")
+            record("后台保活对象分配失败", isError: true)
+            release(reason: "分配失败")
+            retryNotBefore = ProcessInfo.processInfo.systemUptime + 10
             return
         }
-        // name 是 NSString 对象，不是 UTF-8 指针；flags/reason 是 32 位 unsigned int。
+        // name 是 NSString 对象；申请回调是 void (^)(BOOL)，不能传 C 函数或对象返回值。
         let name: NSString = "wiki.qaq.apelin.keepalive"
-        let initialized = withExtendedLifetime(name) {
+        let handler: @convention(block) (Bool) -> Void = { acquired in
+            // 私有接口不保证回调队列，也可能在初始化器返回前回调。
+            // 转到 MainActor 后再处理，确保 assertion 已接管返回对象的所有权。
+            Task { @MainActor in
+                acquisitionFinished(acquired, request: id)
+            }
+        }
+        let handlerObject = handler as AnyObject
+        let initialized = withExtendedLifetime((name, handlerObject)) {
             bridge.initialize(
                 allocated, initializeSelector, ProcessInfo.processInfo.processIdentifier,
-                1, 10005, Unmanaged.passUnretained(name).toOpaque(), nil
+                1, 10005, Unmanaged.passUnretained(name).toOpaque(),
+                Unmanaged.passUnretained(handlerObject).toOpaque()
             )
         }
         // alloc 的 +1 所有权经 init 转移到返回对象，再由 ARC 接管一次。
         // init 返回 nil 时遵循 ObjC init 的约定，不再释放旧 receiver。
         guard let initialized else {
-            log.error("后台保活对象初始化失败")
+            record("后台保活对象初始化失败", isError: true)
+            release(reason: "初始化失败")
+            retryNotBefore = ProcessInfo.processInfo.systemUptime + 10
             return
         }
-        let object = Unmanaged<NSObject>.fromOpaque(initialized).takeRetainedValue()
-        assertion = object
-        // 这个初始化器已发起申请，不重复 acquire；valid 是 BOOL，不能当对象读。
-        if isHolding {
-            log.notice("后台保活断言已授予（PreventSuspend）")
-        } else {
-            log.error("后台保活断言未被授予，已降级为不保活")
-            release()
+        assertion = Unmanaged<NSObject>.fromOpaque(initialized).takeRetainedValue()
+        record("后台保活申请已提交，初始有效状态为 \(isHolding)，等待申请回调")
+        acquisitionTimeout = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled, requestID == id, isAcquiring else { return }
+            isAcquiring = false
+            acquisitionTimeout = nil
+            if isHolding {
+                record("后台保活回调未到达，但断言有效，继续保留")
+            } else {
+                record("后台保活申请回调超时，断言仍无效", isError: true)
+                release(reason: "申请回调超时")
+                retryNotBefore = ProcessInfo.processInfo.systemUptime + 10
+            }
         }
     }
 
-    private static func release() {
-        guard let object = assertion, let bridge else { return }
+    private static func acquisitionFinished(_ acquired: Bool, request id: UUID) {
+        guard requestID == id, assertion != nil else {
+            record("忽略已释放或已替换的后台保活申请回调")
+            return
+        }
+        isAcquiring = false
+        acquisitionTimeout?.cancel()
+        acquisitionTimeout = nil
+        let valid = isHolding
+        record("后台保活申请回调：授予=\(acquired)，有效=\(valid)", isError: !acquired || !valid)
+        guard acquired, valid else {
+            release(reason: acquired ? "回调时断言已失效" : "系统拒绝授予")
+            retryNotBefore = ProcessInfo.processInfo.systemUptime + 10
+            return
+        }
+    }
+
+    private static func release(reason: String) {
+        let object = assertion
+        let hadRequest = requestID != nil
+        requestID = nil
+        isAcquiring = false
+        wasValid = false
+        acquisitionTimeout?.cancel()
+        acquisitionTimeout = nil
         assertion = nil
-        bridge.invalidate(Unmanaged.passUnretained(object).toOpaque(), invalidateSelector)
+        if let object, let bridge {
+            bridge.invalidate(Unmanaged.passUnretained(object).toOpaque(), invalidateSelector)
+        }
+        if hadRequest || object != nil {
+            record("释放后台保活断言：\(reason)")
+        }
     }
 }

@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
+#import <dispatch/dispatch.h>
 #import <dlfcn.h>
 #import <unistd.h>
 
@@ -54,6 +55,38 @@ int main(void) {
         Initialize initialize = (Initialize)method_getImplementation(initMethod);
         IsValid valid = (IsValid)method_getImplementation(validMethod);
         Invalidate invalidate = (Invalidate)method_getImplementation(invalidateMethod);
+        // 等待 void (^)(BOOL) 申请回调，不把初始化后的 valid 当作最终申请结果。
+        __block BOOL callbackReceived = NO;
+        __block BOOL callbackGranted = NO;
+        void (^handler)(BOOL) = ^(BOOL acquired) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                callbackReceived = YES;
+                callbackGranted = acquired;
+            });
+        };
+        void *allocated = allocate((__bridge const void *)cls, allocSEL);
+        if (!allocated) return 3;
+        void *initialized = initialize(allocated, initSEL, getpid(), 1, 10005,
+                                       (__bridge const void *)@"wiki.qaq.apelin.keepalive.callback",
+                                       (__bridge const void *)handler);
+        if (!initialized) return 4;
+        id pending = (__bridge_transfer id)initialized;
+        BOOL initialValid = valid((__bridge const void *)pending, validSEL);
+        NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5];
+        while (!callbackReceived && deadline.timeIntervalSinceNow > 0) {
+            [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+        }
+        BOOL callbackValid = valid((__bridge const void *)pending, validSEL);
+        invalidate((__bridge const void *)pending, invalidateSEL);
+        if (!callbackReceived) {
+            fprintf(stderr, "未验证：五秒内未收到断言申请回调，初始有效=%d，等待后有效=%d\n",
+                    initialValid, callbackValid);
+            return 6;
+        }
+        if (valid((__bridge const void *)pending, validSEL)) return 5;
+        printf("回调诊断：初始有效=%d，申请回调授予=%d，回调后有效=%d；仅代表独立工具\n",
+               initialValid, callbackGranted, callbackValid);
+
         unsigned int granted = 0;
         for (unsigned int i = 0; i < 100; ++i) {
             @autoreleasepool {
@@ -71,7 +104,7 @@ int main(void) {
                 invalidate((__bridge const void *)object, invalidateSEL);
             }
         }
-        printf("通过：签名核验及错误类型拒绝，100 次创建、BOOL 读取、释放；授予 %u 次\n", granted);
+        printf("通过：签名核验及错误类型拒绝，100 次创建、BOOL 读取、释放；立即有效 %u 次，不代表后台获准\n", granted);
     }
     return 0;
 }

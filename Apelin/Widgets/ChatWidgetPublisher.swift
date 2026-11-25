@@ -164,7 +164,7 @@ final class ChatWidgetPublisher {
         }
         let running = listed.filter { $0.chat.isInProgress }
         let runningIDs = Set(running.map { $0.chat.id })
-        // 有进行中的会话时持有后台保活断言，切后台不挂起，实时活动持续刷新。
+        // 有进行中的会话时申请保活；是否授予由系统决定，不能保证应用不会挂起。
         BackgroundKeepAlive.setRunningCount(running.count)
 
         let endedIDs = knownProgressIDs.subtracting(runningIDs)

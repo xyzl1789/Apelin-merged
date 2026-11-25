@@ -452,6 +452,7 @@ check:
 # module maps; passing those too redefines every C module, so they are left
 # out.
 harness:
+	@python3 -I -B "$(ROOT_DIR)/Tests/BackgroundKeepAlive/test_contract.py"
 	@bash "$(ROOT_DIR)/Scripts/test-team-brief.sh"
 	@bash "$(ROOT_DIR)/Scripts/test-team-ledger.sh"
 	@bash "$(ROOT_DIR)/Scripts/test-team-delegation-store.sh"
@@ -466,7 +467,7 @@ harness:
 	@python3 -I -B "$(ROOT_DIR)/Tests/ToolchainAudit/test_inventory.py"
 	@harness_dir="$$(mktemp -d /private/tmp/apelin-harness.XXXXXX)"; \
 	trap 'rm -rf -- "$${harness_dir:?}"' EXIT; \
-	xcrun --sdk macosx swiftc -O -swift-version 5 \
+	xcrun --sdk macosx swiftc -O -swift-version 5 -target arm64-apple-macos13.0 \
 		"$(ROOT_DIR)/Apelin/Widgets/BackgroundKeepAlive.swift" \
 		"$(ROOT_DIR)/Tests/BackgroundKeepAlive/Check.swift" \
 		-o "$$harness_dir/background-keepalive" && \

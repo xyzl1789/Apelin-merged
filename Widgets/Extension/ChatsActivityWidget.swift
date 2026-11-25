@@ -50,7 +50,7 @@ struct ChatsActivityWidget: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    if let chat = state.mostUrgent, state.finishedBadge == nil {
+                    if let chat = state.mostUrgent {
                         VStack(alignment: .leading, spacing: 5) {
                             ChatActivitySessionRow(chat: chat, state: state)
                             if let result = state.transientResult {
@@ -241,38 +241,41 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
-            if let detail = phase.detail {
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Image(systemName: phase.symbol)
-                        .font(.caption)
-                        .foregroundStyle(phase.color)
-                        .frame(width: 16)
-                        .accessibilityHidden(true)
-                    Text(verbatim: detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .privacySensitive()
-                }
-            }
-            ForEach(state.recentTools.indices, id: \.self) { index in
-                let tool = state.recentTools[index]
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Image(systemName: tool.symbol)
-                        .frame(width: 16)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(verbatim: tool.title).lineLimit(1)
-                        if let detail = tool.detail {
-                            Text(verbatim: detail).lineLimit(1)
-                        }
+            // 终态保留上面的会话标题、项目名和结果状态，只收起流程详情与工具记录。
+            if state.finishedBadge == nil {
+                if let detail = phase.detail {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Image(systemName: phase.symbol)
+                            .font(.caption)
+                            .foregroundStyle(phase.color)
+                            .frame(width: 16)
+                            .accessibilityHidden(true)
+                        Text(verbatim: detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .privacySensitive()
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .privacySensitive()
+                ForEach(state.recentTools.indices, id: \.self) { index in
+                    let tool = state.recentTools[index]
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Image(systemName: tool.symbol)
+                            .frame(width: 16)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(verbatim: tool.title).lineLimit(1)
+                            if let detail = tool.detail {
+                                Text(verbatim: detail).lineLimit(1)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .privacySensitive()
+                }
             }
         }
     }
@@ -336,7 +339,7 @@ private struct ChatLockScreenView: View {
                         .background(.white.opacity(0.15), in: Capsule())
                 }
             }
-            if let chat = state.mostUrgent, state.finishedBadge == nil {
+            if let chat = state.mostUrgent {
                 ChatActivitySessionRow(chat: chat, state: state)
                 if let result = state.transientResult {
                     ChatActivityResultRow(chat: result.chat)

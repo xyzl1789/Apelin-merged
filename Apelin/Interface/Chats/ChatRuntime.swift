@@ -287,9 +287,10 @@ final class ChatRuntime {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 guard !Task.isCancelled, let self else { return }
-                // 后台默认不再轮询；持有保活断言（有进行中的会话）时继续，
-                // 否则进程被挂起后实时活动立即停止刷新。
-                guard UIApplication.shared.applicationState != .background || BackgroundKeepAlive.isHolding else { continue }
+                // 后台仍有进行中的会话时继续同步，不因断言尚在申请或被拒绝就跳过。
+                // 这里只决定进程获准运行时是否同步，不能阻止系统挂起应用。
+                guard UIApplication.shared.applicationState != .background ||
+                    self.records.values.contains(where: { $0.summary.isWorking }) else { continue }
 
                 await self.reconcileRuns()
             }
