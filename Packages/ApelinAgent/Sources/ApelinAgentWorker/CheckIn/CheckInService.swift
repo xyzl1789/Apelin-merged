@@ -377,10 +377,9 @@ public enum CheckInService {
             "Cosy-MachineHostname": "iPhone",
         ]
         if let machine = extra(credentials, "machineId") { headers["Cosy-MachineId"] = machine }
-        if platform == .qoder, extra(credentials, "machineToken") == nil {
-            throw CheckInProblem(.rejected, "Qoder 国际版需要设备风控身份，当前登录凭据未包含 machineToken")
-        }
-        // Qoder 国际版和国内版共用活动接口；国际版额外设备风控若缺失，会由服务端返回拒绝。
+        // 国际版的设备风控身份由服务端校验。以前在这里凭 machineToken 做本地拦截，
+        // 请求根本没发出就被报成「服务器拒绝」，既挡掉了本可成功的签到，也看不到真实应答。
+        // 现在照常请求，被拒时按服务端状态如实报告。
         let baseString = platform == .qoder ? "https://openapi.qoder.sh" : "https://openapi.qoder.com.cn"
         guard let base = URL(string: baseString) else { throw CheckInProblem(.server, "地址无效") }
 
@@ -485,11 +484,29 @@ public enum CheckInService {
         }
         let user = root["user_quota"] as? [String: Any] ?? [:]
         let addon = root["add_on_quota"] as? [String: Any] ?? [:]
-        let available = (Double(numberText(user["remaining"]) ?? "0") ?? 0) + (Double(numberText(addon["remaining"]) ?? "0") ?? 0)
-        let used = (Double(numberText(user["used"]) ?? "0") ?? 0) + (Double(numberText(addon["used"]) ?? "0") ?? 0)
-        if !user.isEmpty || !addon.isEmpty { return Usage(available: String(Int(available)), used: String(Int(used))) }
-        guard let total = value("total") else { return nil }
-        return Usage(available: total, used: value("used"))
+
+        // 只统计真正读到的额度字段；缺字段时按 0 相加会显示假的「余额 0 / 已用 0」。
+        func summed(_ key: String) -> (value: Double, found: Bool) {
+            var total = 0.0
+            var found = false
+            for quota in [user, addon] {
+                guard let text = numberText(quota[key]), let number = Double(text) else { continue }
+                total += number
+                found = true
+            }
+            return (total, found)
+        }
+        let remaining = summed("remaining")
+        let consumed = summed("used")
+        var available = remaining.found ? String(Int(remaining.value)) : nil
+        var usedText = consumed.found ? String(Int(consumed.value)) : nil
+
+        // 老接口在顶层或 data 里直接给 total/used 时的兜底。
+        if available == nil { available = value("total") }
+        if usedText == nil { usedText = value("used") }
+
+        guard available != nil || usedText != nil else { return nil }
+        return Usage(available: available, used: usedText)
     }
 
     // MARK: - 网络请求
