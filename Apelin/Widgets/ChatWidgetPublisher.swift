@@ -78,6 +78,13 @@ final class ChatWidgetPublisher {
 
     private init() {
         NotificationCenter.default.addObserver(
+            forName: ForegroundBackground.enabledChanged,
+            object: nil,
+            queue: .main,
+        ) { _ in
+            MainActor.assumeIsolated { ChatWidgetPublisher.shared.backgroundPreferenceChanged() }
+        }
+        NotificationCenter.default.addObserver(
             forName: .apelinProjectsChanged,
             object: nil,
             queue: .main,
@@ -100,6 +107,18 @@ final class ChatWidgetPublisher {
         guard shownActivity != nil, !Self.isClosedForQuit else { return }
         if shownActivity!.chats.isEmpty, shownActivity!.totalCount == 0 { return }
         showActivity(shownActivity!)
+    }
+
+    /// 不走流式节流，也不结束/重建活动。先更新已有快照，再从 runtime 恢复最新详情。
+    @objc private dynamic func backgroundPreferenceChanged() {
+        guard !Self.isClosedForQuit else { return }
+        plannedRefresh = nil
+        if let shownActivity {
+            let next = shownActivity.withActivityDetails(ForegroundBackground.enabled).fittingActivityPayload()
+            self.shownActivity = next
+            showActivity(next)
+        }
+        publishNow()
     }
 
     @objc dynamic func chatsChanged() {
@@ -221,7 +240,7 @@ final class ChatWidgetPublisher {
         if activity.chats.isEmpty, records.contains(where: { !runtime.historyIsReady($0.summary.id) }) {
             return
         }
-        activity = activity.fittingActivityPayload()
+        activity = activity.withActivityDetails(ForegroundBackground.enabled).fittingActivityPayload()
         if activity != shownActivity {
             shownActivity = activity
             showActivity(activity)

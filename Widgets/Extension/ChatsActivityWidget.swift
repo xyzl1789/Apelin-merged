@@ -159,9 +159,12 @@ private extension ChatWidgetSnapshot.Chat {
 private extension ChatWidgetSnapshot {
     func sessionPhase(for chat: Chat) -> (symbol: String, color: Color, title: String, detail: String?, isTool: Bool) {
         if let badge = finishedBadge {
-            let detail = batchOutcome == .succeeded ? answerPreview : nil
+            let detail = detailsEnabled && batchOutcome == .succeeded ? answerPreview : nil
             let title = batchOutcome == .stopped ? badge.label : chat.statusLine
             return (badge.symbol, badge.color, title, detail, false)
+        }
+        guard detailsEnabled else {
+            return (chat.activitySymbol, chat.activityColor, chat.statusLine, nil, false)
         }
         if chat.isInProgress, let progress {
             if progress.stage == .waitingForApproval {
@@ -241,8 +244,8 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
-            // 终态保留上面的会话标题、项目名和结果状态，只收起流程详情与工具记录。
-            if state.finishedBadge == nil {
+            // 关闭保活或进入终态只收起流程详情和工具记录，身份、项目与基本状态始终保留。
+            if state.detailsEnabled && state.finishedBadge == nil {
                 if let detail = phase.detail {
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
                         Image(systemName: phase.symbol)

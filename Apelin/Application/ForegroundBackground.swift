@@ -7,6 +7,8 @@ import UIKit
 @MainActor
 enum ForegroundBackground {
     static let changed = Notification.Name("com.xyzl.apelin.foreground.changed")
+    /// 只在保活开关改变时发出，不让五秒状态回报反复触发实时活动重建快照。
+    static let enabledChanged = Notification.Name("com.xyzl.apelin.foreground.enabledChanged")
     static let becameVisible = Notification.Name("com.xyzl.apelin.foreground.visible")
     private static let requestName = "com.xyzl.apelin.foreground.request"
     private static let statusName = "com.xyzl.apelin.foreground.status"
@@ -20,7 +22,10 @@ enum ForegroundBackground {
     static var enabled: Bool {
         get { UserDefaults.standard.bool(forKey: "foregroundBackground.enabled") }
         set {
+            guard newValue != enabled else { return }
             UserDefaults.standard.set(newValue, forKey: "foregroundBackground.enabled")
+            // 本地显示立即更新，不依赖 SpringBoard 通道是否注册或应答。
+            NotificationCenter.default.post(name: enabledChanged, object: nil)
             publish()
         }
     }

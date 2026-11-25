@@ -87,6 +87,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case chats, totalCount, inProgressCount, workingCount, waitingCount
         case currentTool, progress, answerPreview, transientResult, batchOutcome, recentTools
+        case detailsEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -100,6 +101,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         progress = try container.decodeIfPresent(ChatWidgetProgress.self, forKey: .progress)
         answerPreview = try container.decodeIfPresent(String.self, forKey: .answerPreview)
         recentTools = try container.decodeIfPresent([ToolActivity].self, forKey: .recentTools) ?? []
+        detailsEnabled = try container.decodeIfPresent(Bool.self, forKey: .detailsEnabled) ?? true
         transientResult = try container.decodeIfPresent(ResultNotice.self, forKey: .transientResult)
         batchOutcome = try container.decodeIfPresent(BatchOutcome.self, forKey: .batchOutcome)
     }
@@ -115,6 +117,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         try container.encodeIfPresent(progress, forKey: .progress)
         try container.encodeIfPresent(answerPreview, forKey: .answerPreview)
         if !recentTools.isEmpty { try container.encode(recentTools, forKey: .recentTools) }
+        try container.encode(detailsEnabled, forKey: .detailsEnabled)
         try container.encodeIfPresent(transientResult, forKey: .transientResult)
         try container.encodeIfPresent(batchOutcome, forKey: .batchOutcome)
     }
@@ -134,6 +137,8 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     var progress: ChatWidgetProgress?
     /// 仅实时活动携带：短时间内完成的工具不会随当前阶段切换而消失。
     var recentTools: [ToolActivity] = []
+    /// 实时活动是否显示当前会话的运行详情；后台保活关闭时立即回到简洁样式。
+    var detailsEnabled = true
     /// 仅实时活动携带的单行回答预览，不写进主屏小组件的快照。
     var answerPreview: String?
     /// 某个会话刚完成或失败时的短暂提示；不计入进行中数量。
@@ -142,6 +147,20 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         let expiresAt: Date
     }
     var transientResult: ResultNotice?
+
+    /// 只裁剪显示详情，保留活动身份、会话、审批状态、计数、计时起点及结果。
+    /// 开启时调用方从 runtime 重新生成完整快照，不从已裁剪副本伪造旧详情。
+    func withActivityDetails(_ enabled: Bool) -> Self {
+        var activity = self
+        activity.detailsEnabled = enabled
+        if !enabled {
+            activity.currentTool = nil
+            activity.progress = nil
+            activity.recentTools = []
+            activity.answerPreview = nil
+        }
+        return activity
+    }
 
     /// 应用挂起时由系统触发重绘；过期只隐藏短提示，不隐藏运行进度。
     func forActivityDisplay(isStale: Bool, now: Date = .now) -> Self {
