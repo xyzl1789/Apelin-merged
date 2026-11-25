@@ -1,7 +1,7 @@
 import UIKit
 import UserNotifications
 
-/// 会话宿主仍按原规则发送通知。前台是否显示由独立开关决定；
+/// 会话宿主仍按原规则发送通知；真实可见的当前会话静默，其他按独立开关展示。
 /// 打开可见会话时清除已读通知，点击沿用原有会话 URL 路由。
 @MainActor
 final class ConversationNotices: NSObject, UNUserNotificationCenterDelegate {
@@ -9,9 +9,19 @@ final class ConversationNotices: NSObject, UNUserNotificationCenterDelegate {
     /// 宿主通知中保存会话链接的字段名。
     nonisolated static let linkKey = "link"
     @objc private dynamic var hasAsked = false
+    /// 只弱引用正在显示的聊天页；会话 ID 在通知到达时读取，避免切换或新建后的旧缓存。
+    weak var visibleChat: ChatController?
 
-    /// Before `didFinishLaunching` returns, or a banner tapped on a cold
-    /// launch is delivered to nobody.
+    nonisolated static func suppressesViewedConversation(
+        notificationSession: String,
+        visibleSession: String?,
+        actuallyVisible: Bool
+    ) -> Bool {
+        guard actuallyVisible, let visibleSession, !visibleSession.isEmpty else { return false }
+        return notificationSession == visibleSession
+    }
+
+    /// 在 didFinishLaunching 返回前设置代理，保证冷启动时通知点击也能被接收。
     @objc dynamic static func start() {
         UNUserNotificationCenter.current().delegate = shared
     }
@@ -45,10 +55,19 @@ final class ConversationNotices: NSObject, UNUserNotificationCenterDelegate {
 
     @objc dynamic nonisolated func userNotificationCenter(
         _: UNUserNotificationCenter,
-        willPresent _: UNNotification,
+        willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void,
     ) {
+        let session = notification.request.content.threadIdentifier
         DispatchQueue.main.async {
+            if Self.suppressesViewedConversation(
+                notificationSession: session,
+                visibleSession: self.visibleChat?.notificationSessionID,
+                actuallyVisible: ForegroundBackground.isActuallyVisible
+            ) {
+                completionHandler([])
+                return
+            }
             let show = ForegroundBackground.foregroundNotifications ||
                 UIApplication.shared.applicationState != .active
             completionHandler(show ? [.banner, .list, .sound] : [])

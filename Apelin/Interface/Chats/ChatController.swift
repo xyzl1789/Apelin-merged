@@ -545,6 +545,8 @@ final class ChatController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        ConversationNotices.shared.visibleChat = self
+        withdrawNotifications()
         if typesOnAppear {
             typesOnAppear = false
             composer.beginEditing()
@@ -557,6 +559,9 @@ final class ChatController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        if ConversationNotices.shared.visibleChat === self {
+            ConversationNotices.shared.visibleChat = nil
+        }
         stopBalanceTimer()
     }
 
@@ -874,6 +879,12 @@ final class ChatController: UIViewController {
         // the opening pass, now that the rows are in (`viewDidLayoutSubviews`)
         view.setNeedsLayout()
         sayUnsent()
+    }
+
+    /// 不缓存 session：首次发送才建立宿主会话，切换聊天也必须即时跟随。
+    var notificationSessionID: String? {
+        guard viewIfLoaded?.window != nil, presentedViewController == nil, let chat else { return nil }
+        return runtime.records[chat.id]?.sessionID
     }
 
     /// Back in front with this conversation on screen: its banners have

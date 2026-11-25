@@ -74,9 +74,13 @@ static BOOL APFTarget(id scene) {
     return [APFObject(APFObject(scene, "clientProcess"), "bundleIdentifier") isEqual:APFBundle];
 }
 
+#ifdef APELIN_FOREGROUND_TEST
+static BOOL APFTestVisible;
+#endif
+
 static BOOL APFVisible(void) {
 #ifdef APELIN_FOREGROUND_TEST
-    return NO;
+    return APFTestVisible;
 #else
     id app = APFObject(UIApplication.sharedApplication, "_accessibilityFrontMostApplication");
     id manager = APFObject((id)objc_getClass("SBLockScreenManager"), "sharedInstance");
@@ -259,8 +263,11 @@ static void APFNotice(id self, SEL cmd, id notification, id bundle, id completio
     if ([bundle isEqual:APFBundle] && (atomic_load(&APFRequest) & 2) && APFLiveRequest()) {
         // 原版的“启用前台通知”：只调整本应用在通知服务中的前后台判定。
         // 不绕过通知授权、专注模式、静音或系统通知样式。
-        APFNotificationState(self, YES);
-        os_log(APFLog(), "已为本应用保留前台通知递送");
+        BOOL visible = APFVisible();
+        APFNotificationState(self, !visible);
+        // 真实前台交给 App 的 willPresent 按会话过滤；只有不可见时按后台递送。
+        APFPublishStatus();
+        os_log(APFLog(), "本应用通知递送：%{public}s", visible ? "前台按会话判断" : "后台正常提醒");
     }
     APFOriginalNotice(self, cmd, notification, bundle, completion);
 }
@@ -304,7 +311,7 @@ static void APFReadRequest(void) {
         APFRestoreScenes();
         id server = APFObject((id)objc_getClass("UNSUserNotificationServer"), "sharedInstance");
         BOOL forceNotifications = (request & 2) && APFLiveRequest();
-        APFNotificationState(server, forceNotifications || (!APFHolding() && !APFVisible()));
+        APFNotificationState(server, !APFVisible() && (forceNotifications || !APFHolding()));
         os_log(APFLog(), "后台开关=%d，前台通知=%d", (request & 1) != 0, (request & 2) != 0);
     }
     APFPublishStatus();

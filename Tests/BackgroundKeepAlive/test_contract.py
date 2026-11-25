@@ -89,7 +89,8 @@ class KeepAliveContract(unittest.TestCase):
 
     def test_foreground_notification_uses_both_halves(self):
         self.assertIn("_didChangeApplicationState:forBundleIdentifier:", self.module)
-        self.assertIn("APFNotificationState(self, YES)", self.module)
+        self.assertIn("APFNotificationState(self, !visible)", self.module)
+        self.assertIn("BOOL visible = APFVisible()", self.module)
         self.assertIn("APFOriginalNotice(self, cmd, notification, bundle, completion)", self.module)
         delegate = source("Apelin/Application/ConversationNotices.swift")
         self.assertIn("ForegroundBackground.foregroundNotifications ||", delegate)
@@ -101,6 +102,53 @@ class KeepAliveContract(unittest.TestCase):
         self.assertIn("hasFreshStatus", self.app)
         self.assertIn("持续运行仍需实测", self.app)
         self.assertIn("ForegroundBackground.isActuallyVisible", source("Apelin/Interface/Chats/ChatController.swift"))
+
+    def test_only_actually_visible_current_conversation_is_suppressed(self):
+        delegate = source("Apelin/Application/ConversationNotices.swift")
+        rule = block(delegate, "nonisolated static func suppressesViewedConversation")
+        self.assertIn("guard actuallyVisible, let visibleSession, !visibleSession.isEmpty", rule)
+        self.assertIn("notificationSession == visibleSession", rule)
+        callback = block(delegate, "willPresent notification:")
+        self.assertIn("notification.request.content.threadIdentifier", delegate)
+        for value in ("self.visibleChat?.notificationSessionID", "ForegroundBackground.isActuallyVisible", "completionHandler([])"):
+            self.assertIn(value, callback)
+        self.assertLess(callback.index("suppressesViewedConversation"), callback.index("let show ="))
+        chat = source("Apelin/Interface/Chats/ChatController.swift")
+        self.assertIn("ConversationNotices.shared.visibleChat = self", block(chat, "override func viewDidAppear"))
+        self.assertIn("ConversationNotices.shared.visibleChat = nil", block(chat, "override func viewWillDisappear"))
+        session = block(chat, "var notificationSessionID:")
+        self.assertIn("presentedViewController == nil", session)
+        self.assertIn("runtime.records[chat.id]?.sessionID", session)
+
+    def test_swift_matching_rule_on_xcode_host(self):
+        import shutil
+        import subprocess
+        import tempfile
+        if not shutil.which("xcrun"):
+            self.skipTest("本机缺少 Xcode；Swift 规则执行需在 macOS harness 补验")
+        delegate = source("Apelin/Application/ConversationNotices.swift")
+        rule = block(delegate, "nonisolated static func suppressesViewedConversation")
+        program = '''
+func suppressesViewedConversation(notificationSession: String, visibleSession: String?, actuallyVisible: Bool) -> Bool {
+''' + rule + '''
+}
+for visible in [false, true] {
+    for current: String? in [nil, "", "current", "other"] {
+        for notice in ["", "current", "other"] {
+            let expected = visible && current != nil && current != "" && notice == current
+            precondition(suppressesViewedConversation(notificationSession: notice, visibleSession: current, actuallyVisible: visible) == expected)
+        }
+    }
+}
+print("通过：24组当前会话、其他会话、不可见、未知会话的生产 Swift 规则")
+'''
+        scratch = ROOT / ".build"
+        scratch.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="notice-rule-", dir=scratch) as temp:
+            path = Path(temp)
+            (path / "main.swift").write_text(program, encoding="utf-8")
+            subprocess.run(["xcrun", "--sdk", "macosx", "swiftc", "-swift-version", "5", str(path / "main.swift"), "-o", str(path / "check")], check=True)
+            subprocess.run([str(path / "check")], check=True)
 
     def test_background_sync_depends_on_running_chats(self):
         runtime = source("Apelin/Interface/Chats/ChatRuntime.swift")

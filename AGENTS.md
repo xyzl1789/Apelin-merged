@@ -926,12 +926,13 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
     `<session>.turn.<n>`, `<session>.approval.<n>` and
     `<session>.notice.<n>`, the thread is the session, and `userInfo`
     `link` is `apelin://conversation/<session>`, which a tap hands to
-    `UIApplication.open` (`ConversationNotices`). Banners are for a reader
-    elsewhere: `willPresent` shows nothing while the app is active, opening
-    a conversation (or coming back to it) removes its delivered ones, so
-    does deleting it or its project (a banner left behind would open
-    nothing), and the app asks for authorization when the reader first
-    sends a message.
+    `UIApplication.open` (`ConversationNotices`)。前台通知开启时，仅当 SpringBoard
+    确认本应用真实可见、且通知 threadIdentifier 等于当前聊天页实时 sessionID 才静默。
+    页面 viewDidAppear 注册弱引用、viewWillDisappear 清除，模态遮挡或未知 session 放行；
+    不缓存首次发送前的 nil 或切换前的 ID。切后台、锁屏或保活可见性未知不能以 active
+    冒充正在查看，其他通知沿用原前台开关。SpringBoard 只在不可见时强制后台递送，
+    真实前台交回 willPresent 按会话过滤；不修改场景保持。打开可见会话撤回已递送通知，
+    删除会话或项目亦撤回；首次发送消息时请求通知授权。
     Two declarations, or authorization stays false with no error but the
     device log's: `com.apple.private.usernotifications.bundle-identifiers`
     naming `wiki.qaq.apelin` on apelind and on the app, and
@@ -5909,6 +5910,15 @@ foreground／backgrounded／deactivationReasons，原 transition 与 completion 
 App 的 ConversationNotices 按开关返回 banner／list／sound，不因被保持的 active 状态
 压掉通知。真实可见性由 SpringBoard 的前台应用和锁屏判定反馈；只有读者真实回前台
 才撤回可见会话通知。授权、专注模式、静音与通知点击的原有 URL 路由不绕过。
+
+2026-11-25 当前会话静默修正：ConversationNotices 持有弱 visibleChat，通知到达时
+读取页面当前 sessionID，与 threadIdentifier 精确匹配，且 isActuallyVisible 为 true
+才返回空展示选项。未知ID、切后台、锁屏或保活可见性过期不触发此新增过滤。
+SpringBoard 通知 hook 在真实可见时回报前台状态8，让 App 执行会话过滤，不可见时
+保留后台状态4；场景保持路径不修改。可控 SceneCheck 已覆盖两种状态及关闭开关恢复。
+Python契约17项中本机16项通过、1项macOS Swift真值执行跳过；该项在Xcode harness
+执行提取自生产函数体的24组匹配规则。通知代理及聊天页新增片段本机语法解析通过，
+不代表完整Swift类型检查。新包前台当前会话静默、其他会话提醒、后台和锁屏递送仍待验收。
 
 `make _package` 为各 FLAVOR 调用 `Background/build.sh`，roothide 为 arm64e，rootless
 为 arm64；模块独立签名，过滤器只注入 com.apple.springboard。打包同时携带

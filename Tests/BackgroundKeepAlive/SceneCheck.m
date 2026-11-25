@@ -207,9 +207,17 @@ int main(void) {
         NSCAssert(APFNotices == 1 && APFNotificationChanges == 1 && APFLastNotificationState == 4 && APFSeenCompletion == completion, @"前台通知必须调整状态且保留完成回调");
         APFNotice(server, NULL, nil, @"com.example.other", completion);
         NSCAssert(APFNotificationChanges == 1 && APFNotices == 2, @"其他应用通知不改动");
+        APFTestVisible = YES;
+        APFNotice(server, NULL, nil, APFBundle, completion);
+        NSCAssert(APFLastNotificationState == 8 && APFNotificationChanges == 2 && APFNotices == 3,
+                  @"真实前台必须交回 App 会话过滤，不强制按后台递送");
+        APFTestVisible = NO;
+        APFNotice(server, NULL, nil, APFBundle, completion);
+        NSCAssert(APFLastNotificationState == 4 && APFNotificationChanges == 3 && APFNotices == 4,
+                  @"切后台或锁屏后必须恢复正常提醒");
         atomic_store(&APFRequest, pid | 1);
         APFNotice(server, NULL, nil, APFBundle, completion);
-        NSCAssert(APFNotificationChanges == 1 && APFNotices == 3, @"关闭通知开关后不再强制递送");
+        NSCAssert(APFNotificationChanges == 3 && APFNotices == 5, @"关闭通知开关后不再强制递送");
         NSCAssert(APFForegroundSettings([NSObject new]) == nil, @"不兼容设置对象必须安全降级");
         NSCAssert(!APFSignature([APFTestServer class], sel_registerName("_didChangeApplicationState:forBundleIdentifier:"), "v", @[@"Q", @"@"]), @"必须拒绝整数 ABI 不匹配");
         APFCheckProtection(pid);
