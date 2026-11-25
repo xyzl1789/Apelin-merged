@@ -8,6 +8,10 @@ func event(_ seq: UInt64, _ kind: String, _ values: [String: JSONValue] = [:]) -
 
 checkStreamPresentation()
 checkPendingQueuePresentation()
+checkStepHeights()
+checkRowDelta()
+checkDocumentHeights()
+checkActivityLine()
 try checkShareTransfer()
 
 // 实时活动显示本回合的工具摘要，但不公开完整网址、命令或绝对路径。
@@ -741,9 +745,9 @@ let editing = [
     event(2, "messageStarted"), event(3, "thinking", ["text": .string("Look at the hook")]),
     call(4, "t1", "file_edit", "{\"reason\":\"Turn the hook on\",\"path\":\"Sources/Tweak.x\"}"),
 ]
-precondition(banner(editing) == ToolCallBanner(reason: "Turn the hook on", file: "Tweak.x"), "the reason and the file, no counts yet")
+precondition(banner(editing) == ToolCallBanner(reason: "Turn the hook on", file: "Tweak.x", tool: "file_edit"), "the reason and the file, no counts yet")
 let editedCall = editing + [result(5, "t1", "Patched Sources/Tweak.x (1 replacement, +3 -1)\n--- a/Sources/Tweak.x")]
-precondition(banner(editedCall) == ToolCallBanner(reason: "Turn the hook on", file: "Tweak.x", change: .init(added: 3, removed: 1)))
+precondition(banner(editedCall) == ToolCallBanner(reason: "Turn the hook on", file: "Tweak.x", change: .init(added: 3, removed: 1), tool: "file_edit"))
 precondition(banner(editing + [result(5, "t1", "Patched Sources/Tweak.x (1 replacement, +3 -1)", isError: true)])?.change == nil,
              "a failed call has no counts")
 let thinkingAfter = editedCall + [event(6, "messageStarted"), event(7, "thinking", ["text": .string("Now build it")])]
@@ -752,14 +756,16 @@ let written = thinkingAfter + [
     call(8, "t2", "file_write", "{\"reason\":\"Add the preferences\",\"path\":\"Prefs/Root.plist\"}"),
     result(9, "t2", "Created Prefs/Root.plist (812 bytes, +24 -0)"),
 ]
-precondition(banner(written) == ToolCallBanner(reason: "Add the preferences", file: "Root.plist", change: .init(added: 24, removed: 0)),
+precondition(banner(written) == ToolCallBanner(reason: "Add the preferences", file: "Root.plist", change: .init(added: 24, removed: 0), tool: "file_write"),
              "the newest call")
 let buildCall = written + [call(10, "t3", "apelin_project_build", "{}")]
-precondition(banner(buildCall) == ToolCallBanner(reason: "Build the project"), "a call without a reason shows its title, and no file")
+precondition(banner(buildCall) == ToolCallBanner(reason: "Build the project", tool: "apelin_project_build"), "a call without a reason shows its title, and no file")
 let readWithPath = written + [call(10, "t3", "file_read", "{\"reason\":\"Check the hook\",\"path\":\"Sources/Tweak.x\"}")]
-precondition(banner(readWithPath) == ToolCallBanner(reason: "Check the hook"), "only a file tool names its file")
+precondition(banner(readWithPath) == ToolCallBanner(reason: "Check the hook", tool: "file_read"), "only a file tool names its file")
 let earlierName = Array(editing.prefix(3)) + [call(4, "t1", "patch_file", "{\"reason\":\"Turn the hook on\",\"path\":\"Sources/Tweak.x\"}")]
-precondition(banner(earlierName) == banner(editing), "a call recorded under an earlier name names its file too")
+precondition(banner(earlierName)?.reason == banner(editing)?.reason && banner(earlierName)?.file == banner(editing)?.file,
+             "旧名称调用仍保留相同原因和文件名")
+precondition(banner(earlierName)?.tool == "patch_file", "横幅保留原工具名称供图标归类")
 precondition(banner(editedCall + [event(6, "finished")]) == nil, "a finished summary has no line")
 precondition(banner(Array(editing.prefix(3))) == nil, "nor a running one before its first call")
 precondition(ChatTranscript(events: editedCall) { _ in nil }.messages.count == 2, "the line adds no row")

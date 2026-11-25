@@ -27,8 +27,37 @@ enum ChatActivityContent {
         }
     }
 
+    /// 正在写入的思考取最新文本，已结束的思考不作为当前步骤。
+    static func preview(_ message: ChatMessage) -> String? {
+        guard message.role.isThinking else { return nil }
+        let text = message.text
+        return text.contains(where: { !$0.isWhitespace }) ? text : nil
+    }
+
+    /// 跟随追踪中最新一步：思考或工具调用共用同一活动行。
+    static func line(_ message: ChatMessage) -> ToolCallBanner.ActivityLine? {
+        let steps = message.trace
+        if let newest = steps.last {
+            if let text = preview(newest) {
+                return .thought(text)
+            }
+            if newest.role == .tool, let call = newest.banner {
+                return .call(call, token: callToken(of: steps))
+            }
+        }
+        if let text = preview(message) {
+            return .thought(text)
+        }
+        return banner(message).map { .call($0, token: callToken(of: steps)) }
+    }
+
+    /// 同样文案的后续调用也要刷新，以调用数量区分。
+    private static func callToken(of steps: [ChatMessage]) -> Int {
+        steps.count(where: { $0.role == .tool })
+    }
+
     static func hasContent(_ message: ChatMessage) -> Bool {
-        !title(message).isEmpty || source(message) != nil || banner(message) != nil
+        !title(message).isEmpty || source(message) != nil || line(message) != nil
             || (!message.foldsProcessSteps && message.receivedTokens != nil)
             || !steps(message).isEmpty
     }

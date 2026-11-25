@@ -157,7 +157,8 @@ final class ChatToolCallRow: UIView {
     /// Answers whether anything changed.
     @discardableResult
     func applyExpansion() -> Bool {
-        guard ChatTraceExpansion.isExpanded(call: stepID) != showsBody else { return false }
+        // 测量视图会连续复用给别的步骤，展开状态必须读取当前步骤。
+        guard ChatTraceExpansion.isExpanded(call: step.id) != showsBody else { return false }
         configure(step)
         updateChevron(animated: false)
         return true

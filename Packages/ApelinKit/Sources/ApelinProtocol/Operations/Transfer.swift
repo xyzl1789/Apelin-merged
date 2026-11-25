@@ -316,6 +316,12 @@ public enum TransferSource: Codable, Sendable, Equatable {
 
 // MARK: Export
 
+/// 项目可以导出为保留历史的专用文件，或供其他工具使用的纯源码 ZIP。
+public enum ProjectExportVariant: String, Codable, Sendable, CaseIterable {
+    case apelin
+    case sources
+}
+
 /// Writes a transfer file of a registered toolchain, a registered SDK or a
 /// project into `~/Documents/wiki.qaq.apelin/Exports/<kind>-<id>/`, replacing
 /// an earlier export of the same item.
@@ -327,11 +333,19 @@ public struct TransferExportRequest: OperationRequest {
     public var id: String
     /// `Apelin <version> (<build>)`, written into the manifest.
     public var createdBy: String?
+    /// 省略时保留原专用格式，只对项目导出有效。
+    public var variant: ProjectExportVariant?
 
-    public init(kind: TransferKind, id: String, createdBy: String? = nil) {
+    public init(
+        kind: TransferKind,
+        id: String,
+        createdBy: String? = nil,
+        variant: ProjectExportVariant? = nil,
+    ) {
         self.kind = kind
         self.id = id
         self.createdBy = createdBy
+        self.variant = variant
     }
 }
 
@@ -474,8 +488,15 @@ public struct TransferProjectResult: Codable, Sendable, Equatable {
 public extension ApelinService {
     /// Starts an export; follow it with `events(of:)`. Its `result` carries
     /// `TransferExport`.
-    func transferExport(kind: TransferKind, id: String, createdBy: String? = nil) async throws -> TaskHandle {
-        try await send(TransferExportRequest(kind: kind, id: id, createdBy: createdBy))
+    func transferExport(
+        kind: TransferKind,
+        id: String,
+        createdBy: String? = nil,
+        variant: ProjectExportVariant? = nil,
+    ) async throws -> TaskHandle {
+        try await send(
+            TransferExportRequest(kind: kind, id: id, createdBy: createdBy, variant: variant),
+        )
     }
 
     func transferInspect(

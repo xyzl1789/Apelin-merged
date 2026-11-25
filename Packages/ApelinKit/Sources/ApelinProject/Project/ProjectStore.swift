@@ -267,12 +267,15 @@ public struct ProjectStore: Sendable {
                 try generated.write(to: staging.appendingPathComponent(Self.projectFileName), options: .atomic)
             }
             let document: JSONDocument
+            let typed: ProjectDocument
             do {
-                document = try ProjectValidation.load(generated).document
+                (document, typed) = try ProjectValidation.load(generated)
             } catch {
                 throw TemplateError("generated apelin-project.json: \(error)")
             }
             let digests = try ApprovalDigests.compute(document, root: staging)
+            // 原生工程仅在创建时附带；生成失败不阻止设备项目创建。
+            _ = try? XcodeProject.write(typed, name: name, root: staging, catalog: catalog)
             try EmptyRepository.make(in: staging)
             guard renamex_np(staging.path, destination.path, UInt32(RENAME_EXCL)) == 0 else {
                 if errno == EEXIST {

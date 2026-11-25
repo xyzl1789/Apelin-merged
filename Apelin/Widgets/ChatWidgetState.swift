@@ -143,7 +143,14 @@ extension ChatRecord {
             let mode = ApprovalCardText.runModeSwitch(approval.payload)
             let tool = Self.widgetTool(approval.tool, arguments: approval.payload?["arguments"]?.stringValue,
                                        mode: mode)
-            return .init(stage: .waitingForApproval, symbol: "exclamationmark.triangle.fill", title: tool.title, detail: tool.detail)
+            if let question = ApprovalCardText.question(approval.payload) {
+                let choices = question.options.prefix(3).map(\.label).joined(separator: "／")
+                return .init(stage: .waitingForApproval, symbol: "questionmark.bubble",
+                             title: "等待回答", detail: Self.widgetToolDetail(question.question + " — " + choices))
+            }
+            let title = ApprovalCardText.title(approval.payload).flatMap(Self.widgetToolDetail) ?? tool.title
+            let symbol = ApprovalCardText.isRoot(approval.payload) ? "lock.shield" : "exclamationmark.triangle.fill"
+            return .init(stage: .waitingForApproval, symbol: symbol, title: title, detail: tool.detail)
         }
         let steps = events.reversed().lazy.filter(Self.isWidgetStep)
         guard let step = steps.first else { return nil }
@@ -160,13 +167,28 @@ extension ChatRecord {
                          title: String(localized: "Compacting Chat"), detail: nil)
         case "prompt", "steer", "messageStarted":
             return .init(stage: .thinking, symbol: "brain.head.profile", title: String(localized: "Thinking"), detail: nil)
-        case "compactionFinished", "approvalRequested", "error", "messageDiscarded", "historyRewound":
+        case "error":
+            return .init(stage: .waitingForNextStep, symbol: "exclamationmark.triangle.fill",
+                         title: "运行遇到错误", detail: step.payload?["message"]?.stringValue.flatMap(Self.widgetToolDetail))
+        case "messageDiscarded":
+            return .init(stage: .reconnecting, symbol: "arrow.triangle.2.circlepath",
+                         title: "回答已中断，正在重试", detail: nil)
+        case "compactionFinished":
+            return .init(stage: .waitingForNextStep, symbol: "rectangle.compress.vertical",
+                         title: "上下文压缩已结束", detail: Self.widgetCompactionDetail(step.payload))
+        case "approvalRequested", "historyRewound":
             return Self.widgetWaitingForNextStep
         default: break
         }
 
         // 某个并行工具返回时，仍保留尚未结束的调用，而不是回到更早的思考。
-        if let tool = widgetCurrentTool {
+        let activeTools = widgetActiveTools
+        if let tool = activeTools.first {
+            if activeTools.count > 1 {
+                let names = activeTools.prefix(3).map(\.title).joined(separator: "／")
+                return .init(stage: .tool, symbol: tool.symbol,
+                             title: "正在执行 \(activeTools.count) 个工具", detail: Self.widgetToolDetail(names))
+            }
             return .init(stage: .tool, symbol: tool.symbol, title: tool.title, detail: tool.detail)
         }
         switch step.kind {
@@ -204,34 +226,39 @@ extension ChatRecord {
     }
 
     /// 结束后，回到仍在运行的那一个；旧回合和分叉继承的调用不显示。
-    var widgetCurrentTool: ChatWidgetSnapshot.ToolActivity? {
-        guard summary.isWorking else { return nil }
+    var widgetCurrentTool: ChatWidgetSnapshot.ToolActivity? { widgetActiveTools.first }
+
+    private var widgetActiveTools: [ChatWidgetSnapshot.ToolActivity] {
+        guard summary.isWorking else { return [] }
         var completed: Set<String> = []
+        var active: [ChatWidgetSnapshot.ToolActivity] = []
         for event in events.reversed() where !ChatFork.isHistorical(event) {
             let payload = event.payload
             switch event.kind {
             case "prompt", "steer", "messageStarted", "finished", "messageDiscarded",
-                 "compactionStarted", "compactionFinished", "historyRewound": return nil
+                 "compactionStarted", "compactionFinished", "historyRewound": return active
             case TaskEvent.stateKind:
                 if let state = payload?["state"]?.stringValue.flatMap(TaskState.init(rawValue:)), state.isTerminal {
-                    return nil
+                    return active
                 }
             case "toolResult":
                 if let id = payload?["id"]?.stringValue { completed.insert(id) }
             case "toolCall":
                 guard let id = payload?["id"]?.stringValue, !completed.contains(id),
                       let name = payload?["tool"]?.stringValue, !name.isEmpty else { continue }
-                return Self.widgetTool(name, arguments: payload?["arguments"]?.stringValue)
+                completed.insert(id)
+                active.append(Self.widgetTool(name, arguments: payload?["arguments"]?.stringValue))
             default: break
             }
         }
-        return nil
+        return active
     }
 
     /// 保留本轮最近完成的工具，短到来不及单独绘制也能看到摘要。
     func widgetRecentTools(completed: Bool = false) -> [ChatWidgetSnapshot.ToolActivity] {
         var resultOrder: [String] = []
         var summaries: [String: ChatWidgetSnapshot.ToolActivity] = [:]
+        var outputs: [String: JSONValue] = [:]
         var reachedTurn = !completed
         for event in events.reversed() where !ChatFork.isHistorical(event) {
             if ChatTranscript.endsTask(event) {
@@ -248,14 +275,124 @@ extension ChatRecord {
             guard let id = event.payload?["id"]?.stringValue else { continue }
             if event.kind == "toolResult", resultOrder.count < 2, !resultOrder.contains(id) {
                 resultOrder.append(id)
+                outputs[id] = event.payload
             }
             if event.kind == "toolCall", resultOrder.contains(id), summaries[id] == nil,
                let name = event.payload?["tool"]?.stringValue {
-                summaries[id] = Self.widgetTool(name, arguments: event.payload?["arguments"]?.stringValue)
+                var tool = Self.widgetTool(name, arguments: event.payload?["arguments"]?.stringValue)
+                if let output = outputs[id] {
+                    tool.failed = output["isError"]?.boolValue ?? false
+                    let text = output["output"]?.stringValue ?? ""
+                    if tool.failed == true {
+                        tool.result = "失败" + (Self.widgetToolDetail(text).map { "：" + $0 } ?? "")
+                    } else if ToolCallBanner.fileTools.contains(AgentToolName.canonical(name) ?? .fileRead),
+                              let change = ToolCallBanner.lineChange(in: String(text.prefix(1_024))) {
+                        tool.result = "已完成 · +\(change.added) −\(change.removed)"
+                    } else {
+                        // 不把任意命令输出或文件正文带到锁屏；只提供结果状态。
+                        tool.result = "已完成"
+                    }
+                }
+                summaries[id] = tool
                 if summaries.count == 2 { break }
             }
         }
         return resultOrder.compactMap { summaries[$0] }
+    }
+
+    /// 当前回合的协作上下文与流程事件；历史回合、排队未消费的输入不冒充当前步骤。
+    func widgetFlowNotes(
+        completed: Bool = false, conversationTitle: (String) -> String? = { _ in nil }
+    ) -> [ChatWidgetSnapshot.ToolActivity] {
+        var notes: [ChatWidgetSnapshot.ToolActivity] = []
+        var kinds: Set<String> = []
+        var source: ChatWidgetSnapshot.ToolActivity?
+        var reachedTurn = !completed
+        for event in events.reversed() where !ChatFork.isHistorical(event) {
+            if ChatTranscript.endsTask(event) || event.kind == "finished" {
+                if reachedTurn { break }
+                continue
+            }
+            reachedTurn = true
+            let payload = event.payload
+            if event.kind == "prompt" || event.kind == "steer" {
+                if !kinds.contains("source") {
+                    kinds.insert("source")
+                    if let from = payload?["from"]?.stringValue {
+                        let name = conversationTitle(from).flatMap(Self.widgetToolDetail) ?? "另一会话"
+                        let text = payload?["text"]?.stringValue ?? ""
+                        let preview = text.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init)
+                            .flatMap(Self.widgetToolDetail)
+                        source = .init(symbol: "bubble.left.and.bubble.right", title: "来自“\(name)”",
+                                       detail: completed ? preview : "正在处理" + (preview.map { " · " + $0 } ?? ""))
+                    } else if payload?["source"]?.stringValue == ChatChannel.weChat {
+                        source = .init(symbol: "bubble.left.and.bubble.right", title: "来自微信", detail: nil)
+                    }
+                }
+                if event.kind == "prompt" { break }
+            }
+            guard notes.count < 2, !kinds.contains(event.kind) else { continue }
+            var note: ChatWidgetSnapshot.ToolActivity?
+            switch event.kind {
+            case "error":
+                note = .init(symbol: "exclamationmark.triangle.fill", title: "运行遇到错误",
+                             detail: payload?["message"]?.stringValue.flatMap(Self.widgetToolDetail), failed: true)
+            case "messageDiscarded":
+                note = .init(symbol: "arrow.triangle.2.circlepath", title: "回答中断后重新请求")
+            case "compactionFinished":
+                note = .init(symbol: "rectangle.compress.vertical", title: "上下文压缩已结束",
+                             detail: Self.widgetCompactionDetail(payload))
+            case "approvalResolved":
+                let approved = payload?["decision"]?.stringValue == "approve"
+                note = .init(symbol: approved ? "checkmark.circle" : "xmark.circle",
+                             title: approved ? "已获批准，继续处理" : "请求未获批准")
+            case "historyRewound":
+                note = .init(symbol: "arrow.uturn.backward", title: "已回退会话历史")
+            case "runModeChanged":
+                if let mode = payload?["mode"]?.stringValue, mode == "plan" || mode == "build" {
+                    note = .init(symbol: "list.bullet", title: mode == "plan" ? "已切换到计划模式" : "已切换到执行模式")
+                }
+            default: break
+            }
+            if let note {
+                kinds.insert(event.kind)
+                notes.append(note)
+            }
+        }
+        // 来源上下文不会被普通结果刷掉；错误/审批事件仍以最新为先。
+        if let source { notes.insert(source, at: 0) }
+        if let approval = widgetPendingApproval, ApprovalCardText.isRoot(approval.payload) {
+            notes.insert(.init(symbol: "lock.shield", title: "等待授权以 root 身份执行"), at: 0)
+        }
+        return Array(notes.prefix(3))
+    }
+
+    var widgetMetrics: String? {
+        guard summary.isWorking else { return nil }
+        var tokens: Int?
+        var calls: Set<String> = []
+        for event in events.reversed() where !ChatFork.isHistorical(event) {
+            if event.kind == "prompt" || event.kind == "finished" || ChatTranscript.endsTask(event) { break }
+            if event.kind == "received", tokens == nil, let number = event.payload?["tokens"]?.doubleValue,
+               number.isFinite, number >= 0, number < Double(Int.max) { tokens = Int(number) }
+            if event.kind == "toolCall", let id = event.payload?["id"]?.stringValue { calls.insert(id) }
+        }
+        var parts: [String] = []
+        if let tokens { parts.append("已接收 \(tokens) Token") }
+        if !calls.isEmpty { parts.append("本轮 \(calls.count) 次工具调用") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private static func widgetCompactionDetail(_ payload: JSONValue?) -> String? {
+        let outcome = payload?["outcome"]?.stringValue
+        let result: String
+        switch outcome {
+        case "compacted": result = "已压缩上下文"
+        case "unchanged": result = "无需压缩"
+        default: result = "压缩流程已返回"
+        }
+        let summary = payload?["summary"]?.stringValue.flatMap(widgetToolDetail)
+        return summary.map { result + "：" + $0 } ?? result
     }
 
     /// 只取本轮最后一段对外回答，不取推理、工具输出或旧回合。

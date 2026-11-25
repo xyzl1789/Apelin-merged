@@ -39,12 +39,18 @@ final class ChatMessageRow: ListRowView {
     /// The message this row shows: only a change to it animates, never the
     /// row taking another message out of the pool.
     private var shownID: UUID?
+    /// 相同文本和字号不再重复生成 attributed string。
+    private var shownText: String?
+    private var shownTextSize: CGFloat?
     private let label = TextLabelView()
     /// The element VoiceOver reads a message by: where the chat's "Your
     /// Messages" rotor puts the cursor.
     var spokenElement: UIView { label }
     private let markdownView = ChatMarkdownView()
     private var markdownText: String?
+    /// 流式视图发布已经布局的文档高度，列表只失效这一行。
+    private var publishedDocumentHeight: CGFloat = 0
+    var onDocumentHeightChange: (() -> Void)?
     /// The reply has finished, but its last text is still fading in.
     private var finishesStreamWhenStill = false
     /// 聊天内搜索的命中高亮：绘制器挂在 label 上，状态进来就重绘。
@@ -105,7 +111,8 @@ final class ChatMessageRow: ListRowView {
 
     private var attachments: [ComposerAttachment] = []
     private var isUser = false
-    private static let sizingMarkdown = ChatMarkdownView()
+    private static var sizingMarkdown = ChatMarkdownView()
+    private static var sizingMarkdownTextSize = UIApplication.shared.preferredContentSizeCategory
     private static let sizingLabel = TextLabelView()
     var onAttachmentLayoutChanged: (() -> Void)?
     var onPreview: ((ComposerAttachment) -> Void)?
@@ -177,12 +184,16 @@ final class ChatMessageRow: ListRowView {
         senderLabel.text = nil
         senderLabel.isHidden = true
         shownID = nil
+        shownText = nil
+        shownTextSize = nil
         finishesStreamWhenStill = false
         markdownView.reset()
         markdownView.isStreaming = false
         markdownView.streamIdentity = nil
         markdownView.setSearchHighlight(nil)
         markdownText = nil
+        publishedDocumentHeight = 0
+        onDocumentHeightChange = nil
         attachments = []
         attachmentsView.show([], trailing: false, animated: false)
         onAttachmentLayoutChanged = nil
@@ -195,8 +206,16 @@ final class ChatMessageRow: ListRowView {
 
     func show(_ message: ChatMessage, isStreaming: Bool = false) {
         let isSameMessage = shownID == message.id
+        if !isSameMessage {
+            publishedDocumentHeight = 0
+        }
         isUser = message.role == .user
-        label.attributedText = Self.attributedText(message.text)
+        let textSize = Self.font.pointSize
+        if shownText != message.text || shownTextSize != textSize {
+            shownText = message.text
+            shownTextSize = textSize
+            label.attributedText = Self.attributedText(message.text)
+        }
         label.accessibilityLabel = message.text
         // A message the run has not taken yet waits faded, and settles in
         // place once it does.
@@ -242,10 +261,12 @@ final class ChatMessageRow: ListRowView {
                 markdownView.isStreaming = isStreaming && animates
             }
             if firstFill || markdownText != message.text {
-                if firstFill || !markdownView.isStreaming {
-                    markdownView.setMarkdown(message.text)
-                } else {
-                    markdownView.setContent(MarkdownContent(markdown: message.text, theme: markdownView.theme))
+                ChatPerformance.measure("markdown") {
+                    if firstFill || !markdownView.isStreaming {
+                        markdownView.setMarkdown(message.text)
+                    } else {
+                        markdownView.setContent(MarkdownContent(markdown: message.text, theme: markdownView.theme))
+                    }
                 }
                 markdownText = message.text
             }
@@ -331,6 +352,7 @@ final class ChatMessageRow: ListRowView {
             let textHeight = hasText ? max(0, content.height - attachmentHeight - gap - footerHeight) : 0
             markdownView.frame = CGRect(x: content.minX, y: content.minY, width: content.width, height: textHeight)
             markdownView.trackedScrollView = superview as? UIScrollView
+            publishStreamingHeight()
             attachmentsView.frame = CGRect(
                 x: content.minX,
                 y: content.minY + textHeight + gap,
@@ -350,6 +372,21 @@ final class ChatMessageRow: ListRowView {
         }
     }
 
+    /// 视图已经量出的流式文档高度供列表复用，避免同一帧再解析一份。
+    private func publishStreamingHeight() {
+        guard markdownView.isStreaming, markdownView.bounds.width > 1,
+              let text = markdownText, let id = shownID
+        else { return }
+        let document = ChatPerformance.measure("document") {
+            markdownView.boundingSize(for: markdownView.bounds.width).height
+        }
+        ChatRowHeights.store(document, id: id, text: text, width: markdownView.bounds.width,
+                             textSize: traitCollection.preferredContentSizeCategory.rawValue)
+        guard abs(document - publishedDocumentHeight) > 0.5 else { return }
+        publishedDocumentHeight = document
+        onDocumentHeightChange?()
+    }
+
     static func height(
         for message: ChatMessage,
         width: CGFloat,
@@ -357,6 +394,11 @@ final class ChatMessageRow: ListRowView {
         displayScale: CGFloat,
     ) -> CGFloat {
         let user = message.role == .user
+        let textSizeCategory = UIApplication.shared.preferredContentSizeCategory
+        if sizingMarkdownTextSize != textSizeCategory {
+            sizingMarkdownTextSize = textSizeCategory
+            sizingMarkdown = ChatMarkdownView()
+        }
         let available = textWidth(for: width, user: user)
         let userTextSize = user && !message.text.isEmpty ? textSize(message.text, width: available) : nil
         let textHeight: CGFloat
@@ -364,9 +406,17 @@ final class ChatMessageRow: ListRowView {
             textHeight = 0
         } else if let userTextSize {
             textHeight = ceil(userTextSize.height) + textPadding * 2
+        } else if let document = ChatRowHeights.height(id: message.id, text: message.text, width: available,
+                                                      textSize: textSizeCategory.rawValue) {
+            textHeight = ceil(document)
         } else {
-            sizingMarkdown.setMarkdown(message.text)
-            textHeight = ceil(sizingMarkdown.boundingSize(for: available).height)
+            let document = ChatPerformance.measure("height") { () -> CGFloat in
+                sizingMarkdown.setMarkdown(message.text)
+                return sizingMarkdown.boundingSize(for: available).height
+            }
+            ChatRowHeights.store(document, id: message.id, text: message.text, width: available,
+                                 textSize: textSizeCategory.rawValue)
+            textHeight = ceil(document)
         }
         let insets = Self.insets(for: width)
         let contentWidth = max(1, width - insets.left - insets.right)

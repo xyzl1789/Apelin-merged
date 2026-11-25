@@ -236,6 +236,59 @@ struct ChatMessageShape: Hashable {
     }
 }
 
+/// 每个步骤独立缓存测高结果，缓存键覆盖内容、展开状态、宽度和动态字体。
+struct ChatStepHeights<Stamp: Equatable> {
+    private struct Entry {
+        var stamp: Stamp
+        var height: CGFloat
+    }
+
+    private let capacity: Int
+    private var entries: [UUID: Entry] = [:]
+
+    init(capacity: Int = 1024) {
+        self.capacity = capacity
+    }
+
+    var count: Int { entries.count }
+
+    mutating func height(for id: UUID, stamp: Stamp, measure: () -> CGFloat) -> CGFloat {
+        if let entry = entries[id], entry.stamp == stamp { return entry.height }
+        let height = measure()
+        if entries.count >= capacity, entries[id] == nil {
+            entries.removeAll(keepingCapacity: true)
+        }
+        entries[id] = Entry(stamp: stamp, height: height)
+        return height
+    }
+
+    mutating func forget() {
+        entries.removeAll(keepingCapacity: true)
+    }
+}
+
+/// 只有连续少量行内容变化时才走单行更新；增删或移动仍走完整 diff。
+enum ChatRowDelta {
+    static func changed(_ shown: [ChatMessage], _ next: [ChatMessage], limit: Int = 4) -> [Int]? {
+        guard shown.count == next.count else { return nil }
+        guard !next.isEmpty else { return [] }
+        for index in next.indices where shown[index].id != next[index].id {
+            return nil
+        }
+        var head = 0
+        while head < next.count, shown[head] == next[head] {
+            head += 1
+        }
+        guard head < next.count else { return [] }
+        var tail = next.count - 1
+        while tail > head, shown[tail] == next[tail] {
+            tail -= 1
+        }
+        guard tail - head + 1 <= limit else { return nil }
+        return Array(head ... tail)
+    }
+}
+
 /// What one turn of the conversation cost, as the provider counted it
 /// (the `usage` of each reply in it, summed), and how long it ran.
 struct ChatTurnStats: Hashable {

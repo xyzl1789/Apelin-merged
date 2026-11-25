@@ -46,6 +46,9 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         let symbol: String
         let title: String
         var detail: String? = nil
+        /// 已完成工具的安全结果摘要；保留原工具图标，不用结果图标冒充工具类型。
+        var result: String? = nil
+        var failed: Bool? = nil
     }
 
     struct Chat: Codable, Hashable, Sendable, Identifiable {
@@ -87,7 +90,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case chats, totalCount, inProgressCount, workingCount, waitingCount
         case currentTool, progress, answerPreview, transientResult, batchOutcome, recentTools
-        case detailsEnabled
+        case detailsEnabled, flowNotes, metrics
     }
 
     init(from decoder: Decoder) throws {
@@ -102,6 +105,8 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         answerPreview = try container.decodeIfPresent(String.self, forKey: .answerPreview)
         recentTools = try container.decodeIfPresent([ToolActivity].self, forKey: .recentTools) ?? []
         detailsEnabled = try container.decodeIfPresent(Bool.self, forKey: .detailsEnabled) ?? true
+        flowNotes = try container.decodeIfPresent([ToolActivity].self, forKey: .flowNotes) ?? []
+        metrics = try container.decodeIfPresent(String.self, forKey: .metrics)
         transientResult = try container.decodeIfPresent(ResultNotice.self, forKey: .transientResult)
         batchOutcome = try container.decodeIfPresent(BatchOutcome.self, forKey: .batchOutcome)
     }
@@ -118,6 +123,8 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         try container.encodeIfPresent(answerPreview, forKey: .answerPreview)
         if !recentTools.isEmpty { try container.encode(recentTools, forKey: .recentTools) }
         try container.encode(detailsEnabled, forKey: .detailsEnabled)
+        if !flowNotes.isEmpty { try container.encode(flowNotes, forKey: .flowNotes) }
+        try container.encodeIfPresent(metrics, forKey: .metrics)
         try container.encodeIfPresent(transientResult, forKey: .transientResult)
         try container.encodeIfPresent(batchOutcome, forKey: .batchOutcome)
     }
@@ -137,6 +144,9 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     var progress: ChatWidgetProgress?
     /// 仅实时活动携带：短时间内完成的工具不会随当前阶段切换而消失。
     var recentTools: [ToolActivity] = []
+    /// 当前回合的协作来源、错误、压缩与审批等安全短摘要，不写主屏小组件。
+    var flowNotes: [ToolActivity] = []
+    var metrics: String?
     /// 实时活动是否显示当前会话的运行详情；后台保活关闭时立即回到简洁样式。
     var detailsEnabled = true
     /// 仅实时活动携带的单行回答预览，不写进主屏小组件的快照。
@@ -157,6 +167,8 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
             activity.currentTool = nil
             activity.progress = nil
             activity.recentTools = []
+            activity.flowNotes = []
+            activity.metrics = nil
             activity.answerPreview = nil
         }
         return activity
@@ -231,8 +243,13 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         }
 
         var result = self
+        // 新增流程字段先限条数与字节；JSON 转义后的真实大小仍由 fits 核验。
+        result.flowNotes = Array(result.flowNotes.prefix(3)).map(Self.boundedActivity)
+        result.recentTools = Array(result.recentTools.prefix(2)).map(Self.boundedActivity)
+        result.metrics = result.metrics.map { Self.activityText($0, bytes: 120) }
         while !fits(result), result.chats.count > 1 { result.chats.removeLast() }
         while !fits(result), !result.recentTools.isEmpty { result.recentTools.removeLast() }
+        while !fits(result), result.flowNotes.count > 1 { result.flowNotes.removeLast() }
         if fits(result) { return result }
 
         if !result.chats.isEmpty {
@@ -269,12 +286,20 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         }
         // 极端转义文本仍可能超限，最后才舍弃当前正文。
         if !fits(result) {
+            result.flowNotes = []
+            result.metrics = nil
             result.answerPreview = nil
             result.progress = result.progress.map {
                 .init(stage: $0.stage, symbol: $0.symbol, title: $0.title, detail: nil)
             }
         }
         return result
+    }
+
+    private static func boundedActivity(_ value: ToolActivity) -> ToolActivity {
+        .init(symbol: activityText(value.symbol, bytes: 64), title: activityText(value.title, bytes: 140),
+              detail: value.detail.map { activityText($0, bytes: 220) },
+              result: value.result.map { activityText($0, bytes: 180) }, failed: value.failed)
     }
 
     private static func activityText(_ text: String, bytes: Int) -> String {

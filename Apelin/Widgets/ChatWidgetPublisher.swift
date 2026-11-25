@@ -172,6 +172,10 @@ final class ChatWidgetPublisher {
     @objc private dynamic func publish() {
         guard let runtime, runtime.isReconciled else { return }
         let records = runtime.records.values
+        // 来源用真实会话标题解析，不按标题猜父子关系，也不扫描其他会话历史。
+        let sessionTitles = records.reduce(into: [String: String]()) { titles, record in
+            if let session = record.sessionID { titles[session] = record.summary.displayTitle }
+        }
         let listed = records.filter { $0.isListedInWidgets || $0.summary.isWorking }.map { record in
             let project = record.summary.projectName.map { projectNames[$0] ?? $0 }
             return (chat: chatRow(record, projectName: project), updated: record.summary.lastInteraction, listed: record.isListedInWidgets)
@@ -226,6 +230,7 @@ final class ChatWidgetPublisher {
                 activity.chats = Array(activity.chats.prefix(ChatWidgetSnapshot.activityLimit))
                 if let record = runtime.records[id] {
                     activity.recentTools = record.widgetRecentTools(completed: true)
+                    activity.flowNotes = record.widgetFlowNotes(completed: true, conversationTitle: { sessionTitles[$0] })
                     if batch.outcome == .succeeded {
                         activity.answerPreview = record.widgetReply(completed: true)
                     }
@@ -235,6 +240,8 @@ final class ChatWidgetPublisher {
                   let id = UUID(uuidString: chat.id), let record = runtime.records[id] {
             activity.progress = record.widgetProgress
             activity.recentTools = record.widgetRecentTools()
+            activity.flowNotes = record.widgetFlowNotes(conversationTitle: { sessionTitles[$0] })
+            activity.metrics = record.widgetMetrics
         }
         // 启动时历史按需读入。暂时没投影出任何回合，不等于用户清空了会话。
         if activity.chats.isEmpty, records.contains(where: { !runtime.historyIsReady($0.summary.id) }) {

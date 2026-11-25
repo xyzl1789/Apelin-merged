@@ -137,7 +137,10 @@ final class ExtensionAndProjectTests: XCTestCase {
     private func assertSameTree(_ a: URL, _ b: URL, _ label: String) throws {
         func files(_ root: URL) -> [String] {
             (FileManager.default.enumerator(atPath: root.path)?.allObjects as? [String] ?? []).filter { path in
-                guard path != ".git", !path.hasPrefix(".git/") else { return false }
+                guard path != ".git", !path.hasPrefix(".git/"),
+                      path != "Xcode", !path.hasPrefix("Xcode/"),
+                      !path.split(separator: "/").contains(where: { $0.hasSuffix(".xcodeproj") })
+                else { return false }
                 var isDirectory: ObjCBool = false
                 FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path, isDirectory: &isDirectory)
                 return !isDirectory.boolValue

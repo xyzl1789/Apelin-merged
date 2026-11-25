@@ -19,7 +19,7 @@ enum ChatStreamPacing {
     /// of it, which is what a reader watching a run wants, and never a label
     /// whose layout grows with the run. The whole of it is drawn once it has
     /// stopped.
-    static let streamingLength = 6000
+    static let streamingLength = 1600
 
     /// What a shortened text starts with.
     static let mark = "…"

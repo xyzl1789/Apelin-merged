@@ -115,16 +115,20 @@ final class ChatTopBlurView: UIView {
             color = ChatBackgroundView.base(paper, traits: traitCollection)
                 .resolvedColor(with: traitCollection)
         case .image:
-            // 图片自身颜色的八成：顶栏属于图片，又仍能柔化从下面滚过的内容。
-            color = ChatBackgroundView.topTint()?.withAlphaComponent(0.8)
+            // 顶部取色尚不可用时退回整张图片的颜色，不让顶栏只剩系统的白色磨砂。
+            color = ChatBackgroundView.topTint() ?? ChatBackgroundView.pictureTint()
         }
         if material != nil {
-            // 默认背景也保留渐隐磨砂，让滚过的文字淡出，而不是只盖一层半透明底色。
-            // 页面底色画在磨砂上方，避免下方的实色层挡住背景。
+            // 保留默认背景的渐隐磨砂和冷启动底色；页面颜色只在导航栏底边淡出。
             frost.colors = [UIColor.clear.cgColor, UIColor.clear.cgColor]
+            veil?.gradient.locations = [0, 0.7, 1]
             veil?.gradient.colors = color.map {
-                [$0.withAlphaComponent(0.45).cgColor, $0.withAlphaComponent(0).cgColor]
-            } ?? [UIColor.clear.cgColor, UIColor.clear.cgColor]
+                [
+                    $0.cgColor,
+                    $0.withAlphaComponent(0.85).cgColor,
+                    $0.withAlphaComponent(0).cgColor,
+                ]
+            } ?? [UIColor.clear.cgColor, UIColor.clear.cgColor, UIColor.clear.cgColor]
             return
         }
         frost.colors = color.map {

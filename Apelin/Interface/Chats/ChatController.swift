@@ -63,6 +63,8 @@ final class ChatController: UIViewController {
 
     /// The shown conversation's rows as last applied.
     private var messages: [ChatMessage] = []
+    /// 列表最后收到的可见投影，用来定位流式批次只改了哪些行。
+    private var shownRows: [ChatMessage] = []
     /// The message the shown conversation's latest turn started with; a
     /// different one starts a new turn.
     private var turnMessage: UUID?
@@ -399,6 +401,8 @@ final class ChatController: UIViewController {
     }
 
     private func replaceMessageList() {
+        // 新列表没有旧投影，不能把首批行当作单行更新。
+        shownRows = []
         let contentInset = messageList.contentInset
         let indicatorInset = messageList.verticalScrollIndicatorInsets
         messageList.delegate = nil
@@ -499,6 +503,11 @@ final class ChatController: UIViewController {
                         messageList.reconfigureRow(with: message.id)
                         messageList.invalidateLayout(forRowWith: message.id)
                     }
+                    // 文档已经量出新高度，只要求列表重测这一行。
+                    row.onDocumentHeightChange = { [weak self] in
+                        guard let self, chat?.id == chatID else { return }
+                        messageList.invalidateLayout(forRowWith: message.id)
+                    }
                     row.onPreview = { [weak self] item in self?.onComposerPreviewAttachment(item) }
                     row.onCopy = { [weak self, weak row] in
                         self?.copyText(of: message)
@@ -545,6 +554,7 @@ final class ChatController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        ChatPerformance.start()
         ConversationNotices.shared.visibleChat = self
         withdrawNotifications()
         if typesOnAppear {
@@ -567,6 +577,7 @@ final class ChatController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        ChatPerformance.stop()
         runReconcile?.cancel()
         runReconcile = nil
     }
@@ -609,6 +620,19 @@ final class ChatController: UIViewController {
                 guard !Task.isCancelled, let self else { return }
                 await runtime.reconcileRuns()
             }
+        }
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        guard isViewLoaded,
+              previous?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory
+        else { return }
+        // 字号变化不是消息变化，列表不会经由增量 diff 主动重新配置它们。
+        ChatRowHeights.forget()
+        for message in shownRows {
+            messageList.reconfigureRow(with: message.id)
+            messageList.invalidateLayout(forRowWith: message.id)
         }
     }
 
@@ -738,11 +762,12 @@ final class ChatController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        // 磨砂自身的渐变负责衔接背景，不再向导航栏下方额外延伸。
         topBlur.frame = CGRect(
             x: 0,
             y: 0,
             width: view.bounds.width,
-            height: min(view.bounds.height, view.safeAreaInsets.top + 20),
+            height: min(view.bounds.height, view.safeAreaInsets.top),
         )
         updateWelcome()
         updateMessageListInsets()
@@ -860,6 +885,7 @@ final class ChatController: UIViewController {
         // What a thought the other conversation was writing had drawn is
         // nothing to this one.
         ChatStreamPacing.forget()
+        ChatRowHeights.forget()
         defer { isSwitchingChat = false }
         replaceMessageList()
 
@@ -1289,10 +1315,43 @@ final class ChatController: UIViewController {
         let visible = ChatProcessPresentation.rows(items) {
             ChatTraceExpansion.isExpanded(turn: $0)
         }
-        messageList.apply(visible, animated: animated && !isSwitchingChat && !UIAccessibility.isReduceMotionEnabled)
+        // 运行中每批输出都可能改变行高，不能同时让整个视口反复做位移动画。
+        let moves = animated && !isSwitchingChat && !UIAccessibility.isReduceMotionEnabled
+            && chat?.isWorking != true
+        ChatPerformance.measure("apply") {
+            applyRows(visible, animated: moves)
+        }
         updateMessageRuler(visible)
         // a request its stopped session left can no longer be answered
         showApproval(chat?.isWorking == true ? items.first { $0.role.needsApproval } : nil)
+    }
+
+    /// 少量行变化只更新对应行，结构变化仍交给列表 diff。
+    private func applyRows(_ visible: [ChatMessage], animated: Bool) {
+        let started = CACurrentMediaTime()
+        if let changed = ChatRowDelta.changed(shownRows, visible, limit: Self.updatedRowsLimit) {
+            for index in changed {
+                messageList.update(visible[index])
+            }
+            shownRows = visible
+            logSlowRefresh(started, rows: visible.count, mode: "更新 \(changed.count) 行")
+            return
+        }
+        messageList.apply(visible, animated: animated)
+        shownRows = visible
+        logSlowRefresh(started, rows: visible.count, mode: "完整比较")
+    }
+
+    private static let updatedRowsLimit = 4
+    private static let slowRefresh: CFTimeInterval = 0.008
+    private static let transcriptLog = Logger(subsystem: "wiki.qaq.apelin", category: "ChatTranscript")
+
+    @objc dynamic private func logSlowRefresh(_ started: CFTimeInterval, rows: Int, mode: String) {
+        let elapsed = CACurrentMediaTime() - started
+        guard elapsed > Self.slowRefresh else { return }
+        Self.transcriptLog.notice(
+            "\(rows, privacy: .public) 行，\(mode, privacy: .public)，耗时 \(elapsed * 1000, privacy: .public) 毫秒",
+        )
     }
 
     /// A tap outside the composer: the keyboard is done with this page.

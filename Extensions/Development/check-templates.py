@@ -208,6 +208,17 @@ def reference_build(project_root: Path, extensions: dict[str, tuple[Path, dict]]
                 info = bundle / "Info.plist"
                 shutil.copyfile(project_root / product["infoPlist"], info)
                 run(["plutil", "-lint", str(info)])
+                # Xcode 直接使用模板中的 plist；缺少执行文件名时，iOS 会拒绝安装。
+                # 设备构建会自动补齐该键，因此参考构建须在补齐前检查。
+                executable = subprocess.run(
+                    ["plutil", "-extract", "CFBundleExecutable", "raw", "-o", "-", str(info)],
+                    capture_output=True, text=True,
+                )
+                if executable.returncode != 0 or not executable.stdout.strip():
+                    raise SystemExit(
+                        f"错误：{product['infoPlist']} 缺少 CFBundleExecutable；"
+                        "从该文件在 Xcode 构建的产物会被 iOS 拒绝安装"
+                    )
                 for key, value in (("CFBundleExecutable", product["name"]),
                                    ("CFBundleShortVersionString", project["package"]["version"]),
                                    ("CFBundleVersion", project["package"]["version"]),

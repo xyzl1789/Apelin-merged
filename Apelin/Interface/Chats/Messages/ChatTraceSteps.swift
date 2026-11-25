@@ -1,35 +1,22 @@
+import os
 import SnapKit
 import UIKit
 
-/// The steps behind a summary, drawn under it in the transcript: a thought
-/// as one line that opens into what the model said to itself
-/// (`ChatThoughtRow`), a call as one line that opens into what it was told
-/// and what it answered (`ChatToolCallRow`). aimini's chat unfolds a run
-/// this way; the trace's own page (`TraceController`) is still there, on a
-/// long press, for a step read whole and copied.
+/// 转录中展开的思考和工具步骤；每一步独立测高，不再拟合整叠视图。
 @MainActor
 final class ChatTraceSteps: UIView {
-    /// A line inside was folded or unfolded: the row holding this has to
-    /// measure itself again.
     @objc dynamic var onExpansionChange: (() -> Void)?
 
     private let stack = UIStackView()
     var hasSteps: Bool { !order.isEmpty }
     private var order: [UUID] = []
     private var views: [UUID: UIView] = [:]
-    /// What each view shows now. Compare only the fields it draws rather
-    /// than the whole message, its attachments and nested trace.
     private var shown: [UUID: ChatMessageShape] = [:]
-    /// The height these steps were last fitted at, and the state they were
-    /// fitted in: laying out a stack whose call is open is not free, and a
-    /// row asks for it on every layout pass.
-    private var fit: (width: CGFloat, size: UIContentSizeCategory, generation: Int, height: CGFloat)?
-    private var generation = 0
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         stack.axis = .vertical
-        stack.spacing = 4
+        stack.spacing = Self.spacing
         stack.translatesAutoresizingMaskIntoConstraints = true
         addSubview(stack)
     }
@@ -39,8 +26,6 @@ final class ChatTraceSteps: UIView {
         fatalError("Use init(frame:)")
     }
 
-    /// The summary's steps as they are now: one that has not changed keeps
-    /// what is on screen, so a stream grows the last of them in place.
     func show(_ summary: ChatMessage) {
         let steps = Self.drawn(summary).map { Self.paced($0) }
         guard steps.map(\.id) == order else {
@@ -56,29 +41,13 @@ final class ChatTraceSteps: UIView {
                     row.show(step)
                 }
                 shown[step.id] = shape
-                changed()
             }
-            // What the reader folded or unfolded is not part of the step's
-            // message: a row whose step has not changed still follows
-            // `ChatTraceExpansion`. This view also measures a summary the
-            // list is laying out (`height(for:width:)`), and a row left
-            // folded there would give an opened call no room, so the
-            // transcript clips what the reader just asked to see.
             if let row = views[step.id] as? ChatToolCallRow {
-                if row.applyExpansion() {
-                    changed()
-                }
+                row.applyExpansion()
             } else if let row = views[step.id] as? ChatThoughtRow {
-                if row.applyExpansion() {
-                    changed()
-                }
+                row.applyExpansion()
             }
         }
-    }
-
-    /// A content or expansion change invalidates the fitted height.
-    private func changed() {
-        generation &+= 1
     }
 
     private func rebuild(with steps: [ChatMessage]) {
@@ -94,24 +63,17 @@ final class ChatTraceSteps: UIView {
             switch step.role {
             case .thinking:
                 let row = ChatThoughtRow(step: step)
-                row.onToggle = { [weak self] in
-                    self?.changed()
-                    self?.onExpansionChange?()
-                }
+                row.onToggle = { [weak self] in self?.onExpansionChange?() }
                 view = row
             default:
                 let row = ChatToolCallRow(step: step)
-                row.onToggle = { [weak self] in
-                    self?.changed()
-                    self?.onExpansionChange?()
-                }
+                row.onToggle = { [weak self] in self?.onExpansionChange?() }
                 view = row
             }
             stack.addArrangedSubview(view)
             views[step.id] = view
             shown[step.id] = ChatMessageShape(step)
         }
-        changed()
     }
 
     override func layoutSubviews() {
@@ -119,62 +81,88 @@ final class ChatTraceSteps: UIView {
         stack.frame = bounds
     }
 
-    /// The height the steps take at `width`, as they are drawn now. Fitted
-    /// once for as long as nothing in them changes: a row asks for it on
-    /// every layout pass, and a stack holding an opened call is not cheap to
-    /// lay out.
-    func fittingHeight(width: CGFloat) -> CGFloat {
-        guard !order.isEmpty else { return 0 }
-        let size = traitCollection.preferredContentSizeCategory
-        if let fit, fit.width == width, fit.size == size, fit.generation == generation {
-            return fit.height
-        }
-        let height = Self.height(of: stack, width: width)
-        fit = (width, size, generation, height)
-        return height
-    }
-
-    /// The same for a summary the list is measuring, which it does without
-    /// the row that will show it. The answer is kept, because the list asks
-    /// on every pass and on every event of a running turn: building the
-    /// steps again each time — each call's arguments decoded and its text
-    /// laid out — is what made a run stutter, and opening a call in it
-    /// slower still.
     static func height(for summary: ChatMessage, width: CGFloat) -> CGFloat {
         guard width > 1 else { return 0 }
         let steps = drawn(summary).map { paced($0) }
         guard !steps.isEmpty else { return 0 }
-        let key = Measure(
-            shapes: steps.map(ChatMessageShape.init),
-            width: width,
-            size: UIApplication.shared.preferredContentSizeCategory,
-            opened: steps.map(Self.isOpened),
-        )
-        if let measured = measures[key] {
-            return measured
+        var total: CGFloat = 0
+        for (index, step) in steps.enumerated() {
+            if index > 0 { total += spacing }
+            total += measuredHeight(of: step, width: width)
         }
-        sizing.show(summary)
-        let measured = height(of: sizing.stack, width: width)
-        if measures.count >= measureCapacity {
-            measures.removeAll(keepingCapacity: true)
-        }
-        measures[key] = measured
-        return measured
+        return ceil(total)
     }
 
-    /// Measurement and display consume the same immutable step snapshot.
-    /// Preview animations throttle themselves; body text must not change
-    /// between the list's height pass and row configuration.
+    private static let spacing: CGFloat = 4
+
+    private struct StepStamp: Equatable {
+        var shape: ChatMessageShape
+        var opened: Bool
+        var width: CGFloat
+        var size: UIContentSizeCategory
+    }
+
+    private static var heights = ChatStepHeights<StepStamp>()
+    private static var sizingCall: ChatToolCallRow?
+    private static var sizingThought: ChatThoughtRow?
+    private static var sizingTextSize: UIContentSizeCategory?
+    private static let slowStep: CFTimeInterval = 0.004
+    private static let log = Logger(subsystem: "wiki.qaq.apelin", category: "ChatTranscript")
+
+    private static func measuredHeight(of step: ChatMessage, width: CGFloat) -> CGFloat {
+        let stamp = StepStamp(
+            shape: ChatMessageShape(step),
+            opened: isOpened(step),
+            width: width,
+            size: UIApplication.shared.preferredContentSizeCategory,
+        )
+        return heights.height(for: step.id, stamp: stamp) {
+            let started = CACurrentMediaTime()
+            let height = fittedHeight(of: step, width: width)
+            let elapsed = CACurrentMediaTime() - started
+            if elapsed > slowStep {
+                log.notice("步骤测高耗时 \(elapsed * 1000, privacy: .public) 毫秒，宽度 \(width, privacy: .public) 点，正文 \(step.text.utf8.count, privacy: .public) 字节")
+            }
+            return height
+        }
+    }
+
+    private static func fittedHeight(of step: ChatMessage, width: CGFloat) -> CGFloat {
+        // 测量视图不在窗口中，动态字体变更时重建，避免旧字体写入新缓存键。
+        let size = UIApplication.shared.preferredContentSizeCategory
+        if sizingTextSize != size {
+            sizingTextSize = size
+            sizingCall = nil
+            sizingThought = nil
+        }
+        let row: UIView
+        if case .thinking = step.role {
+            let thought = sizingThought ?? ChatThoughtRow(step: step)
+            sizingThought = thought
+            thought.show(step)
+            thought.applyExpansion()
+            row = thought
+        } else {
+            let call = sizingCall ?? ChatToolCallRow(step: step)
+            sizingCall = call
+            call.show(step)
+            call.applyExpansion()
+            row = call
+        }
+        row.frame = CGRect(x: 0, y: 0, width: width, height: 1)
+        row.setNeedsLayout()
+        row.layoutIfNeeded()
+        return row.systemLayoutSizeFitting(
+            CGSize(width: width, height: 0),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel,
+        ).height
+    }
+
     static func drawn(_ summary: ChatMessage) -> [ChatMessage] {
         ChatActivityContent.steps(summary)
     }
 
-    /// One step as it is drawn now: a thought the model is still writing is
-    /// paced (`ChatStreamPacing`), so one long thought costs a redraw and a
-    /// measurement a few times a second rather than one of each per event.
-    /// Both callers of `drawn(_:)` take its answer from here, which is what
-    /// keeps the height the list gives a row and the text the row draws the
-    /// same text.
     private static func paced(_ step: ChatMessage) -> ChatMessage {
         guard case .thinking = step.role else { return step }
         var paced = step
@@ -182,41 +170,12 @@ final class ChatTraceSteps: UIView {
         return paced
     }
 
-    /// Whether the reader has this step open: a thought by its own flag, a
-    /// call by its.
     private static func isOpened(_ step: ChatMessage) -> Bool {
         if case .thinking = step.role {
             return ChatTraceExpansion.isExpanded(thought: step.id)
         }
         return ChatTraceExpansion.isExpanded(call: step.id)
     }
-
-    /// What a height was measured from: exact step identities/content, width,
-    /// text size and expansion state. Equal byte counts are not equal layout.
-    private struct Measure: Hashable {
-        let shapes: [ChatMessageShape]
-        let width: CGFloat
-        let size: UIContentSizeCategory
-        let opened: [Bool]
-    }
-
-    /// Past this many the cache starts again: it only ever holds the
-    /// summaries a list is showing and the widths they are shown at, and a
-    /// long conversation shows many of them.
-    private static let measureCapacity = 256
-    private static var measures: [Measure: CGFloat] = [:]
-
-    private static func height(of stack: UIStackView, width: CGFloat) -> CGFloat {
-        let fitted = stack.systemLayoutSizeFitting(
-            CGSize(width: width, height: 0),
-            withHorizontalFittingPriority: .required,
-            verticalFittingPriority: .fittingSizeLevel,
-        )
-        return ceil(fitted.height)
-    }
-
-    /// The one view the list's heights are measured in.
-    private static let sizing = ChatTraceSteps()
 }
 
 /// One thought of a run, folded into a line: how long it thought, and — once
@@ -236,23 +195,13 @@ final class ChatThoughtRow: UIView {
     private let line = UIControl()
     private let icon = UIImageView()
     private let titleLabel = UILabel()
-    /// The line's trailing end while a thought is folded: the words it is
-    /// writing now, in a window one line tall so the roll stays inside it.
-    private let previewClip = UIView()
-    private let preview = UILabel()
+    /// 折叠思考与当前步骤活动行共用同一种滚动文本。
+    private let preview = ChatRollingLine()
     private let chevron = UIImageView()
     private let textLabel = UILabel()
     private var showsBody = false
     /// What this row was last given, without its strings.
     private var shownShape: ChatMessageShape?
-    /// When the preview last rolled: a stream arrives faster than a line can
-    /// be read, so the roll is kept to a few a second.
-    private var lastRoll = Date.distantPast
-
-    /// How much of a thought the folded line keeps after its title, and how
-    /// often the roll is allowed.
-    private static let previewLength = 200
-    private static let rollInterval: TimeInterval = 0.25
 
     private enum Style {
         static let lineHeight: CGFloat = 28
@@ -304,15 +253,9 @@ final class ChatThoughtRow: UIView {
         // After the title, while the thought is folded: the words it is
         // writing now, the newest at the trailing end.
         preview.font = Style.bodyFont
-        preview.adjustsFontForContentSizeCategory = true
         preview.textColor = .tertiaryLabel
-        preview.numberOfLines = 1
-        preview.lineBreakMode = .byTruncatingHead
-        previewClip.clipsToBounds = true
-        previewClip.isUserInteractionEnabled = false
-        previewClip.isHidden = true
-        line.addSubview(previewClip)
-        previewClip.addSubview(preview)
+        preview.isHidden = true
+        line.addSubview(preview)
 
         chevron.image = UIImage(
             systemName: "chevron.right",
@@ -349,13 +292,12 @@ final class ChatThoughtRow: UIView {
             make.leading.equalTo(icon.snp.trailing).offset(Style.spacing)
             make.centerY.equalToSuperview()
         }
-        previewClip.snp.makeConstraints { make in
+        preview.snp.makeConstraints { make in
             make.leading.equalTo(titleLabel.snp.trailing).offset(Style.spacing)
             make.trailing.equalTo(chevron.snp.leading).offset(-Style.spacing)
             make.centerY.equalToSuperview()
             make.height.equalTo(titleLabel)
         }
-        preview.snp.makeConstraints { make in make.edges.equalToSuperview() }
 
         shownShape = ChatMessageShape(step)
         configure(step)
@@ -365,6 +307,15 @@ final class ChatThoughtRow: UIView {
     @available(*, unavailable)
     required init?(coder _: NSCoder) {
         fatalError("Use init(step:)")
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        guard previous?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory else { return }
+        titleLabel.font = Style.titleFont
+        textLabel.font = Style.bodyFont
+        preview.font = Style.bodyFont
+        setNeedsLayout()
     }
 
     /// The same thought as it grows, or a new one.
@@ -381,7 +332,8 @@ final class ChatThoughtRow: UIView {
     /// Answers whether anything changed.
     @discardableResult
     func applyExpansion() -> Bool {
-        guard ChatTraceExpansion.isExpanded(thought: stepID) != showsBody else { return false }
+        // 测量视图会连续复用给别的步骤，展开状态必须读取当前步骤。
+        guard ChatTraceExpansion.isExpanded(thought: step.id) != showsBody else { return false }
         configure(step)
         updateChevron(animated: false)
         return true
@@ -410,62 +362,10 @@ final class ChatThoughtRow: UIView {
                 self.textLabel.transform = .identity
             }
         }
-        showPreview(of: step)
+        preview.isHidden = showsBody || step.text.isEmpty
+        preview.running = step.role.isThinking
+        preview.text = step.text
         updateAccessibility()
-    }
-
-    /// Folded, the line keeps the words the thought is writing after its
-    /// title, the newest at the trailing end: a run that is still thinking
-    /// shows what it is thinking, and the line rolls up as more arrives —
-    /// the words just written come from below and the ones they replace
-    /// leave at the top, inside the one line the preview is given.
-    private func showPreview(of step: ChatMessage) {
-        previewClip.isHidden = showsBody || step.text.isEmpty
-        guard !previewClip.isHidden else { return }
-        let running = step.role.isThinking
-        preview.lineBreakMode = running ? .byTruncatingHead : .byTruncatingTail
-        let text = running ? Self.tail(of: step.text) : step.text
-        guard preview.text != text else { return }
-        let previous = preview.text
-        preview.text = text
-        let rolls = running && previous != nil && window != nil
-            && !UIAccessibility.isReduceMotionEnabled
-            && Date().timeIntervalSince(lastRoll) >= Self.rollInterval
-        guard rolls, let previous else { return }
-        lastRoll = Date()
-        let line = max(ceil(previewClip.bounds.height), ceil(preview.font.lineHeight))
-        // A roll still in flight leaves its copy behind; it goes now.
-        for view in previewClip.subviews where view !== preview {
-            view.removeFromSuperview()
-        }
-        let leaving = UILabel()
-        leaving.font = preview.font
-        leaving.textColor = preview.textColor
-        leaving.numberOfLines = 1
-        leaving.lineBreakMode = preview.lineBreakMode
-        leaving.text = previous
-        leaving.frame = CGRect(x: 0, y: 0, width: max(previewClip.bounds.width, 1), height: line)
-        previewClip.insertSubview(leaving, belowSubview: preview)
-        preview.transform = CGAffineTransform(translationX: 0, y: line)
-        UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut]) {
-            leaving.transform = CGAffineTransform(translationX: 0, y: -line)
-            leaving.alpha = 0
-            self.preview.transform = .identity
-        } completion: { _ in
-            leaving.removeFromSuperview()
-        }
-    }
-
-    /// The end of what a thought has written, on one line of white space:
-    /// the newest words are what a reader wants of a run still thinking. Only
-    /// the end is read — splitting a whole thought on every token copies all
-    /// of it.
-    private static func tail(of text: String) -> String {
-        let end = text.suffix(Self.previewLength * 2)
-        let line = end.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        let truncated = line.count > Self.previewLength || text.utf8.count > end.utf8.count
-        guard truncated else { return line }
-        return "…" + String(line.suffix(Self.previewLength))
     }
 
     /// "Thinking…" while it thinks, then how long it thought.
@@ -504,7 +404,7 @@ final class ChatThoughtRow: UIView {
         } else {
             isAccessibilityElement = true
             accessibilityLabel = titleLabel.text
-            accessibilityValue = previewClip.isHidden ? nil : preview.text
+            accessibilityValue = preview.isHidden ? nil : preview.shownText
             accessibilityTraits = .button
             line.isAccessibilityElement = false
             textLabel.isAccessibilityElement = false

@@ -18,10 +18,41 @@ enum TransferExporter {
         from presenter: UIViewController,
         anchor: UIBarButtonItem,
     ) {
-        presentConfirmation(on: presenter, kind: kind) { [weak presenter, weak anchor] in
-            guard let presenter, let anchor else { return }
-            export(kind: kind, id: id, name: name, from: presenter, anchor: anchor)
+        guard kind == .project else {
+            presentConfirmation(on: presenter, kind: kind) { [weak presenter, weak anchor] in
+                guard let presenter, let anchor else { return }
+                export(kind: kind, id: id, name: name, from: presenter, anchor: anchor)
+            }
+            return
         }
+        presentFormatChoice(on: presenter, anchor: anchor) { [weak presenter, weak anchor] variant in
+            guard let presenter, let anchor else { return }
+            export(kind: kind, id: id, name: name, variant: variant, from: presenter, anchor: anchor)
+        }
+    }
+
+    /// 专用项目文件保留历史；源码 ZIP 供其他工具解压使用。
+    private static func presentFormatChoice(
+        on presenter: UIViewController,
+        anchor: UIBarButtonItem,
+        start: @escaping (ProjectExportVariant) -> Void,
+    ) {
+        let sheet = UIAlertController(
+            title: String(localized: "Export the Project"),
+            message: String(localized: "An Apelin project opens in Apelin, with its history. A source zip unpacks anywhere, without Apelin's own files."),
+            preferredStyle: .actionSheet,
+        )
+        sheet.addAction(UIAlertAction(
+            title: String(localized: "Apelin Project"),
+            style: .default,
+        ) { _ in start(.apelin) })
+        sheet.addAction(UIAlertAction(
+            title: String(localized: "Source Zip"),
+            style: .default,
+        ) { _ in start(.sources) })
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        sheet.popoverPresentationController?.barButtonItem = anchor
+        presenter.present(sheet, animated: true)
     }
 
     // One literal per kind: AlertController looks the key up in the catalogue.
@@ -68,6 +99,7 @@ enum TransferExporter {
         kind: TransferKind,
         id: String,
         name: String,
+        variant: ProjectExportVariant? = nil,
         from presenter: UIViewController,
         anchor: UIBarButtonItem,
     ) {
@@ -80,7 +112,7 @@ enum TransferExporter {
                     cancellable: true,
                     from: presenter,
                 ) { update in
-                    try await run(kind: kind, id: id, update: update)
+                    try await run(kind: kind, id: id, variant: variant, update: update)
                 }
                 share(export, from: presenter, anchor: anchor)
             } catch is CancellationError {
@@ -104,9 +136,15 @@ enum TransferExporter {
     private static func run(
         kind: TransferKind,
         id: String,
+        variant: ProjectExportVariant?,
         update: @escaping @MainActor (ProgressCard.Status) -> Void,
     ) async throws -> TransferExport {
-        let handle = try await ApelinService.app.transferExport(kind: kind, id: id, createdBy: createdBy)
+        let handle = try await ApelinService.app.transferExport(
+            kind: kind,
+            id: id,
+            createdBy: createdBy,
+            variant: variant,
+        )
         var progress = EnvironmentTaskProgress(work: .transferExport)
         var export: TransferExport?
         try await withTaskCancellationHandler {

@@ -10,6 +10,14 @@ struct ToolCallBanner: Hashable {
     var reason: String
     var file: String?
     var change: LineChange?
+    /// 模型调用的工具名，活动行据此选图标。
+    var tool: String?
+
+    /// 当前步骤的单行摘要，保留在纯模型层供转录回归测试使用。
+    enum ActivityLine: Equatable {
+        case call(ToolCallBanner, token: Int)
+        case thought(String)
+    }
 
     struct LineChange: Hashable {
         let added: Int
@@ -32,6 +40,7 @@ extension ToolCallBanner {
         self.init(
             reason: reason.isEmpty ? title : reason,
             file: Self.writesFile(tool) && !path.isEmpty ? (path as NSString).lastPathComponent : nil,
+            tool: tool,
         )
     }
 

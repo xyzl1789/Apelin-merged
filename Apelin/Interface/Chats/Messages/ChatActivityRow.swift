@@ -112,10 +112,18 @@ final class ChatActivityRow: ListRowView {
         }
         let tokens = message.foldsProcessSteps ? nil : message.receivedTokens
         header.accessibilityValue = tokens.map(ReceivedTokensView.spoken)
-        if let call = ChatActivityContent.banner(message) {
-            bannerView.show(call, animated: isSameMessage)
+        // 当前活动行统一显示最新思考或工具调用，各自使用对应图标。
+        switch ChatActivityContent.line(message) {
+        case let .thought(text)?:
+            bannerView.show(
+                .thought(ChatStreamPacing.text(of: message.id, newest: text, streaming: true)),
+                animated: isSameMessage,
+            )
             bannerView.isHidden = false
-        } else {
+        case let .call(call, token)?:
+            bannerView.show(.call(call, token: token), animated: isSameMessage)
+            bannerView.isHidden = false
+        case nil:
             bannerView.reset()
             bannerView.isHidden = true
         }
@@ -283,7 +291,7 @@ final class ChatActivityRow: ListRowView {
         return ChatActivityLayout(
             source: sourceHeight(ChatActivityContent.source(message), width: width),
             title: titleHeight(for: message, width: width),
-            banner: ChatActivityContent.banner(message) == nil ? 0 : ToolCallBannerView.height,
+            banner: ChatActivityContent.line(message) == nil ? 0 : ToolCallBannerView.height,
             steps: message.foldsProcessSteps ? 0 : ChatTraceSteps.height(for: message, width: width),
             top: message.activityJoinsPrevious ? 0 : insets.top, bottom: insets.bottom,
         ).height

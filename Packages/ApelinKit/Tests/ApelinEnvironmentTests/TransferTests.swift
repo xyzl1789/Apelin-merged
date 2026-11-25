@@ -473,6 +473,82 @@ final class TransferTests: XCTestCase {
         return root
     }
 
+    func testProjectExportVariantKeepsOlderRequestsCompatible() throws {
+        let legacy = Data(#"{"kind":"project","id":"Hello Tweak"}"#.utf8)
+        let request = try JSONDecoder().decode(TransferExportRequest.self, from: legacy)
+        XCTAssertNil(request.variant, "旧请求省略格式时保留原有项目导出")
+        let sources = TransferExportRequest(kind: .project, id: "Hello Tweak", variant: .sources)
+        let roundTrip = try JSONDecoder().decode(TransferExportRequest.self, from: JSONEncoder().encode(sources))
+        XCTAssertEqual(roundTrip.variant, .sources)
+    }
+
+    func testSourceZipKeepsPortableFilesAndExcludesPrivateProjectData() async throws {
+        let home = try await device(registerSDK: false)
+        let root = try makeProject(home)
+        func write(_ path: String, _ text: String) throws {
+            let file = root.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(text.utf8).write(to: file)
+        }
+        try write("Hello.xcodeproj/project.pbxproj", "// 工程\n")
+        try write("Xcode/Support/include/Bridge.h", "// 支持头文件\n")
+        try write("Resources/说明.txt", "源码归档保留中文文件名\n")
+        try write("Builds/device/output", "设备构建记录")
+        try write("Vendor/.git/config", "嵌套仓库记录")
+        try write("Scripts/run.sh", "#!/bin/sh\nprintf 'ok\\n'\n")
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.appendingPathComponent("Scripts/run.sh").path)
+        try FileManager.default.createSymbolicLink(atPath: root.appendingPathComponent("main-link.c").path, withDestinationPath: "main.c")
+        let transfers = service(home)
+        let prepared = try transfers.prepareExport(TransferExportRequest(kind: .project, id: "Hello Tweak", variant: .sources))
+        let log = EventLog()
+        let exported = try await transfers.export(prepared, staging: home.layout.makeStaging("sources-first"), reporter: log.reporter)
+        XCTAssertEqual(exported.fileName, "Hello Tweak.zip")
+        XCTAssertTrue(exported.exportedPath.hasPrefix("sources-"))
+        XCTAssertEqual(exported.summary.kind, .project)
+        XCTAssertEqual(log.events.filter { $0.0 == "stage" }.compactMap { $0.1?["stage"]?.stringValue },
+                       ["collecting", "hashing", "packing", "verifying"])
+        let bytes = try Data(contentsOf: URL(fileURLWithPath: exported.path))
+        XCTAssertEqual(exported.sha256, Self.sha(bytes))
+        XCTAssertEqual(exported.size, Int64(bytes.count))
+        let unpacked = try home.layout.makeStaging("sources-unpacked")
+        try ArchiveExtractor().extract(.path(exported.path), into: unpacked)
+        let project = unpacked.appendingPathComponent("Hello Tweak")
+        for kept in ["main.c", "new.c", ".gitignore", "Hello.xcodeproj/project.pbxproj", "Xcode/Support/include/Bridge.h", "Resources/说明.txt", "Scripts/run.sh"] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: project.appendingPathComponent(kept).path), kept)
+        }
+        for excluded in ["apelin-project.json", ".git", "Builds", "Vendor/.git", "build", "main.o", ".DS_Store", "main-link.c"] {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: project.appendingPathComponent(excluded).path), excluded)
+        }
+        XCTAssertEqual(try String(contentsOf: project.appendingPathComponent("Resources/说明.txt"), encoding: .utf8), "源码归档保留中文文件名\n")
+        let attributes = try FileManager.default.attributesOfItem(atPath: project.appendingPathComponent("Scripts/run.sh").path)
+        XCTAssertNotEqual(((attributes[.posixPermissions] as? NSNumber)?.intValue ?? 0) & 0o111, 0)
+        let again = try await transfers.export(prepared, staging: home.layout.makeStaging("sources-second"), reporter: .silent)
+        XCTAssertEqual(again.sha256, exported.sha256, "相同源码生成相同的 ZIP 字节")
+    }
+
+    func testSourceZipRejectsContentAndLinkReplacementAfterScanning() async throws {
+        let home = try await device(registerSDK: false)
+        let root = try makeProject(home)
+        let transfers = service(home)
+        let prepared = try transfers.prepareExport(TransferExportRequest(kind: .project, id: "Hello Tweak", variant: .sources))
+        let project = try XCTUnwrap(prepared.prepared.project)
+        let staging = try home.layout.makeStaging("sources-changed")
+        let collected = try transfers.sourcesContents(project, staging: staging, reporter: .silent)
+        let source = root.appendingPathComponent("main.c")
+        let original = try Data(contentsOf: source)
+        try Data("int main(void) { return 1; }\n".utf8).write(to: source)
+        XCTAssertThrowsError(try SourcesArchiveWriter(tree: collected.tree, rootName: project.name)
+            .write(to: staging.appendingPathComponent("changed.zip"), reporter: .silent)) {
+            XCTAssertEqual(($0 as? ApelinError)?.code, .conflict, "同长度替换也须重新导出")
+        }
+        try original.write(to: source)
+        let replaced = root.appendingPathComponent("new.c")
+        try FileManager.default.removeItem(at: replaced)
+        try FileManager.default.createSymbolicLink(atPath: replaced.path, withDestinationPath: "main.c")
+        XCTAssertThrowsError(try SourcesArchiveWriter(tree: collected.tree, rootName: project.name)
+            .write(to: staging.appendingPathComponent("linked.zip"), reporter: .silent), "扫描后换成项目内链接也不能跟随")
+    }
+
     func testAProjectTravelsWithItsHistoryUnderANewIDAndNothingThatWouldRun() async throws {
         let first = try await device()
         let oldID = "8a6f3c1e-0000-4000-8000-0000000000aa"

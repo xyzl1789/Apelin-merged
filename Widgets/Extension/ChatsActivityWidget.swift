@@ -171,8 +171,12 @@ private extension ChatWidgetSnapshot {
                 let detail = [progress.title, progress.detail].compactMap { $0 }.joined(separator: " — ")
                 return (progress.symbol, chat.activityColor, chat.statusWord, detail, false)
             }
-            if progress.stage == .waitingForNextStep, let tool = recentTools.first {
-                return (tool.symbol, chat.activityColor, tool.title, tool.detail, true)
+            if progress.stage == .waitingForNextStep, progress.symbol == "ellipsis.circle", let tool = recentTools.first {
+                return (tool.symbol, chat.activityColor, tool.title, tool.result ?? tool.detail, true)
+            }
+            if progress.stage == .thinking, progress.detail == nil,
+               flowNotes.contains(where: { $0.symbol == "bubble.left.and.bubble.right" }) {
+                return ("bubble.left.and.bubble.right", chat.activityColor, "正在处理协作消息", nil, false)
             }
             return (progress.symbol, chat.activityColor, progress.title, progress.detail, progress.stage == .tool)
         }
