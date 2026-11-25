@@ -20,6 +20,9 @@ struct ChatsActivityWidget: Widget {
                             .font(.caption2)
                         Text(verbatim: "Apelin")
                             .font(.caption.bold())
+                            .lineLimit(1)
+                            .fixedSize()
+                            .layoutPriority(10)
                     }
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
