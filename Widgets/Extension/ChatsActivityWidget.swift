@@ -251,15 +251,16 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
-            // 身份与主状态优先保留；详情仅使用剩余高度，终态也能显示回答预览。
-            if state.detailsEnabled {
-                ViewThatFits(in: .vertical) {
-                    flowRows(limit: 3, lines: 2)
-                    flowRows(limit: 2, lines: 1)
-                    flowRows(limit: 1, lines: 1)
-                    Color.clear.frame(height: 0)
+            // 空详情必须退出布局；非空详情只占实际高度，不能用弹性 frame 留白。
+            if state.detailsEnabled && !details.isEmpty {
+                ChatActivityDetailLayout {
+                    ViewThatFits(in: .vertical) {
+                        flowRows(limit: 3, lines: 2)
+                        flowRows(limit: 2, lines: 1)
+                        flowRows(limit: 1, lines: 1)
+                        Color.clear.frame(height: 0)
+                    }
                 }
-                .frame(maxHeight: 76, alignment: .top)
                 .clipped()
                 .layoutPriority(-1)
             }
@@ -306,6 +307,28 @@ private struct ChatActivitySessionRow: View {
         }
         // 让 ViewThatFits 以实际高度选择较短版本，而不是先压缩长版本的文字。
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// 给详情一个高度预算，但只向父布局返回实际选中内容的高度。
+/// 不缓存上次高度，运行中转为终态或内容清空时立即重新测量。
+@available(iOS 16.2, *)
+private struct ChatActivityDetailLayout: Layout {
+    private let maximumHeight: CGFloat = 76
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        let height = max(0, min(proposal.height ?? maximumHeight, maximumHeight))
+        let size = content.sizeThatFits(ProposedViewSize(width: proposal.width, height: height))
+        return CGSize(width: size.width, height: min(size.height, height))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(
+            at: bounds.origin,
+            anchor: .topLeading,
+            proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
+        )
     }
 }
 

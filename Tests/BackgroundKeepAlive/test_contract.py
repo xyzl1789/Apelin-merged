@@ -39,15 +39,83 @@ class ActivityContract(unittest.TestCase):
         self.assertEqual(self.widget.count("ChatActivitySessionRow(chat: chat, state: state)"), 2)
 
     def test_identity_and_status_remain_outside_flow(self):
-        flow = self.row.index("if state.detailsEnabled && state.finishedBadge == nil")
+        flow = self.row.index("if state.detailsEnabled && !details.isEmpty")
         for identity in ("chat.title", "chat.projectName", "phase.title"):
             self.assertLess(self.row.index("Text(verbatim: " + identity + ")"), flow)
 
     def test_details_and_tools_are_gated_together(self):
-        flow = block(self.row, "if state.detailsEnabled && state.finishedBadge == nil")
-        for content in ("if let detail = phase.detail", "ForEach(state.recentTools.indices"):
-            self.assertIn(content, flow)
-            self.assertEqual(self.row.count(content), 1)
+        flow = block(self.row, "if state.detailsEnabled && !details.isEmpty")
+        self.assertIn("ChatActivityDetailLayout", flow)
+        self.assertIn("ViewThatFits(in: .vertical)", flow)
+        for candidate in ("flowRows(limit: 3, lines: 2)", "flowRows(limit: 2, lines: 1)",
+                          "flowRows(limit: 1, lines: 1)", "Color.clear.frame(height: 0)"):
+            self.assertIn(candidate, flow)
+        details = block(self.row, "private var details:")
+        self.assertIn("if let detail = phase.detail", details)
+        self.assertIn("for tool in state.recentTools", block(details, "if state.finishedBadge == nil"))
+        self.assertIn(".privacySensitive()", block(self.row, "private func flowRows"))
+
+    def test_empty_details_leave_no_flexible_frame(self):
+        self.assertIn("if state.detailsEnabled && !details.isEmpty", self.row)
+        self.assertNotIn(".frame(maxHeight:", self.row)
+        layout = block(self.widget, "private struct ChatActivityDetailLayout")
+        measure = block(layout, "func sizeThatFits")
+        self.assertIn("guard let content = subviews.first else { return .zero }", measure)
+        self.assertIn("content.sizeThatFits", measure)
+        self.assertIn("height: min(size.height, height)", measure)
+        self.assertIn("proposal.height ?? maximumHeight", measure)
+        self.assertIn("maximumHeight: CGFloat = 76", layout)
+        self.assertNotIn("cache =", layout)
+        self.assertIn("height: bounds.height", block(layout, "func placeSubviews"))
+
+    def test_finished_preview_remains_available(self):
+        phase = block(self.widget, "if let badge = finishedBadge")
+        self.assertIn("detailsEnabled && batchOutcome == .succeeded ? answerPreview : nil", phase)
+        self.assertIn("if let detail = phase.detail", block(self.row, "private var details:"))
+
+    def test_swift_measurement_rule_on_xcode_host(self):
+        # 执行生产测量函数体；模拟子视图返回的尺寸，不冒充 SwiftUI 真机布局测试。
+        import shutil
+        import subprocess
+        import tempfile
+        if not shutil.which("xcrun"):
+            self.skipTest("本机缺少 Xcode；详情高度计算执行需在 macOS harness 补验")
+        layout = block(self.widget, "private struct ChatActivityDetailLayout")
+        measure = block(layout, "func sizeThatFits")
+        program = '''
+import Foundation
+struct ProposedViewSize { let width: CGFloat?; let height: CGFloat? }
+struct Content {
+    let naturalHeight: CGFloat
+    func sizeThatFits(_ proposal: ProposedViewSize) -> CGSize {
+        CGSize(width: proposal.width ?? 120, height: naturalHeight)
+    }
+}
+typealias Subviews = [Content]
+func measure(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let maximumHeight: CGFloat = 76
+''' + measure + '''
+}
+var cache: () = ()
+for proposed: CGFloat? in [nil, 0, 12, 76, 400, .infinity] {
+    let proposal = ProposedViewSize(width: 180, height: proposed)
+    precondition(measure(proposal: proposal, subviews: [], cache: &cache) == .zero)
+    // 同一布局从多行缩到零、一行、再展开；不能沿用上次的高度。
+    for natural: CGFloat in [64, 0, 18, 0, 100] {
+        let measured = measure(proposal: proposal, subviews: [Content(naturalHeight: natural)], cache: &cache)
+        let expected = min(natural, max(0, min(proposed ?? 76, 76)))
+        precondition(measured == CGSize(width: 180, height: expected))
+    }
+}
+print("通过：空内容、内容缩短、剩余高度及上限的生产高度计算")
+'''
+        scratch = ROOT / ".build"
+        scratch.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="activity-height-", dir=scratch) as temp:
+            path = Path(temp)
+            (path / "main.swift").write_text(program, encoding="utf-8")
+            subprocess.run(["xcrun", "--sdk", "macosx", "swiftc", "-swift-version", "5", str(path / "main.swift"), "-o", str(path / "check")], check=True)
+            subprocess.run([str(path / "check")], check=True)
 
     def test_finished_phase_uses_result_not_last_tool(self):
         phase = block(self.widget, "if let badge = finishedBadge")
