@@ -926,13 +926,23 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
     `<session>.turn.<n>`, `<session>.approval.<n>` and
     `<session>.notice.<n>`, the thread is the session, and `userInfo`
     `link` is `apelin://conversation/<session>`, which a tap hands to
-    `UIApplication.open` (`ConversationNotices`)。前台通知开启时，仅当 SpringBoard
-    确认本应用真实可见、且通知 threadIdentifier 等于当前聊天页实时 sessionID 才静默。
-    页面 viewDidAppear 注册弱引用、viewWillDisappear 清除，模态遮挡或未知 session 放行；
-    不缓存首次发送前的 nil 或切换前的 ID。切后台、锁屏或保活可见性未知不能以 active
-    冒充正在查看，其他通知沿用原前台开关。SpringBoard 只在不可见时强制后台递送，
-    真实前台交回 willPresent 按会话过滤；不修改场景保持。打开可见会话撤回已递送通知，
+    `UIApplication.open` (`ConversationNotices`)。宿主 `NoticePoster` 在交给系统前，
+    检查 App 为当前聊天 sessionID 发布的 notifyd 短租约（PID + 单调时钟秒，
+    每秒续租、12 秒过期、不落盘），再直接读取 SpringBoard 的真实可见位，
+    同 PID、接口兼容、可见、进程存活且首尾租约一致才静默。其他会话、
+    切后台、锁屏、未知状态、过期租约或进程不匹配一律放行；去重标记先推进，
+    静默通知不会离开页面后补发。页面 viewDidAppear 注册弱引用、
+    viewWillDisappear 清除，切换聊天及首次 sessionID 建立时立即同步；
+    模态遮挡或未知 session 不发布查看租约。App 的 willPresent 继续按当前
+    sessionID 兜底，直接读最新 notifyd 可见位而不是等待主队列状态回调；
+    不以保活伪造的 active 冒充真实前台，其他通知沿用原前台开关。
+    SpringBoard 只在不可见时强制后台递送，真实前台交回 willPresent；
+    不修改场景保持。打开可见会话撤回已递送通知，
     删除会话或项目亦撤回；首次发送消息时请求通知授权。
+    回归在 `Tests/BackgroundKeepAlive/test_contract.py`（源码契约）和
+    `ApelinCoreTests/ViewedConversationTests.swift`（生产判定与状态切换注入）；
+    `make harness` 执行。本机缺少 Xcode 时只能做契约及 Swift 语法检查，
+    不能当成完整构建、Swift 执行测试或真实通知横幅已验收。
     Two declarations, or authorization stays false with no error but the
     device log's: `com.apple.private.usernotifications.bundle-identifiers`
     naming `wiki.qaq.apelin` on apelind and on the app, and

@@ -82,7 +82,15 @@ enum ForegroundBackground {
     }
 
     static var isActuallyVisible: Bool {
-        if isBridgeConnected { return status & 4 != 0 }
+        if isBridgeConnected {
+            // SpringBoard 已发布但主队列回调尚未执行时，不能继续使用旧的后台位。
+            var current: UInt64 = 0
+            if statusToken >= 0, notify_get_state(statusToken, &current) == NOTIFY_STATUS_OK,
+               current >> 32 == UInt64(UInt32(ProcessInfo.processInfo.processIdentifier)), current & 1 != 0 {
+                return current & 4 != 0
+            }
+            return false
+        }
         // 保活时不再用被保持的 active 状态冒充“读者正在看”；未知就不自动清通知。
         return !enabled && UIApplication.shared.applicationState == .active
     }
@@ -106,7 +114,8 @@ enum ForegroundBackground {
             guard notify_get_state(token, &value) == NOTIFY_STATUS_OK else { return }
             MainActor.assumeIsolated {
                 guard value >> 32 == UInt64(UInt32(ProcessInfo.processInfo.processIdentifier)) else { return }
-                let wasVisible = isActuallyVisible
+                // 比较上一次回调缓存，而不是提前读取 notifyd 中这次的新值。
+                let wasVisible = hasFreshStatus && status & 5 == 5
                 let previous = status
                 status = value
                 receivedAt = ProcessInfo.processInfo.systemUptime

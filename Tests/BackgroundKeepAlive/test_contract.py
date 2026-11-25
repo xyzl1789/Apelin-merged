@@ -39,12 +39,12 @@ class ActivityContract(unittest.TestCase):
         self.assertEqual(self.widget.count("ChatActivitySessionRow(chat: chat, state: state)"), 2)
 
     def test_identity_and_status_remain_outside_flow(self):
-        flow = self.row.index("if state.finishedBadge == nil")
+        flow = self.row.index("if state.detailsEnabled && state.finishedBadge == nil")
         for identity in ("chat.title", "chat.projectName", "phase.title"):
             self.assertLess(self.row.index("Text(verbatim: " + identity + ")"), flow)
 
     def test_details_and_tools_are_gated_together(self):
-        flow = block(self.row, "if state.finishedBadge == nil")
+        flow = block(self.row, "if state.detailsEnabled && state.finishedBadge == nil")
         for content in ("if let detail = phase.detail", "ForEach(state.recentTools.indices"):
             self.assertIn(content, flow)
             self.assertEqual(self.row.count(content), 1)
@@ -119,6 +119,39 @@ class KeepAliveContract(unittest.TestCase):
         session = block(chat, "var notificationSessionID:")
         self.assertIn("presentedViewController == nil", session)
         self.assertIn("runtime.records[chat.id]?.sessionID", session)
+
+    def test_sender_filters_before_system_delivery(self):
+        poster = source("Apelind/Session/Notice/NoticePoster.swift")
+        post = block(poster, "func post(_ notice:")
+        self.assertLess(post.index("ViewedConversation.shouldSuppress"), post.index("UNMutableNotificationContent()"))
+        self.assertIn("content.threadIdentifier = notice.sessionID", post)
+        notices = source("Apelind/Session/Notice/AgentNotices.swift")
+        relayed = block(notices, "func relayed(")
+        self.assertLess(relayed.index("marks[session] = advanced"), relayed.index("post(notice)"))
+
+    def test_viewed_session_lease_is_ephemeral_and_fails_open(self):
+        viewed = source("Packages/ApelinKit/Sources/ApelinCore/ViewedConversation.swift")
+        self.assertIn("foreground & 5 == 5", viewed)
+        self.assertIn("foreground >> 32 == processID", viewed)
+        self.assertIn("age >= 0 && age < Double(leaseSeconds)", viewed)
+        self.assertIn("readState(name) == first", viewed)
+        self.assertIn("kill(pid, 0) == 0", viewed)
+        self.assertNotIn("UserDefaults", viewed)
+        self.assertNotIn("write(to:", viewed)
+        delegate = source("Apelin/Application/ConversationNotices.swift")
+        self.assertIn("didSet { refreshViewedConversation() }", delegate)
+        self.assertIn("notify_set_state(viewedToken, 0)", delegate)
+        self.assertIn("Timer(timeInterval: 1, repeats: true)", delegate)
+        chat = source("Apelin/Interface/Chats/ChatController.swift")
+        self.assertIn("refreshViewedConversation()", block(chat, "func use(_ chat:"))
+        self.assertIn("refreshViewedConversation()", block(chat, "func refreshRuntime()"))
+
+    def test_app_fallback_reads_current_bridge_state(self):
+        visible = block(self.app, "static var isActuallyVisible:")
+        self.assertIn("notify_get_state(statusToken, &current)", visible)
+        self.assertIn("current >> 32", visible)
+        self.assertIn("return current & 4 != 0", visible)
+        self.assertIn("let wasVisible = hasFreshStatus && status & 5 == 5", self.app)
 
     def test_swift_matching_rule_on_xcode_host(self):
         import shutil

@@ -1,3 +1,4 @@
+import ApelinCore
 import Foundation
 import ObjectiveC
 import UserNotifications
@@ -33,6 +34,12 @@ struct NoticePoster: @unchecked Sendable {
     }
 
     func post(_ notice: AgentNotice) {
+        // 在交给系统前过滤，不依赖它是否会回调 App 的 willPresent。
+        // AgentNotices 已推进去重标记，静默的旧通知不会在离开页面后补发。
+        guard !ViewedConversation.shouldSuppress(session: notice.sessionID) else {
+            NSLog("apelind-session: 当前可见会话通知已在发送前静默")
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = Self.string(notice.title)
         if let subtitle = notice.subtitle {

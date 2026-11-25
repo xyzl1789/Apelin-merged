@@ -789,6 +789,7 @@ final class ChatController: UIViewController {
         }
         if previous?.id != chat.id { historyPreviewRows = [] }
         self.chat = chat
+        ConversationNotices.shared.refreshViewedConversation()
         historyLoadTask?.cancel()
         let generation = UUID()
         historyLoadGeneration = generation
@@ -972,6 +973,7 @@ final class ChatController: UIViewController {
     }
 
     func refreshRuntime() {
+        ConversationNotices.shared.refreshViewedConversation()
         guard let chat else { return }
         if let summary = runtime.summary(chat.id) {
             self.chat = summary
