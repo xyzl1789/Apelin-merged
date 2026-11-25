@@ -296,7 +296,7 @@ final class ChatController: UIViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(withdrawNotifications),
-            name: UIApplication.didBecomeActiveNotification,
+            name: ForegroundBackground.becameVisible,
             object: nil,
         )
         NotificationCenter.default.addObserver(
@@ -790,7 +790,9 @@ final class ChatController: UIViewController {
         pendingOpeningChat = chat.id
         openingPresentationReady = false
         ChatOpeningRecovery.begin(chat.id)
-        ConversationNotices.shared.withdraw(session: runtime.records[chat.id]?.sessionID)
+        if ForegroundBackground.isActuallyVisible {
+            ConversationNotices.shared.withdraw(session: runtime.records[chat.id]?.sessionID)
+        }
         historyLoadTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -878,7 +880,9 @@ final class ChatController: UIViewController {
     /// said what they had to.
     @objc private func withdrawNotifications() {
         guard let chat, view.window != nil else { return }
-        ConversationNotices.shared.withdraw(session: runtime.records[chat.id]?.sessionID)
+        if ForegroundBackground.isActuallyVisible {
+            ConversationNotices.shared.withdraw(session: runtime.records[chat.id]?.sessionID)
+        }
     }
 
     /// Fills the reader's threshold: the conversation compacts itself, as if

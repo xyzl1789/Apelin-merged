@@ -60,50 +60,73 @@ class ActivityContract(unittest.TestCase):
 class KeepAliveContract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.keepalive = source("Apelin/Widgets/BackgroundKeepAlive.swift")
+        cls.module = source("Background/ApelinForeground.m")
+        cls.app = source("Apelin/Application/ForegroundBackground.swift")
 
-    def test_pending_request_is_not_replaced(self):
-        count = block(self.keepalive, "static func setRunningCount")
-        self.assertLess(count.index("guard !isAcquiring, !isHolding"), count.index("acquire()"))
-        self.assertIn("guard count > 0 else", count)
+    def test_old_assertion_is_removed(self):
+        self.assertFalse((ROOT / "Apelin/Widgets/BackgroundKeepAlive.swift").exists())
+        self.assertNotIn("BackgroundKeepAlive", source("Apelin/Widgets/ChatWidgetPublisher.swift"))
+        self.assertNotIn("BKSProcessAssertion", self.module + self.app)
 
-    def test_block_callback_is_kept_alive_through_init(self):
-        acquire = block(self.keepalive, "private static func acquire()")
-        self.assertIn("@convention(block) (Bool) -> Void", acquire)
-        self.assertIn("withExtendedLifetime((name, handlerObject))", acquire)
-        self.assertIn("Unmanaged.passUnretained(handlerObject).toOpaque()", acquire)
-        self.assertIn("acquisitionFinished(acquired, request: id)", acquire)
+    def test_only_springboard_is_injected(self):
+        import plistlib
+        plist = plistlib.loads((ROOT / "Background/ApelinForeground.plist").read_bytes())
+        self.assertEqual(plist, {"Filter": {"Bundles": ["com.apple.springboard"]}})
+        self.assertIn('APFBundle = @"wiki.qaq.apelin"', self.module)
+        self.assertNotIn('hook(objc_getClass("UIMutableApplicationSceneSettings")', self.module)
 
-    def test_initial_validity_does_not_trigger_release(self):
-        acquire = block(self.keepalive, "private static func acquire()")
-        stored = acquire.index("assertion = Unmanaged<NSObject>")
-        timeout = acquire.index("acquisitionTimeout = Task", stored)
-        self.assertNotIn("release(", acquire[stored:timeout])
-        self.assertIn("requestID == id, isAcquiring", acquire[timeout:])
-        self.assertIn("Task.sleep(for: .seconds(10))", acquire[timeout:])
+    def test_scene_calls_original_without_losing_callbacks(self):
+        self.assertIn("APFOriginalScene(self, cmd, replacement ?: settings, transition, completion)", self.module)
+        self.assertIn("if (!APFTarget(self))", self.module)
+        self.assertIn("configured && APFHolding()", self.module)
+        self.assertIn("[settings mutableCopy]", self.module)
 
-    def test_late_callback_cannot_release_new_request(self):
-        callback = block(self.keepalive, "private static func acquisitionFinished")
-        self.assertTrue(callback.lstrip().startswith("guard requestID == id, assertion != nil else"))
-        self.assertIn("guard acquired, valid else", callback)
-        self.assertIn("retryNotBefore =", callback)
+    def test_disabled_restores_last_system_settings(self):
+        self.assertIn("APFRestoreScenes();", self.module)
+        self.assertIn("setObject:[settings copy] forKey:self", self.module)
+        self.assertIn("replacement ?: settings, nil, nil", self.module)
+        self.assertIn("APFLiveRequest()", self.module)
 
-    def test_release_invalidates_request_before_object(self):
-        release = block(self.keepalive, "private static func release(reason:")
-        self.assertLess(release.index("requestID = nil"), release.index("bridge.invalidate"))
-        self.assertIn("acquisitionTimeout?.cancel()", release)
-        self.assertIn("record(", release)
+    def test_foreground_notification_uses_both_halves(self):
+        self.assertIn("_didChangeApplicationState:forBundleIdentifier:", self.module)
+        self.assertIn("APFNotificationState(self, YES)", self.module)
+        self.assertIn("APFOriginalNotice(self, cmd, notification, bundle, completion)", self.module)
+        delegate = source("Apelin/Application/ConversationNotices.swift")
+        self.assertIn("ForegroundBackground.foregroundNotifications ||", delegate)
+        self.assertIn("[.banner, .list, .sound]", delegate)
+
+    def test_independent_switches_and_conservative_status(self):
+        self.assertIn('bool(forKey: "foregroundBackground.enabled")', self.app)
+        self.assertIn('as? Bool ?? true', self.app)
+        self.assertIn("hasFreshStatus", self.app)
+        self.assertIn("持续运行仍需实测", self.app)
+        self.assertIn("ForegroundBackground.isActuallyVisible", source("Apelin/Interface/Chats/ChatController.swift"))
 
     def test_background_sync_depends_on_running_chats(self):
         runtime = source("Apelin/Interface/Chats/ChatRuntime.swift")
         watcher = block(runtime, "private func watchHostRuns()")
         self.assertIn("self.records.values.contains(where: { $0.summary.isWorking })", watcher)
-        self.assertNotIn("BackgroundKeepAlive.isHolding", watcher)
 
-    def test_persistent_journal_is_connected(self):
-        journal = source("Apelin/Application/AppJournal.swift")
-        self.assertIn("BackgroundKeepAlive.diagnosticHandler =", journal)
-        self.assertIn('Dog.shared.join("KeepAlive", message, level: isError ? .error : .info)', journal)
+    def test_both_flavors_and_corresponding_source_are_packaged(self):
+        build = source("Background/build.sh")
+        self.assertIn("roothide) arch=arm64e", build)
+        self.assertIn("rootless) arch=arm64", build)
+        packager = source("Scripts/package-deb.sh")
+        self.assertIn("ForegroundSource", packager)
+        self.assertIn("ApelinForeground.m ApelinForeground.plist build.sh README.md LICENSE", packager)
+        self.assertIn('ldid -S -Cadhoc "$foreground_dir/ApelinForeground.dylib"', packager)
+        self.assertIn('lipo -archs "$foreground_dir/ApelinForeground.dylib"', packager)
+        self.assertIn("Background/build.sh", source("Makefile"))
+        self.assertIn("ApelinForeground-LICENSE.txt", packager)
+        self.assertIn("SceneCheck.m", source("Makefile"))
+
+    def test_license_is_preserved_without_linking_into_app(self):
+        self.assertIn("SPDX-License-Identifier: GPL-3.0-or-later", self.module)
+        self.assertIn("Serge Alagon", self.module)
+        self.assertIn("Version 3", source("Background/LICENSE"))
+        project = source("Apelin.xcodeproj/project.pbxproj")
+        self.assertNotIn("ApelinForeground.m", project)
+        self.assertNotIn("Background/", project)
 
 
 if __name__ == "__main__":

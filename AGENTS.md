@@ -5885,46 +5885,55 @@ packages both flavours and every extension, reads each package back, and keeps
 install`, `make vphone` and `make device-*` need a host reaching the device
 over ssh.
 
-## 后台保活桥接回归
+## 后台运行模块与回归
 
-`BackgroundKeepAlive.swift` 只调用通过 ObjC 类型编码核验的 IMP：初始化参数为
-`pid_t / uint32_t / uint32_t / NSString / block`，`valid` 返回 `BOOL`，
-`invalidate` 返回 `void`。不得把 `name` 改成 C 字符串，或用 `perform` 读取布尔值。
-接口缺失、编码不匹配或系统拒绝授予时，安全降级为不保活。
+2026-11-25 按用户要求删除旧的 BKSProcessAssertion／PreventSuspend 申请、重试及释放
+实现。`Background/` 是 Immortalizer 2.8.5 的独立 SpringBoard 适配模块；GPL 例外只限
+该模块（`Licenses/Compatibility.md`），完整 LICENSE、原作者、固定提交与修改日期保留。
+它不链接进主应用、apelind 或 worker，不引入 AltList、控制中心或其他应用保活名单。
 
-申请结果通过 `void (^)(BOOL)` 回调返回；初始化后 `valid == false` 不等于申请
-已被拒绝。申请中保留对象，同一申请不重复创建；回调转到 MainActor 后核对申请 ID，
-结束、替换或释放后的迟到回调不能影响新申请。十秒未收到回调时，保留有效断言，
-释放仍无效的断言；失败后至少间隔十秒，等后续会话事件再尝试。
-`AppJournal.start()` 将诊断接入现有 Dog 日志的 `KeepAlive` 分类，记录会话数、
-提交申请、回调授予与有效性、检测到的失效及释放原因。日志中只有状态，不写会话正文。
-后台同步以是否仍有进行中的会话为条件，不以单次断言检查为条件；这不是防挂起保证。
+设置 ▸ 插件 ▸ 后台运行有两个独立开关：后台保活默认关闭，启用前台通知默认开启。
+App 的 `ForegroundBackground.swift` 通过 `notify` 模块发送 PID 与开关位，SpringBoard
+核对实际本应用 PID 后才接受；App 退出清除请求，旧 PID 不继续生效。五秒状态询问
+只用于模块连通性和真实可见性，不能当作防挂起措施或保活成功证据。
 
-实时活动终态必须保留会话标题、项目名和完成／失败／停止状态；锁屏和展开岛都调用
-同一个会话行，只对流程详情、回答预览和最近工具记录施加终态隐藏条件。
-`Tests/BackgroundKeepAlive/test_contract.py` 在 `make harness` 中检查这些源码边界；
-它不是 Swift 类型检查，也不是实际界面或系统保活测试。
+场景 hook 只处理 `wiki.qaq.apelin`，首次配置放行；后续修改 mutableCopy 的
+foreground／backgrounded／deactivationReasons，原 transition 与 completion 原样转交。
+不全局 hook setDeactivationReasons，不吞整次 updateSettings；保存系统最后请求，关闭
+时恢复。当前只在 iOS16 且私有 ABI 匹配时安装 hook，其他版本安全降级，不声称兼容。
 
-`make harness` 会直接编译生产 Swift 文件与
-`Tests/BackgroundKeepAlive/Check.swift`，循环验证计数变化、结束和重复释放。
-Mac 上没有兼容的私有类时走安全降级分支；这不证明真机获准保活。
+前台通知需要两端：SpringBoard 的 UNSUserNotificationServer 对本应用调整通知状态，
+App 的 ConversationNotices 按开关返回 banner／list／sound，不因被保持的 active 状态
+压掉通知。真实可见性由 SpringBoard 的前台应用和锁屏判定反馈；只有读者真实回前台
+才撤回可见会话通知。授权、专注模式、静音与通知点击的原有 URL 路由不绕过。
 
-只有 C 工具链的设备可在项目根目录运行原始 ABI 回归：
+`make _package` 为各 FLAVOR 调用 `Background/build.sh`，roothide 为 arm64e，rootless
+为 arm64；模块独立签名，过滤器只注入 com.apple.springboard。打包同时携带
+`usr/share/apelin/ForegroundSource/` 的完整对应源码、过滤器、构建脚本和许可，回读
+包内容核对它们存在；Xcode 环境保存 dylib.dSYM。首次安装需重新加载 SpringBoard。
+不得直接覆盖已安装的 Apelin 或用 shell 安装测试模块。
+
+`Tests/BackgroundKeepAlive/test_contract.py` 保留实时活动终态布局约束，并验证旧断言
+删除、模块隔离、双端通知及打包边界。`SceneCheck.m` 直接包含生产 hook，以可控
+对象检验首次配置、场景副本、其他 App 隔离、transition/completion、关闭恢复、
+陈旧 PID、通知开关及 ABI 拒绝；macOS CI harness 仅链接 Foundation 运行。
+
+设备可执行：
 
 ```sh
-mkdir -p .build/keepalive-check
-clang -arch arm64 -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
-  Tests/BackgroundKeepAlive/RuntimeCheck.m -o .build/keepalive-check/runtime-check
-ldid -STests/BackgroundKeepAlive/Tool.entitlements .build/keepalive-check/runtime-check
-./.build/keepalive-check/runtime-check
+mkdir -p .build/foreground-check
+clang -arch arm64 -fobjc-arc -fblocks -Wall -Wextra -Werror -Wno-unused-function \
+  -framework Foundation Tests/BackgroundKeepAlive/SceneCheck.m -o .build/foreground-check/scene-check
+ldid -STests/BackgroundKeepAlive/Tool.entitlements .build/foreground-check/scene-check
+./.build/foreground-check/scene-check
 ```
 
-它先等待真实申请回调并分别报告初始有效性、回调授予结果与回调后有效性，再验证
-真实私有接口签名、错误签名拒绝、对象参数传递、BOOL 读取及一百次创建和重复释放。
-2026-11-25 本机独立工具收到未授予回调，初始和回调后均无效；这不是应用内根因定论。
-它不是生产 Swift 程序，独立工具的权限也不等于应用权限；
-应用的启动、签到、恢复会话及锁屏持续更新仍须安装新包后分别验证。
-本机没有 `xcodebuild` 时，完整 `make check` 与应用编译仍由具备 Xcode 的环境执行。
+2026-11-25 本机两架构模块编译及以上可控回归通过；InterfaceProbe.m 确认 iOS16.3.1
+的 UIMutableApplicationSceneSettings 三个 setter 分别为 BOOL、BOOL、uint64_t。
+这不验证 SpringBoard 中 FBScene/通知 hook 实际加载，更不证明锁屏保活。
+本机缺 xcodebuild，完整 make check／App 类型检查和新包仍需 Xcode 环境；安装后须
+分别验收开关、切后台、锁屏、活动持续更新、前台通知、后台通知、通知点击、关闭恢复、
+旋转与键盘，未验收时不得写成“后台已生效”。
 
 ## The in-app Git screen (`Apelin/Interface/Git/`)
 

@@ -32,6 +32,10 @@ Rules for what comes next:
   each component it hides gets a folder under `Licenses/` or a section of
   the package's own `LICENSE`, and the wrapper's revision goes into
   `review.json`'s `binaryRevisions`.
+- GPL 例外（2026-11-25，用户要求移植）：`Background/` 的 Immortalizer 适配模块
+  是独立 SpringBoard dylib，不链接主 App、apelind 或 worker；遵守 GPL-3.0-or-later，
+  保留原作者、固定提交、修改日期、完整许可及对应源码和构建脚本。该例外不放宽
+  上述任何链接依赖规则，也不是“分进程就自动免除 GPL”的法律判断。
 - Nothing third-party links into apelind.
 
 | Component | Finding and distribution action |

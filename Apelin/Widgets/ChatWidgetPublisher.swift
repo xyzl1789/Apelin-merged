@@ -164,8 +164,6 @@ final class ChatWidgetPublisher {
         }
         let running = listed.filter { $0.chat.isInProgress }
         let runningIDs = Set(running.map { $0.chat.id })
-        // 有进行中的会话时申请保活；是否授予由系统决定，不能保证应用不会挂起。
-        BackgroundKeepAlive.setRunningCount(running.count)
 
         let endedIDs = knownProgressIDs.subtracting(runningIDs)
         knownProgressIDs = runningIDs
@@ -317,7 +315,7 @@ final class ChatWidgetPublisher {
     /// app gets no such call and keeps its activity.
     @objc dynamic static func endActivitiesForQuit(timeout: TimeInterval = 1) {
         isClosedForQuit = true
-        BackgroundKeepAlive.setRunningCount(0)
+        ForegroundBackground.stop()
 
         guard #available(iOS 16.2, *) else { return }
         let activities = Activity<ChatActivityAttributes>.activities

@@ -47,6 +47,8 @@ worker_resources=(kwwk_KWWKAI.bundle)
 # OS copy wins where the OS has one (libswiftCompatibilitySpan from iOS 26),
 # and iOS 16–18 load this one. Without it apelin-agent dies in dyld there.
 worker_runtime_libraries=(libswiftCompatibilitySpan.dylib)
+foreground_binary="$workers_dir/ApelinForeground.$flavor.dylib"
+[[ -f "$foreground_binary" ]] || { echo '错误：缺少对应 bootstrap 的后台模块' >&2; exit 66; }
 packaging_root="$(cd "$(dirname "$control_template")/.." && pwd -P)"
 # Sourced by the bootstrap's /etc/profile after it sets PATH anew: puts the
 # toolchain Apelin's terminal named in APELIN_TOOLCHAIN_BIN back in front.
@@ -133,7 +135,7 @@ extension_executable() {
 }
 widget_executable="$(extension_executable "$app_bundle/PlugIns/$widget_appex")"
 share_executable="$(extension_executable "$app_bundle/PlugIns/$share_appex")"
-native_binaries=("$daemon_binary" "$app_bundle/$app_executable" "$app_bundle/PlugIns/$widget_appex/$widget_executable" "$app_bundle/PlugIns/$share_appex/$share_executable")
+native_binaries=("$foreground_binary" "$daemon_binary" "$app_bundle/$app_executable" "$app_bundle/PlugIns/$widget_appex/$widget_executable" "$app_bundle/PlugIns/$share_appex/$share_executable")
 for worker in "${workers[@]}"; do
     native_binaries+=("$workers_dir/$worker")
 done
@@ -231,8 +233,26 @@ installed_profile="$installed_root/etc/profile.d/wiki.qaq.apelin.sh"
 mkdir -p "$debian" "$(dirname "$installed_app")" "$(dirname "$installed_daemon")" "$(dirname "$installed_plist")" "$installed_workers" \
     "$installed_share" "$(dirname "$installed_profile")"
 cp "$login_profile" "$installed_profile"
+# GPLv3 代码独立安装到注入目录，绝不复制进 App/daemon 的链接输入。
+foreground_dir="$installed_root/Library/MobileSubstrate/DynamicLibraries"
+foreground_source="$installed_share/ForegroundSource"
+mkdir -p "$foreground_dir" "$foreground_source"
+cp "$foreground_binary" "$foreground_dir/ApelinForeground.dylib"
+cp "$repository_root/Background/ApelinForeground.plist" "$foreground_dir/ApelinForeground.plist"
+for source_file in ApelinForeground.m ApelinForeground.plist build.sh README.md LICENSE; do
+    cp "$repository_root/Background/$source_file" "$foreground_source/$source_file"
+done
+chmod 0644 "$foreground_dir/ApelinForeground.plist" "$foreground_source/"*
+chmod 0755 "$foreground_dir/ApelinForeground.dylib"
+expected_foreground_arch=arm64
+[[ "$flavor" != roothide ]] || expected_foreground_arch=arm64e
+[[ "$(lipo -archs "$foreground_dir/ApelinForeground.dylib")" == "$expected_foreground_arch" ]] || {
+    echo '错误：后台模块架构与 bootstrap 不匹配' >&2; exit 65;
+}
 chmod 0644 "$installed_profile"
 /usr/bin/ditto "$app_bundle" "$installed_app"
+# 许可仅作为数据展示，不将 GPL 源码链接到主应用。
+cp "$repository_root/Background/LICENSE" "$installed_app/ApelinForeground-LICENSE.txt"
 /usr/bin/ditto "$daemon_binary" "$installed_daemon"
 sed -e "s|@PREFIX@|$install_prefix|g" -e "s|@ROOTFS@|$rootfs|g" "$launch_plist" >"$installed_plist"
 # The daemon recovers its install root by stripping this suffix off its own
@@ -301,6 +321,8 @@ for library in ${embedded[@]+"${embedded[@]}"}; do
     ldid -S -Cadhoc "$library_binary"
 done
 
+strip_and_check_private_paths "$foreground_dir/ApelinForeground.dylib"
+ldid -S -Cadhoc "$foreground_dir/ApelinForeground.dylib"
 strip_and_check_private_paths "$installed_app/$app_executable"
 strip_and_check_private_paths "$installed_daemon"
 
@@ -519,6 +541,13 @@ fi
 contents="$(dpkg-deb --contents "$temporary_deb")"
 grep -F ".$install_prefix/Applications/Apelin.app/$app_executable" <<<"$contents" >/dev/null
 grep -F ".$install_prefix/Applications/Apelin.app/Licenses.json" <<<"$contents" >/dev/null
+for component in Library/MobileSubstrate/DynamicLibraries/ApelinForeground.dylib \
+    Library/MobileSubstrate/DynamicLibraries/ApelinForeground.plist \
+    Applications/Apelin.app/ApelinForeground-LICENSE.txt \
+    usr/share/apelin/ForegroundSource/ApelinForeground.m \
+    usr/share/apelin/ForegroundSource/build.sh usr/share/apelin/ForegroundSource/LICENSE; do
+    grep -F ".$install_prefix/$component" <<<"$contents" >/dev/null
+done
 grep -F ".$install_prefix/Applications/Apelin.app/PlugIns/$widget_appex/$widget_executable" <<<"$contents" >/dev/null
 grep -F ".$install_prefix/Applications/Apelin.app/PlugIns/$share_appex/$share_executable" <<<"$contents" >/dev/null
 for resource in "${app_resources[@]}"; do

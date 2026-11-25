@@ -47,6 +47,7 @@ final class SettingsViewController: TableController {
         case storage
         /// Settings ▸ Plugins: the WeChat ClawBot channel.
         case weChat
+        case foregroundBackground
         case git
         case version
         case licenses
@@ -155,7 +156,7 @@ final class SettingsViewController: TableController {
         case .environment: [.toolchain, .sdks, .apps, .templates]
         case .storage: [.storage]
         case .git: [.git]
-        case .plugins: [.weChat]
+        case .plugins: [.foregroundBackground, .weChat]
         case .about: [.version, .licenses, .logs]
         }
     }
@@ -241,6 +242,8 @@ final class SettingsViewController: TableController {
             content.text = String(localized: "Templates")
         case .storage:
             content.text = String(localized: "Storage")
+        case .foregroundBackground:
+            content.text = "后台运行"
         case .weChat:
             content.text = String(localized: "WeChat ClawBot")
         case .git:
@@ -291,6 +294,7 @@ final class SettingsViewController: TableController {
         case .apps: page = AppsController()
         case .templates: page = TemplatesController()
         case .storage: page = StorageController()
+        case .foregroundBackground: page = ForegroundBackgroundController()
         case .weChat: page = ChannelController()
         case .git: page = GitSettingsController()
         case .licenses: page = LicensesViewController()

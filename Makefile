@@ -467,11 +467,9 @@ harness:
 	@python3 -I -B "$(ROOT_DIR)/Tests/ToolchainAudit/test_inventory.py"
 	@harness_dir="$$(mktemp -d /private/tmp/apelin-harness.XXXXXX)"; \
 	trap 'rm -rf -- "$${harness_dir:?}"' EXIT; \
-	xcrun --sdk macosx swiftc -O -swift-version 5 -target arm64-apple-macos13.0 \
-		"$(ROOT_DIR)/Apelin/Widgets/BackgroundKeepAlive.swift" \
-		"$(ROOT_DIR)/Tests/BackgroundKeepAlive/Check.swift" \
-		-o "$$harness_dir/background-keepalive" && \
-	"$$harness_dir/background-keepalive" && \
+	xcrun --sdk macosx clang -fobjc-arc -fblocks -Wall -Wextra -Werror -Wno-unused-function \
+		-framework Foundation "$(ROOT_DIR)/Tests/BackgroundKeepAlive/SceneCheck.m" \
+		-o "$$harness_dir/foreground-scene" && "$$harness_dir/foreground-scene" && \
 	xcrun --sdk macosx swiftc -swift-version 5 \
 		"$(ROOT_DIR)/Shared/RoothideRoot.swift" \
 		"$(ROOT_DIR)/Tests/RoothideRoot/main.swift" \
@@ -631,6 +629,7 @@ endif
 # The packaging half of `deb`, without a build: CI and deb-all package one
 # build twice through it.
 _package:
+	@bash "$(ROOT_DIR)/Background/build.sh" "$(PRODUCTS_DIR)/ApelinForeground.$(FLAVOR).dylib" "$(FLAVOR)"
 	@sdk="$$(xcrun vtool -show-build "$(APP_BUNDLE)/Apelin" | awk '$$1 == "sdk" { print $$2; exit }')"; \
 	if [[ -z "$$sdk" || "$$(printf '%s\n%s\n' "$(IOS_SDK_TIER)" "$$sdk" | sort -V | head -n1)" != "$(IOS_SDK_TIER)" ]]; then \
 		echo "error: Apelin.app is linked against the iOS $${sdk:-unknown} SDK, older than $(IOS_SDK_TIER); build it again with Xcode $(IOS_SDK_TIER) or later" >&2; \

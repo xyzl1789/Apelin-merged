@@ -1,16 +1,12 @@
 import UIKit
 import UserNotifications
 
-/// The banners the session host posts as Apelin when a conversation's turn
-/// ends or it waits for a decision (`NoticePoster`, AGENTS.md ▸ The session
-/// host's own work ▸ Notifications). They are for a reader who is elsewhere:
-/// while Apelin is in front, none shows, and opening a conversation clears
-/// the ones it left. A tap hands the banner's link to the app's own URL
-/// handling.
+/// 会话宿主仍按原规则发送通知。前台是否显示由独立开关决定；
+/// 打开可见会话时清除已读通知，点击沿用原有会话 URL 路由。
 @MainActor
 final class ConversationNotices: NSObject, UNUserNotificationCenterDelegate {
     static let shared = ConversationNotices()
-    /// The key `NoticePoster` writes a banner's link under.
+    /// 宿主通知中保存会话链接的字段名。
     nonisolated static let linkKey = "link"
     @objc private dynamic var hasAsked = false
 
@@ -53,8 +49,9 @@ final class ConversationNotices: NSObject, UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void,
     ) {
         DispatchQueue.main.async {
-            let active = UIApplication.shared.applicationState == .active
-            completionHandler(active ? [] : [.banner, .list, .sound])
+            let show = ForegroundBackground.foregroundNotifications ||
+                UIApplication.shared.applicationState != .active
+            completionHandler(show ? [.banner, .list, .sound] : [])
         }
     }
 

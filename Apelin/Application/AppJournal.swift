@@ -45,9 +45,6 @@ enum AppJournal {
             NSLog("Apelin: the journal could not be opened: %@", String(describing: error))
             return
         }
-        BackgroundKeepAlive.diagnosticHandler = { message, isError in
-            Dog.shared.join("KeepAlive", message, level: isError ? .error : .info)
-        }
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
