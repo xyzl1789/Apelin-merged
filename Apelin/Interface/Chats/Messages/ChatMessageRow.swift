@@ -117,6 +117,7 @@ final class ChatMessageRow: ListRowView {
     var onAttachmentLayoutChanged: (() -> Void)?
     var onPreview: ((ComposerAttachment) -> Void)?
     var onPreviewImages: (([ComposerAttachment], UUID) -> Void)?
+    var onOpenArtifact: ((String) -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -146,6 +147,13 @@ final class ChatMessageRow: ListRowView {
             case let .string(value): URL(string: value)
             }
             guard let url else { return }
+            if url.scheme?.lowercased() == "apelin-artifact",
+               url.host == "share",
+               let id = url.pathComponents.dropFirst().first
+            {
+                self?.onOpenArtifact?(id)
+                return
+            }
             // an apelin:// link opens its conversation in place
             if ApelinLinkRouter.open(url, in: self?.window?.windowScene) {
                 return
@@ -199,6 +207,7 @@ final class ChatMessageRow: ListRowView {
         onAttachmentLayoutChanged = nil
         onPreview = nil
         onPreviewImages = nil
+        onOpenArtifact = nil
         footer.reset()
         footer.isHidden = true
         showsFooter = false

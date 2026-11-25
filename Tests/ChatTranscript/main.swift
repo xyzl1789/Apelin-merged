@@ -349,6 +349,29 @@ precondition(combined[0].text == "First thought\n\nSecond thought")
 precondition(combined[0].trace.filter { $0.role == .tool }.count == 2)
 precondition(combined[0].trace.first { $0.role == .tool }?.detail != nil)
 precondition(combined[1].role == .assistant && combined[1].text == "Answer")
+let successfulBuild = ChatTranscript(events: [
+    event(1, "toolResult", [
+        "tool": .string(AgentToolName.projectBuild.rawValue),
+        "output": .string("{\"succeeded\":true,\"artifacts\":[{\"id\":\"artifact-1\",\"kind\":\"package\",\"name\":\"hello.deb\",\"digest\":\"abc\"}] }"),
+    ]),
+]) { _ in nil }
+let artifactMessage = successfulBuild.messages.first { $0.text.contains("apelin-artifact://share/artifact-1") }
+precondition(artifactMessage?.text == "[hello.deb](apelin-artifact://share/artifact-1)", "a successful build exposes its artifact as a link")
+let rebuiltArtifactMessage = ChatTranscript(events: [
+    event(1, "toolResult", [
+        "tool": .string(AgentToolName.projectBuild.rawValue),
+        "output": .string("{\"succeeded\":true,\"artifacts\":[{\"id\":\"artifact-1\",\"kind\":\"package\",\"name\":\"hello.deb\",\"digest\":\"abc\"}] }"),
+    ]),
+]) { _ in nil }.messages.first { $0.text.contains("apelin-artifact://share/artifact-1") }
+precondition(artifactMessage?.id == rebuiltArtifactMessage?.id, "artifact link identity survives transcript rebuild")
+let failedBuild = ChatTranscript(events: [
+    event(1, "toolResult", [
+        "tool": .string(AgentToolName.projectBuild.rawValue),
+        "output": .string("{\"succeeded\":false,\"artifacts\":[{\"id\":\"artifact-1\",\"name\":\"hello.deb\"}] }"),
+    ]),
+]) { _ in nil }
+precondition(!failedBuild.messages.contains { $0.text.contains("apelin-artifact://share/") }, "failed builds do not expose artifact links")
+print("ok: successful build artifacts appear as stable transcript links")
 print("ok: chat replay, streaming replacement, hidden tools, alternating thought summaries, approval decisions and stable identities")
 
 let noThought = ChatTranscript(events: [event(1, "messageStarted"), event(2, "message", ["text": .string("Answer")]), event(3, "finished")]) { _ in nil }
@@ -373,6 +396,8 @@ precondition(notified.count == 1 && notified[0].trace.map(\.text) == ["Send a no
              "a notice shows only as its call, named in the trace: \(notified.flatMap(\.trace).map(\.text))")
 /// A file the agent shows is an assistant row of its result's attachments,
 /// shown as any attachment is: a PDF as a document card.
+precondition(ChatInlineFiles.imageReferences(in: "[hello.deb](apelin-artifact://share/artifact-1)").isEmpty,
+             "a build artifact link is not resolved as a project-relative file")
 let shownFiles = ChatTranscript(events: [
     event(1, "prompt", ["text": .string("Let me see the notes")]),
     event(2, "toolCall", ["id": .string("s1"), "tool": .string("file_show"), "arguments": .string("{\"paths\":[\"Docs/notes.pdf\"]}")]),

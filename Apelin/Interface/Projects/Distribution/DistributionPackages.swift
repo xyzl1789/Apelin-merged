@@ -125,6 +125,19 @@ enum DistributionPackages {
         }.value
     }
 
+    /// The original build output for a transcript link, only while its record,
+    /// file and recorded digest still agree. The transcript stores the artifact
+    /// ID, never a copied path or a duplicate package.
+    static func artifactFile(id: String) throws -> URL {
+        guard !id.isEmpty,
+              id.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-")).contains($0) }),
+              let record = records().first(where: { $0.artifactID == id })
+        else {
+            throw ApelinError(.notFound, String(localized: "The package is no longer available. Build it again."))
+        }
+        return try verify(path: record.path, digest: record.digest)
+    }
+
     /// The build's file where the build left it, inside `Builds/`, with the
     /// bytes it recorded; throws saying which is not so.
     static func verify(path: String?, digest: String) throws -> URL {

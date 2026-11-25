@@ -390,6 +390,13 @@ struct ChatTranscript {
                     ))
                     unanswered = id
                 }
+                if payload?["tool"]?.stringValue == AgentToolName.projectBuild.rawValue,
+                   payload?["isError"]?.boolValue != true,
+                   let output = payload?["output"]?.stringValue,
+                   let artifactLinks = Self.buildArtifactLinks(from: output)
+                {
+                    add(ChatMessage(id: Self.rowID("build-artifacts:\(firstEvent + index)"), role: .assistant, text: artifactLinks))
+                }
             case "approvalRequested":
                 if let approvalID = payload?["approvalID"]?.stringValue {
                     let rowID = Self.rowID(approvalID)
@@ -1130,6 +1137,30 @@ struct ChatTranscript {
             let project = values?["name"]?.stringValue ?? ""
             return project.isEmpty ? String(localized: "Create a project") : String(localized: "Create \(project)")
         }
+    }
+
+    /// A successful project build returns its existing package artifact IDs
+    /// and names; the link resolves the artifact record when tapped, so the
+    /// transcript never stores or creates another copy of the file.
+    private static func buildArtifactLinks(from output: String) -> String? {
+        guard let data = output.data(using: .utf8),
+              let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              result["succeeded"] as? Bool == true,
+              let artifacts = result["artifacts"] as? [[String: Any]]
+        else { return nil }
+        let links = artifacts.compactMap { artifact -> String? in
+            guard let id = artifact["id"] as? String,
+                  !id.isEmpty,
+                  id.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-")).contains($0) }),
+                  let name = artifact["name"] as? String,
+                  !name.isEmpty
+            else { return nil }
+            let label = name.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "[", with: "\\[")
+                .replacingOccurrences(of: "]", with: "\\]")
+            return "[\(label)](apelin-artifact://share/\(id))"
+        }
+        return links.isEmpty ? nil : links.joined(separator: "  \n")
     }
 
     private static func rowID(_ value: String) -> UUID {

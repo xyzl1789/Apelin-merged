@@ -77,7 +77,7 @@ enum ChatInlineFiles {
         // 外链与锚点不算文件。
         let lower = path.lowercased()
         if lower.hasPrefix("http://") || lower.hasPrefix("https://") || lower.hasPrefix("mailto:")
-            || lower.hasPrefix("apelin://") || lower.hasPrefix("#")
+            || lower.hasPrefix("apelin://") || lower.hasPrefix("apelin-artifact://") || lower.hasPrefix("#")
         {
             return nil
         }

@@ -400,6 +400,23 @@ final class ChatController: UIViewController {
         view.accessibilityCustomRotors = [yourMessagesRotor()]
     }
 
+    private func shareBuildArtifact(_ artifactID: String) {
+        do {
+            let file = try DistributionPackages.artifactFile(id: artifactID)
+            let sheet = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+            sheet.popoverPresentationController?.sourceView = view
+            sheet.popoverPresentationController?.sourceRect = CGRect(
+                x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0,
+            )
+            present(sheet, animated: true)
+        } catch {
+            presentNotice(
+                title: "Unavailable",
+                message: "The package is no longer available. Build it again.",
+            )
+        }
+    }
+
     private func replaceMessageList() {
         // 新列表没有旧投影，不能把首批行当作单行更新。
         shownRows = []
@@ -524,6 +541,9 @@ final class ChatController: UIViewController {
                         } catch {
                             self?.presentNotice(title: "Unable to Preview Attachment", message: error.readableMessage)
                         }
+                    }
+                    row.onOpenArtifact = { [weak self] artifactID in
+                        self?.shareBuildArtifact(artifactID)
                     }
                 }
         }
