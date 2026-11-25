@@ -5885,6 +5885,32 @@ packages both flavours and every extension, reads each package back, and keeps
 install`, `make vphone` and `make device-*` need a host reaching the device
 over ssh.
 
+## 后台保活桥接回归
+
+`BackgroundKeepAlive.swift` 只调用通过 ObjC 类型编码核验的 IMP：初始化参数为
+`pid_t / uint32_t / uint32_t / NSString / block`，`valid` 返回 `BOOL`，
+`invalidate` 返回 `void`。不得把 `name` 改成 C 字符串，或用 `perform` 读取布尔值。
+接口缺失、编码不匹配或系统拒绝授予时，安全降级为不保活。
+
+`make harness` 会直接编译生产 Swift 文件与
+`Tests/BackgroundKeepAlive/Check.swift`，循环验证计数变化、结束和重复释放。
+Mac 上没有兼容的私有类时走安全降级分支；这不证明真机获准保活。
+
+只有 C 工具链的设备可在项目根目录运行原始 ABI 回归：
+
+```sh
+mkdir -p .build/keepalive-check
+clang -arch arm64 -fobjc-arc -Wall -Wextra -Werror -framework Foundation \
+  Tests/BackgroundKeepAlive/RuntimeCheck.m -o .build/keepalive-check/runtime-check
+ldid -STests/BackgroundKeepAlive/Tool.entitlements .build/keepalive-check/runtime-check
+./.build/keepalive-check/runtime-check
+```
+
+它验证真实私有接口的签名、错误签名拒绝、对象参数传递、BOOL 读取，以及一百次
+创建和重复释放。它不是生产 Swift 程序，独立工具的权限也不等于应用权限；
+应用的启动、签到、恢复会话及锁屏持续更新仍须安装新包后分别验证。
+本机没有 `xcodebuild` 时，完整 `make check` 与应用编译仍由具备 Xcode 的环境执行。
+
 ## The in-app Git screen (`Apelin/Interface/Git/`)
 
 The screen draws with `GitTheme` and the app's own tokens rather than a palette

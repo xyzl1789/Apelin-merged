@@ -466,6 +466,11 @@ harness:
 	@python3 -I -B "$(ROOT_DIR)/Tests/ToolchainAudit/test_inventory.py"
 	@harness_dir="$$(mktemp -d /private/tmp/apelin-harness.XXXXXX)"; \
 	trap 'rm -rf -- "$${harness_dir:?}"' EXIT; \
+	xcrun --sdk macosx swiftc -O -swift-version 5 \
+		"$(ROOT_DIR)/Apelin/Widgets/BackgroundKeepAlive.swift" \
+		"$(ROOT_DIR)/Tests/BackgroundKeepAlive/Check.swift" \
+		-o "$$harness_dir/background-keepalive" && \
+	"$$harness_dir/background-keepalive" && \
 	xcrun --sdk macosx swiftc -swift-version 5 \
 		"$(ROOT_DIR)/Shared/RoothideRoot.swift" \
 		"$(ROOT_DIR)/Tests/RoothideRoot/main.swift" \
