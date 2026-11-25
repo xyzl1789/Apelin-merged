@@ -413,12 +413,14 @@ public enum CheckInService {
         let campaigns = (listingJSON["campaigns"] as? [[String: Any]]) ?? []
         var usage = await qoderUsage(base: base, headers: headers)
         var claimable: [String] = []
+        var claimableBenefits: [String: Int] = [:]
         var claimedBefore = false
         for campaign in campaigns {
             guard (campaign["actionType"] as? String) == "CLAIM_BENEFIT" else { continue }
             let state = (campaign["claimStatus"] as? String) ?? ""
             if state == "CLAIMABLE", let id = campaign["campaignId"] as? String {
                 claimable.append(id)
+                claimableBenefits[id] = number((campaign["benefit"] as? [String: Any])?["amount"]) ?? 0
             } else if state.uppercased().contains("CLAIMED") {
                 claimedBefore = true
             }
@@ -454,7 +456,7 @@ public enum CheckInService {
         logger.info("\(platform.rawValue, privacy: .public)：领取到 \(claimed, privacy: .public) 个活动")
         let claimedAmount = claimedCredit > 0
             ? claimedCredit
-            : claimable.reduce(0) { $0 + (number(($1["benefit"] as? [String: Any])?["amount"]) ?? 0) }
+            : claimable.reduce(0) { $0 + (claimableBenefits[$1] ?? 0) }
         return CheckInResult(platform: platform, outcome: .claimed,
                              credit: claimedAmount > 0 ? String(claimedAmount) : nil,
                              available: usage?.available, used: usage?.used)
