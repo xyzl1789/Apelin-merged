@@ -47,6 +47,7 @@ sources=(
     "$root/Apelin/Interface/Chats/ChatTranscriptCache.swift"
     "$root/Apelin/Interface/Chats/ModelSwitchFit.swift"
     "$root/Apelin/Interface/Chats/ChatStore.swift"
+    "$root/Apelin/Interface/Chats/Messages/ToolSymbol.swift"
     "$root/Apelin/Widgets/ChatWidgetState.swift"
     "$root/Widgets/Shared/ChatWidgetSnapshot.swift"
     "$root/Widgets/Shared/ApelinLink.swift"

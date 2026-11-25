@@ -308,24 +308,9 @@ extension ChatRecord {
         let detail = (modeReason ?? values?["reason"]?.stringValue).flatMap(Self.widgetToolDetail)
         guard let tool = canonical else {
             let title = name.isEmpty ? String(localized: "Executing tool…") : ChatTranscript.toolTitle(name, values: nil)
-            return .init(symbol: ChatWidgetToolStyle.symbol(for: name), title: title, detail: detail)
+            return .init(symbol: ToolSymbol.name(for: name), title: title, detail: detail)
         }
-        let symbol: String = switch tool {
-        case .fileRead, .fileShow: "doc.text"
-        case .fileWrite, .fileEdit, .fileCreate: "square.and.pencil"
-        case .fileList: "folder"
-        case .fileGrep, .fileFind, .webSearch: "magnifyingglass"
-        case .webFetch: "globe"
-        case .sdkAnalyzeFramework, .sdkReadHeader: "book"
-        case .shellRun: "terminal"
-        case .projectBuild: "hammer"
-        case .packageInstall, .packageRemove, .packageList, .packagePublish, .packageRelease: "shippingbox"
-        case .gitPush, .gitFetch, .gitPull, .gitClone: "arrow.up.arrow.down"
-        case .gitStatus, .gitDiff, .gitLog, .gitCommit, .gitStage, .gitUnstage, .gitCommitDetail: "arrow.triangle.branch"
-        case .screenReadTree, .screenInteract, .screenCapture: "iphone"
-        case .logRead, .crashList, .crashRead, .crashSymbolicate: "list.bullet.rectangle"
-        default: ChatWidgetToolStyle.symbol(for: tool.rawValue)
-        }
+        let symbol = ToolSymbol.name(for: tool.rawValue)
         var safe: [String: JSONValue] = [:]
         switch tool {
         case .fileRead, .fileWrite, .fileEdit, .fileCreate:

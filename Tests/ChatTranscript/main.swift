@@ -20,7 +20,7 @@ do {
     ])
     record.events = [event(1, "prompt"), read]
     let current = record.widgetCurrentTool
-    precondition(current?.symbol == "doc.text")
+    precondition(current?.symbol == "doc.text.magnifyingglass")
     precondition(current?.title.contains("Sources/Widget.swift") == true)
     precondition(current?.detail == "查看组件阶段逻辑")
 
@@ -47,7 +47,7 @@ do {
         "id": .string("absolute"), "tool": .string("file_read"),
         "arguments": .string(#"{"path":"/private/folder/secret.txt"}"#),
     ])]
-    precondition(record.widgetCurrentTool?.symbol == "doc.text")
+    precondition(record.widgetCurrentTool?.symbol == "doc.text.magnifyingglass")
     precondition(record.widgetCurrentTool?.title.contains("secret.txt") == false)
     let fetch = event(2, "toolCall", [
         "id": .string("fetch"), "tool": .string("apelin_web_fetch"),
@@ -87,6 +87,30 @@ do {
     let encoded = try JSONEncoder().encode(snapshot)
     let decoded = try JSONDecoder().decode(ChatWidgetSnapshot.self, from: encoded)
     precondition(decoded == snapshot)
+}
+
+// 应用内、实时活动当前步骤和最近工具必须使用同一图标规则。
+do {
+    var record = ChatRecord(summary: ChatSummary(title: "图标一致性", lastInteraction: Date()))
+    record.summary.isWorking = true
+    let names = AgentToolName.allCases.map(\.rawValue) + Array(AgentToolName.legacyNames.keys) + ["mcp__test__unknown"]
+    for name in names {
+        let expected = ToolSymbol.name(for: name)
+        record.events = [event(1, "prompt"), event(2, "toolCall", [
+            "id": .string("icon"), "tool": .string(name),
+            "arguments": .string(#"{"path":".gitignore"}"#),
+        ])]
+        precondition(record.widgetCurrentTool?.symbol == expected, "当前工具图标不一致：\(name)")
+        precondition(record.widgetProgress?.symbol == expected, "当前步骤图标不一致：\(name)")
+        record.events.append(event(3, "toolResult", ["id": .string("icon")]))
+        precondition(record.widgetRecentTools().first?.symbol == expected, "最近工具图标不一致：\(name)")
+    }
+    for name in ["file_read", "file_grep", "file_find", "read_file", "grep", "find"] {
+        precondition(ToolSymbol.name(for: name) == "doc.text.magnifyingglass", "读取和搜索文件使用文件放大镜图标")
+    }
+    for name in ["apelin_sdk_read_header", "apelin_sdk_analyze_framework", "framework_header", "analyze_framework"] {
+        precondition(ToolSymbol.name(for: name) == "gearshape.2", "读取 SDK 使用齿轮图标")
+    }
 }
 
 // 实时活动不能把「还没连上」说成「在思考」：连接、压缩和停止各自成阶段。
