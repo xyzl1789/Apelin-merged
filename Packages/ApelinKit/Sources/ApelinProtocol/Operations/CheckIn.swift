@@ -76,6 +76,8 @@ public struct CheckInResult: Codable, Sendable, Equatable {
     public var streak: Int?
     /// 失败或「没有活动」时的原因，页面据此本地化。
     public var reason: CheckInReason?
+    /// 机器可读原因对应的可读细节：HTTP/业务码、设备号或活动状态；不包含 token。
+    public var message: String?
     /// 成长中心里各动作的结果：没做完的写清原因，红点据此亮起。
     public var details: [CheckInDetail]?
     /// 这次结果是谁给的、什么时候，缓存按本地日历日判断是否还新鲜。
@@ -83,7 +85,7 @@ public struct CheckInResult: Codable, Sendable, Equatable {
 
     public init(platform: CheckInPlatform, outcome: CheckInOutcome, credit: String? = nil,
                 available: String? = nil, used: String? = nil, total: String? = nil,
-                streak: Int? = nil, reason: CheckInReason? = nil,
+                streak: Int? = nil, reason: CheckInReason? = nil, message: String? = nil,
                 details: [CheckInDetail]? = nil, updatedAt: Date = Date()) {
         self.platform = platform
         self.outcome = outcome
@@ -93,12 +95,13 @@ public struct CheckInResult: Codable, Sendable, Equatable {
         self.total = total
         self.streak = streak
         self.reason = reason
+        self.message = message
         self.details = details
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case platform, outcome, credit, available, used, total, streak, reason, details, updatedAt
+        case platform, outcome, credit, available, used, total, streak, reason, message, details, updatedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -111,6 +114,7 @@ public struct CheckInResult: Codable, Sendable, Equatable {
         total = try values.decodeIfPresent(String.self, forKey: .total)
         streak = try values.decodeIfPresent(Int.self, forKey: .streak)
         reason = try values.decodeIfPresent(CheckInReason.self, forKey: .reason)
+        message = try values.decodeIfPresent(String.self, forKey: .message)
         details = try values.decodeIfPresent([CheckInDetail].self, forKey: .details)
         updatedAt = try values.decode(Date.self, forKey: .updatedAt)
     }
@@ -125,6 +129,7 @@ public struct CheckInResult: Codable, Sendable, Equatable {
         try values.encodeIfPresent(total, forKey: .total)
         try values.encodeIfPresent(streak, forKey: .streak)
         try values.encodeIfPresent(reason, forKey: .reason)
+        try values.encodeIfPresent(message, forKey: .message)
         try values.encodeIfPresent(details, forKey: .details)
         try values.encode(updatedAt, forKey: .updatedAt)
     }

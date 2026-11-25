@@ -113,10 +113,12 @@ public enum CheckInService {
             }
         } catch let problem as CheckInProblem {
             logger.error("\(platform.rawValue, privacy: .public) 签到失败：\(problem.reason.rawValue, privacy: .public) \(problem.detail, privacy: .public)")
-            return CheckInResult(platform: platform, outcome: .failed, reason: problem.reason)
+            return CheckInResult(platform: platform, outcome: .failed, reason: problem.reason,
+                                 message: String(problem.detail.prefix(160)))
         } catch {
             logger.error("\(platform.rawValue, privacy: .public) 签到异常：\(String(describing: error), privacy: .public)")
-            return CheckInResult(platform: platform, outcome: .failed, reason: .server)
+            return CheckInResult(platform: platform, outcome: .failed, reason: .server,
+                                 message: "网络请求异常")
         }
     }
 
@@ -175,7 +177,8 @@ public enum CheckInService {
         if let active = data["active"] as? Bool, !active {
             logger.info("\(platform.rawValue, privacy: .public)：当前没有签到活动")
             return CheckInResult(platform: platform, outcome: .nothingToDo,
-                                 available: available, used: used, total: total, streak: streak)
+                                 available: available, used: used, total: total, streak: streak,
+                                 message: platform == .workBuddyAI ? "WorkBuddy AI 当前没有开放签到活动" : nil)
         }
         if flag(data["today_checked_in"]) {
             logger.info("\(platform.rawValue, privacy: .public)：今天已签到")
@@ -264,7 +267,15 @@ public enum CheckInService {
         }
         let code = number(statusJSON["code"]) ?? 0
         if code == 1001 { throw CheckInProblem(.signedOut, "登录态失效") }
-        if code != 0 { throw CheckInProblem(.server, "状态查询 code \(code)") }
+        if code == 9004 || code == 9095 {
+            return CheckInResult(platform: .traeCN, outcome: .alreadyClaimed,
+                                 available: usage?.available, used: usage?.used,
+                                 message: "Trae 今天已签到（业务码 \(code)）")
+        }
+        if code == 9074 {
+            throw CheckInProblem(.rejected, "Trae 风控拒绝：9074，设备号或设备请求头未通过；请使用与账号绑定的真实设备号，并稍后再试")
+        }
+        if code != 0 { throw CheckInProblem(.server, "Trae 状态查询 code \(code)") }
         if flag(statusJSON["checked_in"]) {
             logger.info("trae-cn：今天已签到")
             return CheckInResult(platform: .traeCN, outcome: .alreadyClaimed,
@@ -298,7 +309,7 @@ public enum CheckInService {
                                      credit: gained > 0 ? String(gained) : nil,
                                      available: usage?.available, used: usage?.used)
             }
-            if claimCode == 9074 { continue }
+            if claimCode == 9074 { throw CheckInProblem(.rejected, "Trae 风控拒绝：9074，设备号或设备请求头未通过；请使用与账号绑定的真实设备号，并稍后再试") }
             if claimCode == 1001 { throw CheckInProblem(.signedOut, "登录态失效") }
             if claimCode == 9004 { throw CheckInProblem(.rejected, "设备标识被拒") }
             throw CheckInProblem(.rejected, "领取 code \(claimCode)")
@@ -355,7 +366,7 @@ public enum CheckInService {
     // MARK: - Qoder（国内版与国际版同一套接口）
 
     private static func qoderCN(_ credentials: OAuthCredentials, platform: CheckInPlatform) async throws -> CheckInResult {
-        let token = credentials.access
+        var token = credentials.access
         guard token.count >= 8 else { throw CheckInProblem(.signedOut, "凭据不完整") }
         var headers = [
             "Accept": "application/json",
@@ -366,16 +377,29 @@ public enum CheckInService {
             "Cosy-MachineHostname": "iPhone",
         ]
         if let machine = extra(credentials, "machineId") { headers["Cosy-MachineId"] = machine }
+        if platform == .qoder, extra(credentials, "machineToken") == nil {
+            throw CheckInProblem(.rejected, "Qoder 国际版需要设备风控身份，当前登录凭据未包含 machineToken")
+        }
         // Qoder 国际版和国内版共用活动接口；国际版额外设备风控若缺失，会由服务端返回拒绝。
         let baseString = platform == .qoder ? "https://openapi.qoder.sh" : "https://openapi.qoder.com.cn"
         guard let base = URL(string: baseString) else { throw CheckInProblem(.server, "地址无效") }
 
-        let listing = try await reply(
+        guard let campaignsURL = URL(string: base.absoluteString + "/sash/api/v1/me/campaigns?clientType=10") else {
+            throw CheckInProblem(.server, "Qoder 活动地址无效")
+        }
+        var listing = try await reply(
             method: "GET",
-            url: base.appendingPathComponent("sash/api/v1/me/campaigns"),
+            url: campaignsURL,
             headers: headers,
             body: nil,
         )
+        if (listing.status == 401 || listing.status == 403), let refreshed = extra(credentials, "refreshToken") {
+            if let newToken = try await qoderRefreshToken(base: base, refreshToken: refreshed) {
+                token = newToken
+                headers["Authorization"] = "Bearer \(newToken)"
+                listing = try await reply(method: "GET", url: campaignsURL, headers: headers, body: nil)
+            }
+        }
         if listing.status == 401 || listing.status == 403 {
             throw CheckInProblem(.signedOut, "活动列表 HTTP \(listing.status)")
         }
@@ -406,6 +430,7 @@ public enum CheckInService {
         }
         var claimed = 0
         var claimedCredit = 0
+        var claimFailure: String?
         for id in claimable {
             let path = "sash/api/v1/me/campaigns/\(id)/claim"
             var claimHeaders = headers
@@ -417,10 +442,14 @@ public enum CheckInService {
                 if code == nil || code == 0 {
                     claimed += 1
                     claimedCredit += number(json["amount"]) ?? number((json["benefit"] as? [String: Any])?["amount"]) ?? 0
+                } else {
+                    claimFailure = "Qoder 领取业务失败：code=\(code!)"
                 }
+            } else if claim.status != 200 {
+                claimFailure = "Qoder 领取 HTTP \(claim.status)"
             }
         }
-        guard claimed > 0 else { throw CheckInProblem(.rejected, "活动领取全部失败") }
+        guard claimed > 0 else { throw CheckInProblem(.rejected, claimFailure ?? "Qoder 活动领取全部失败") }
         usage = await qoderUsage(base: base, headers: headers)
         logger.info("\(platform.rawValue, privacy: .public)：领取到 \(claimed, privacy: .public) 个活动")
         let claimedAmount = claimedCredit > 0
@@ -429,6 +458,21 @@ public enum CheckInService {
         return CheckInResult(platform: platform, outcome: .claimed,
                              credit: claimedAmount > 0 ? String(claimedAmount) : nil,
                              available: usage?.available, used: usage?.used)
+    }
+
+    private static func qoderRefreshToken(base: URL, refreshToken: String) async throws -> String? {
+        var request = URLRequest(url: base.appendingPathComponent("api/v1/deviceToken/refresh"), timeoutInterval: TimeInterval(timeoutSeconds))
+        request.httpMethod = "POST"
+        request.httpBody = Data("{\"refresh_token\":\"\(refreshToken)\"}".utf8)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let configuration = URLSessionConfiguration.ephemeral
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return (root["device_token"] as? String) ?? (root["token"] as? String)
     }
 
     private static func qoderUsage(base: URL, headers: [String: String]) async -> Usage? {

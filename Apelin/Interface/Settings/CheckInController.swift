@@ -126,7 +126,10 @@ final class CheckInController: TableController {
             let running = store.runningPlatforms.contains(platform)
             let state = running ? PlatformState.running : PlatformState(result)
             var lines = [state.title]
-            if let result { lines += metrics(for: result) }
+            if let result {
+                lines += metrics(for: result)
+                if let message = result.message, !message.isEmpty { lines.append(message) }
+            }
             if !store.isRunning { lines.append(state.action) }
             return listCell(title: platform.brand, detail: lines.joined(separator: "\n"),
                             icon: state.icon, color: state.color, actionable: !store.isRunning)
@@ -152,6 +155,7 @@ final class CheckInController: TableController {
             }
             let state = PlatformState(entry)
             let details = [state.title, date.formatted(date: .abbreviated, time: .shortened)] + metrics(for: entry)
+                + (entry.message.map { [$0] } ?? [])
             return listCell(title: platform.brand, detail: details.joined(separator: " · "),
                             icon: state.icon, color: state.color)
         }
