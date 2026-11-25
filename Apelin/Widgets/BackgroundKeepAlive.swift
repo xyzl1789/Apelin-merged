@@ -60,7 +60,7 @@ enum BackgroundKeepAlive {
         }
         // initWithPID:flags:reason:name:withHandler:（实测：self pid、handler 传 null 可用）
         let selector = NSSelectorFromString("initWithPID:flags:reason:name:withHandler:")
-        let obj = objcMsgSend(objcMsgSend(cls, NSSelectorFromString("alloc"))!.takeUnretainedValue(), selector,
+        let obj = objcMsgSend(objcMsgSend(cls, NSSelectorFromString("alloc"), 0, 0, 0, nil, nil)!.takeUnretainedValue(), selector,
                                ProcessInfo.processInfo.processIdentifier,
                                preventSuspendFlags,
                                continuousReason,
