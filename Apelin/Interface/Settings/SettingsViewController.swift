@@ -13,6 +13,7 @@ final class SettingsViewController: TableController {
         case environment
         case storage
         case git
+        case background
         case plugins
         case about
     }
@@ -156,7 +157,8 @@ final class SettingsViewController: TableController {
         case .environment: [.toolchain, .sdks, .apps, .templates]
         case .storage: [.storage]
         case .git: [.git]
-        case .plugins: [.foregroundBackground, .weChat]
+        case .background: [.foregroundBackground]
+        case .plugins: [.weChat]
         case .about: [.version, .licenses, .logs]
         }
     }
@@ -182,6 +184,7 @@ final class SettingsViewController: TableController {
         // 这一行自己就是名字。
         case .storage: nil
         case .git: nil
+        case .background: nil
         case .plugins: String(localized: "Plugins")
         case .about: String(localized: "About")
         }
@@ -193,6 +196,7 @@ final class SettingsViewController: TableController {
         case .agent: nil
         case .environment: nil
         case .storage: nil
+        case .background: nil
         case .plugins: nil
         case .git:
             String(localized: "The author of your commits, your GitHub account, and the package repository your releases are published to.")

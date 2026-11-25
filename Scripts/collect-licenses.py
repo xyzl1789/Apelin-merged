@@ -32,8 +32,8 @@ SKIPPED_DIRECTORIES = {
     ".git", ".build", ".swiftpm", "Tests", "Test", "Example", "Examples",
     "docs", "Documentation", "node_modules", "Script", "Scripts", "Patches",
 }
-# The app's own code is MIT and ships no GPL-family code; LGPL's relinking
-# condition cannot be met by a statically linked, ad-hoc signed binary either.
+# 主应用链接依赖默认拒绝 GPL 家族；独立模块只允许精确审查的单条例外。
+# LGPL 的重新链接条件也不能由静态链接、临时签名的二进制自动满足。
 GPL_FAMILY = re.compile(
     r"GNU (Affero |Lesser |Library )?General Public License|www\.gnu\.org/licenses/(a|l)?gpl",
     re.IGNORECASE,
@@ -77,6 +77,17 @@ def app_entry(project):
         manifest.get("homepage", ""),
         read(os.path.join(project, "LICENSE")),
     )
+
+
+def standalone_entries(project):
+    """独立注入模块的完整许可；不将它当作主应用的链接依赖。"""
+    return [entry(
+        "standalone/Immortalizer",
+        "Immortalizer（独立后台模块 · Serge Alagon）",
+        "2.8.5 · 适配修改 2026-11-25",
+        "https://github.com/CySxL/Immortalizer/tree/4d716867c87a842cdb362d3078bafbfe359952c3",
+        read(os.path.join(project, "Background", "LICENSE")),
+    )]
 
 
 def vendored_entries(project, checkouts):
@@ -256,6 +267,7 @@ def main():
     if pins and not checkouts:
         fail(f"no SourcePackages/checkouts above {arguments.build_dir}; resolve the packages first")
     entries = [app_entry(arguments.project)]
+    entries += standalone_entries(arguments.project)
     entries += vendored_entries(arguments.project, checkouts)
     review = json.load(open(os.path.join(arguments.project, "Licenses", "review.json"), encoding="utf-8"))
     entries += package_entries(pins, checkouts, excluded_paths(review), review.get("statedVersions", {}))

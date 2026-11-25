@@ -5892,7 +5892,10 @@ over ssh.
 该模块（`Licenses/Compatibility.md`），完整 LICENSE、原作者、固定提交与修改日期保留。
 它不链接进主应用、apelind 或 worker，不引入 AltList、控制中心或其他应用保活名单。
 
-设置 ▸ 插件 ▸ 后台运行有两个独立开关：后台保活默认关闭，启用前台通知默认开启。
+设置 ▸ 后台运行现在是独立一行，不再放在插件组。后台保活默认关闭，启用前台通知
+默认开启；卡片锁定、运行状态标记及锁定标记各自独立，默认关闭。完整 Immortalizer
+许可由 collect-licenses.py 从 Background/LICENSE 收集到关于 ▸ 许可证，绑定精确哈希的
+standalone/Immortalizer 例外，不放宽链接依赖规则；后台页不再维护第二个许可阅读器。
 App 的 `ForegroundBackground.swift` 通过 `notify` 模块发送 PID 与开关位，SpringBoard
 核对实际本应用 PID 后才接受；App 退出清除请求，旧 PID 不继续生效。五秒状态询问
 只用于模块连通性和真实可见性，不能当作防挂起措施或保活成功证据。
@@ -5917,6 +5920,12 @@ App 的 ConversationNotices 按开关返回 banner／list／sound，不因被保
 删除、模块隔离、双端通知及打包边界。`SceneCheck.m` 直接包含生产 hook，以可控
 对象检验首次配置、场景副本、其他 App 隔离、transition/completion、关闭恢复、
 陈旧 PID、通知开关及 ABI 拒绝；macOS CI harness 仅链接 Foundation 运行。
+
+`SceneCheck.m` 还覆盖 setKillable 的本应用隔离、混合布局放行、关闭后恢复系统最后
+请求的 YES/NO 原值、陈旧 PID 拒绝，以及图标运行/停止、独立标记关闭和原名称恢复。
+SBFluidSwitcherItemContainer 与 SBAppLayout 的 ABI 单独核验；图标附件与名称另设能力位，
+不因新增功能接口缺失破坏已验证的场景保活。SpringBoard 仅持久化选项位 4/8/16，
+从不持久化 PID 或保活请求；运行标记只表示 PID 存在，不是执行或防挂起证据。
 
 设备可执行：
 

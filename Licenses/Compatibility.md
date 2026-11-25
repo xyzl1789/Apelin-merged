@@ -35,7 +35,9 @@ Rules for what comes next:
 - GPL 例外（2026-11-25，用户要求移植）：`Background/` 的 Immortalizer 适配模块
   是独立 SpringBoard dylib，不链接主 App、apelind 或 worker；遵守 GPL-3.0-or-later，
   保留原作者、固定提交、修改日期、完整许可及对应源码和构建脚本。该例外不放宽
-  上述任何链接依赖规则，也不是“分进程就自动免除 GPL”的法律判断。
+  上述任何链接依赖规则，也不是“分进程就自动免除 GPL”的法律判断。统一许可收集器
+  直接读取 `Background/LICENSE`，通过 `standalone/Immortalizer` 的精确文本哈希例外
+  进入关于 → 许可证，不把此例外推广到链接库。
 - Nothing third-party links into apelind.
 
 | Component | Finding and distribution action |

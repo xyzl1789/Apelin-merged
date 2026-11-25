@@ -2,7 +2,9 @@ import UIKit
 
 /// 设置 ▸ 后台运行。只控制本应用，不提供其他 App 的保活名单。
 final class ForegroundBackgroundController: TableController {
-    private enum Row: Int, CaseIterable { case enabled, notifications, status, license }
+    private enum Row: Int, CaseIterable {
+        case enabled, notifications, locked, indicators, lockIndicator, status, protectionStatus
+    }
 
     init() { super.init(style: .insetGrouped) }
 
@@ -23,7 +25,7 @@ final class ForegroundBackgroundController: TableController {
     override func tableView(_: UITableView, numberOfRowsInSection _: Int) -> Int { Row.allCases.count }
 
     override func tableView(_: UITableView, titleForFooterInSection _: Int) -> String? {
-        "通过保持本应用的前台场景减少后台挂起，可能增加耗电。默认关闭；首次安装模块需重新加载 SpringBoard。启用前台通知可避免场景保持时通知被当作前台消息隐藏，不绕过通知授权或专注模式。"
+        "后台保活可能增加耗电；首次安装模块需重新加载 SpringBoard。锁定仅防止从应用切换器划掉本应用，不阻止系统终止或崩溃。运行状态表示进程存在，不代表持续执行或保活成功。各开关独立；关闭标记后恢复系统原样。前台通知不绕过通知授权、专注模式或静音。开源许可见设置 → 关于 → 许可证。"
     }
 
     override func tableView(_: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -34,56 +36,46 @@ final class ForegroundBackgroundController: TableController {
         switch row {
         case .enabled:
             content.text = "启用后台保活"
-            let toggle = UISwitch()
-            toggle.isOn = ForegroundBackground.enabled
-            toggle.accessibilityLabel = "启用后台保活"
-            toggle.addTarget(self, action: #selector(changeEnabled(_:)), for: .valueChanged)
-            cell.accessoryView = toggle
+            cell.accessoryView = toggle("启用后台保活", ForegroundBackground.enabled, #selector(changeEnabled(_:)))
         case .notifications:
             content.text = "启用前台通知"
-            let toggle = UISwitch()
-            toggle.isOn = ForegroundBackground.foregroundNotifications
-            toggle.accessibilityLabel = "启用前台通知"
-            toggle.addTarget(self, action: #selector(changeNotifications(_:)), for: .valueChanged)
-            cell.accessoryView = toggle
-        case .license:
-            content.text = "Immortalizer 开源许可"
-            content.secondaryText = "Serge Alagon · GPL-3.0-or-later · 不提供担保"
-            content.secondaryTextProperties.numberOfLines = 0
-            cell.accessoryType = .disclosureIndicator
-            cell.selectionStyle = .default
+            cell.accessoryView = toggle("启用前台通知", ForegroundBackground.foregroundNotifications, #selector(changeNotifications(_:)))
+        case .locked:
+            content.text = "锁定后台卡片"
+            cell.accessoryView = toggle("锁定后台卡片", ForegroundBackground.locked, #selector(changeLocked(_:)))
+        case .indicators:
+            content.text = "显示运行状态"
+            content.secondaryText = "在本应用图标名称旁显示运行或停止标记"
+            cell.accessoryView = toggle("显示运行状态", ForegroundBackground.indicators, #selector(changeIndicators(_:)))
+        case .lockIndicator:
+            content.text = "显示锁定标记"
+            cell.accessoryView = toggle("显示锁定标记", ForegroundBackground.lockIndicator, #selector(changeLockIndicator(_:)))
         case .status:
-            content.text = "模块状态"
+            content.text = "保活模块状态"
             content.secondaryText = ForegroundBackground.summary
-            content.secondaryTextProperties.numberOfLines = 0
+        case .protectionStatus:
+            content.text = "锁定与标记状态"
+            content.secondaryText = ForegroundBackground.protectionSummary
         }
+        content.secondaryTextProperties.numberOfLines = 0
         cell.contentConfiguration = content
         return cell
     }
 
-    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
-        guard Row(rawValue: indexPath.row) == .license else { return }
-        let page = UIViewController()
-        page.title = "后台模块开源许可"
-        let text = UITextView()
-        text.isEditable = false
-        text.font = .preferredFont(forTextStyle: .body)
-        text.adjustsFontForContentSizeCategory = true
-        text.backgroundColor = .systemBackground
-        if let url = Bundle.main.url(forResource: "ApelinForeground-LICENSE", withExtension: "txt"),
-           let license = try? String(contentsOf: url, encoding: .utf8) {
-            text.text = "Immortalizer · Copyright (C) 2024 Serge Alagon\n修改日期：2026-11-25\n本模块可按 GPL 第3版或更新版本修改及再分发，不提供任何担保。\n\n" + license
-        } else {
-            text.text = "许可文件缺失，请重新安装完整软件包。"
-        }
-        page.view = text
-        navigationController?.pushViewController(page, animated: true)
+    private func toggle(_ label: String, _ value: Bool, _ action: Selector) -> UISwitch {
+        let toggle = UISwitch()
+        toggle.isOn = value
+        toggle.accessibilityLabel = label
+        toggle.addTarget(self, action: action, for: .valueChanged)
+        return toggle
     }
 
     @objc private dynamic func changeEnabled(_ toggle: UISwitch) { ForegroundBackground.enabled = toggle.isOn }
     @objc private dynamic func changeNotifications(_ toggle: UISwitch) { ForegroundBackground.foregroundNotifications = toggle.isOn }
+    @objc private dynamic func changeLocked(_ toggle: UISwitch) { ForegroundBackground.locked = toggle.isOn }
+    @objc private dynamic func changeIndicators(_ toggle: UISwitch) { ForegroundBackground.indicators = toggle.isOn }
+    @objc private dynamic func changeLockIndicator(_ toggle: UISwitch) { ForegroundBackground.lockIndicator = toggle.isOn }
     @objc private dynamic func reloadStatus() {
-        tableView.reloadRows(at: [IndexPath(row: Row.status.rawValue, section: 0)], with: .none)
+        tableView.reloadRows(at: [Row.status, .protectionStatus].map { IndexPath(row: $0.rawValue, section: 0) }, with: .none)
     }
 }

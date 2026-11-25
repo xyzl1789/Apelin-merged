@@ -120,6 +120,44 @@ class KeepAliveContract(unittest.TestCase):
         self.assertIn("ApelinForeground-LICENSE.txt", packager)
         self.assertIn("SceneCheck.m", source("Makefile"))
 
+    def test_settings_entry_and_independent_options(self):
+        settings = source("Apelin/Interface/Settings/SettingsViewController.swift")
+        self.assertIn("case .background: [.foregroundBackground]", settings)
+        self.assertNotIn("[.foregroundBackground, .weChat]", settings)
+        page = source("Apelin/Interface/Settings/ForegroundBackgroundController.swift")
+        self.assertNotIn("case .license", page)
+        for option in ("locked", "indicators", "lockIndicator"):
+            self.assertIn("ForegroundBackground." + option, page)
+            self.assertIn('forKey: "foregroundBackground.' + option + '"', self.app)
+        self.assertIn("APFRefreshContainers();", self.module)
+        self.assertIn("APFRefreshMarks();", self.module)
+
+    def test_unified_license_is_reviewed_and_gpl_gate_stays_closed(self):
+        import copy
+        import importlib.util
+        import json
+        spec = importlib.util.spec_from_file_location("license_collector", ROOT / "Scripts/collect-licenses.py")
+        collector = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(collector)
+        entries = collector.standalone_entries(str(ROOT))
+        review = json.loads(source("Licenses/review.json"))
+        review["binaryRevisions"] = {}
+        review["notices"] = {item["id"]: review["notices"][item["id"]] for item in entries}
+        review["gplExceptions"] = {item["id"]: review["gplExceptions"][item["id"]] for item in entries}
+        collector.validate_review(review, [], entries)
+        self.assertIn("Version 3", entries[0]["text"])
+        self.assertIn("Serge Alagon", entries[0]["name"])
+        changed = copy.deepcopy(entries)
+        changed[0]["text"] += "changed"
+        with self.assertRaises(SystemExit):
+            collector.validate_review(review, [], changed)
+        unknown = copy.deepcopy(entries)
+        unknown[0]["id"] = "linked/unreviewed"
+        review["notices"]["linked/unreviewed"] = review["notices"].pop(entries[0]["id"])
+        review["gplExceptions"] = {}
+        with self.assertRaises(SystemExit):
+            collector.validate_review(review, [], unknown)
+
     def test_license_is_preserved_without_linking_into_app(self):
         self.assertIn("SPDX-License-Identifier: GPL-3.0-or-later", self.module)
         self.assertIn("Serge Alagon", self.module)

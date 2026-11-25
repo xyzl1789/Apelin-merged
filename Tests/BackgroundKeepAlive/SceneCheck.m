@@ -21,19 +21,22 @@
 - (id)mutableCopyWithZone:(NSZone *)zone { return [self copyWithZone:zone]; }
 @end
 
-@interface APFTestProcess : NSObject
+@interface APFTestProcess : NSObject <NSCopying>
 @property (copy) NSString *bundleIdentifier;
 @end
-@implementation APFTestProcess @end
+@implementation APFTestProcess
+- (id)copyWithZone:(NSZone *)zone { (void)zone; return self; }
+@end
 @interface APFTestScene : NSObject
 @property (strong) APFTestProcess *clientProcess;
 @end
 @implementation APFTestScene @end
+static int APFTestPID;
 @interface APFTestProcessState : NSObject
 - (int)pid;
 @end
 @implementation APFTestProcessState
-- (int)pid { return getpid(); }
+- (int)pid { return APFTestPID; }
 @end
 @interface APFTestApplication : NSObject
 - (id)processState;
@@ -75,9 +78,95 @@ static void APFTestNoticeOriginal(id self, SEL cmd, id notice, id bundle, id com
 }
 @end
 
+static BOOL APFSeenKillable;
+static unsigned APFKillCalls;
+@interface APFTestLayout : NSObject
+@property (strong) NSDictionary *itemsToLayoutAttributesMap;
+@end
+@implementation APFTestLayout @end
+@interface APFTestContainer : NSObject
+@property (strong) APFTestLayout *appLayout;
+@end
+@implementation APFTestContainer @end
+@interface APFTestIcon : NSObject
+@property (copy) NSString *applicationBundleID;
+@end
+@implementation APFTestIcon @end
+@interface APFTestIconView : NSObject
+@property (strong) APFTestIcon *icon;
+@end
+@implementation APFTestIconView @end
+static void APFTestKillOriginal(id self, SEL cmd, BOOL value) {
+    (void)self; (void)cmd; APFKillCalls++; APFSeenKillable = value;
+}
+static long long APFTestAccessoryOriginal(id self, SEL cmd, id icon) {
+    (void)self; (void)cmd; (void)icon; return 77;
+}
+static long long APFTestViewAccessoryOriginal(id self, SEL cmd) {
+    (void)self; (void)cmd; return 78;
+}
+static id APFTestNameOriginal(id self, SEL cmd) {
+    (void)self; (void)cmd; return @"原始应用名称";
+}
+
+static void APFCheckProtection(uint64_t pid) {
+    APFTestPID = getpid();
+    APFLockReady = APFMarksReady = YES;
+    APFContainers = [NSMapTable weakToStrongObjectsMapTable];
+    APFOriginalKillable = APFTestKillOriginal;
+    APFOriginalAccessory = APFTestAccessoryOriginal;
+    APFOriginalViewAccessory = APFTestViewAccessoryOriginal;
+    APFOriginalName = APFTestNameOriginal;
+    APFOptions = 28;
+    atomic_store(&APFRequest, pid | 28); // 保活关闭，锁定仍独立工作。
+    APFTestProcess *item = [APFTestProcess new]; item.bundleIdentifier = APFBundle;
+    APFTestProcess *other = [APFTestProcess new]; other.bundleIdentifier = @"com.example.other";
+    APFTestContainer *container = [APFTestContainer new];
+    container.appLayout = [APFTestLayout new];
+    container.appLayout.itemsToLayoutAttributesMap = @{item: @1};
+    APFKillable(container, NULL, YES);
+    NSCAssert(!APFSeenKillable && APFKillCalls == 1, @"本应用卡片应不可划掉，且只调用一次原方法");
+    APFOptions = 24;
+    APFRefreshContainers();
+    NSCAssert(APFSeenKillable, @"关闭锁定必须恢复原始 YES");
+    APFOptions = 28;
+    APFKillable(container, NULL, NO);
+    APFOptions = 24;
+    APFRefreshContainers();
+    NSCAssert(!APFSeenKillable, @"系统原值为 NO 时不能擅自改成 YES");
+    APFOptions = 28;
+    container.appLayout.itemsToLayoutAttributesMap = @{other: @1};
+    APFKillable(container, NULL, YES);
+    NSCAssert(APFSeenKillable, @"其他应用必须原样放行");
+    container.appLayout.itemsToLayoutAttributesMap = @{item: @1, other: @2};
+    APFKillable(container, NULL, YES);
+    NSCAssert(APFSeenKillable, @"混合布局不能影响其他应用");
+    container.appLayout.itemsToLayoutAttributesMap = @{item: @1};
+    atomic_store(&APFRequest, ((uint64_t)(getpid() + 1) << 32) | 28);
+    APFKillable(container, NULL, YES);
+    NSCAssert(APFSeenKillable, @"陈旧 PID 不能锁卡片");
+    atomic_store(&APFRequest, pid | 28);
+    NSCAssert(APFAccessory(item, NULL, nil) == 4 && APFAccessory(other, NULL, nil) == 77, @"运行标记只影响本应用");
+    APFTestIconView *view = [APFTestIconView new]; view.icon = [APFTestIcon new]; view.icon.applicationBundleID = APFBundle;
+    NSCAssert(APFViewAccessory(view, NULL) == 4, @"Dock 图标也要更新");
+    APFTestPID = 0;
+    NSCAssert(APFAccessory(item, NULL, nil) == 2 && APFViewAccessory(view, NULL) == 2, @"PID 为零必须显示停止，不因 processState 存在冒充运行");
+    APFOptions = 0;
+    NSCAssert(APFAccessory(item, NULL, nil) == 77 && APFViewAccessory(view, NULL) == 78, @"关闭标记必须恢复系统原值");
+    APFOptions = 28;
+    NSCAssert([APFDisplayName(item, NULL) containsString:@"已锁定"] && [APFDisplayName(other, NULL) isEqual:@"原始应用名称"], @"锁定名称只改本应用");
+    APFOptions = 12;
+    NSCAssert([APFDisplayName(item, NULL) isEqual:@"原始应用名称"], @"关闭锁定标记必须恢复原名称");
+    APFOptions = 24;
+    NSCAssert([APFDisplayName(item, NULL) isEqual:@"原始应用名称"], @"解除锁定不应留下锁定标记");
+    APFTestPID = getpid();
+    APFOptions = 0;
+}
+
 int main(void) {
     @autoreleasepool {
         APFReady = YES;
+        APFTestPID = getpid();
         APFScenes = [NSMapTable weakToStrongObjectsMapTable];
         APFOriginalScene = APFTestOriginal;
         APFOriginalNotice = APFTestNoticeOriginal;
@@ -123,7 +212,8 @@ int main(void) {
         NSCAssert(APFNotificationChanges == 1 && APFNotices == 3, @"关闭通知开关后不再强制递送");
         NSCAssert(APFForegroundSettings([NSObject new]) == nil, @"不兼容设置对象必须安全降级");
         NSCAssert(!APFSignature([APFTestServer class], sel_registerName("_didChangeApplicationState:forBundleIdentifier:"), "v", @[@"Q", @"@"]), @"必须拒绝整数 ABI 不匹配");
-        puts("通过：场景副本、其他应用隔离、transition/completion、关闭恢复、陈旧 PID、通知开关及 ABI 拒绝；不代表真机保活生效");
+        APFCheckProtection(pid);
+        puts("通过：场景副本、应用隔离、关闭恢复、陈旧 PID、通知及 ABI；新增卡片锁定、混合布局放行、系统原值恢复、运行／停止与独立标记；不代表 SpringBoard 实际生效");
     }
     return 0;
 }

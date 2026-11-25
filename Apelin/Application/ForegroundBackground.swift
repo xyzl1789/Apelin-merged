@@ -34,6 +34,39 @@ enum ForegroundBackground {
         }
     }
 
+    static var locked: Bool {
+        get { UserDefaults.standard.bool(forKey: "foregroundBackground.locked") }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "foregroundBackground.locked")
+            publish()
+        }
+    }
+
+    static var indicators: Bool {
+        get { UserDefaults.standard.bool(forKey: "foregroundBackground.indicators") }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "foregroundBackground.indicators")
+            publish()
+        }
+    }
+
+    static var lockIndicator: Bool {
+        get { UserDefaults.standard.bool(forKey: "foregroundBackground.lockIndicator") }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "foregroundBackground.lockIndicator")
+            publish()
+        }
+    }
+
+    static var protectionSummary: String {
+        guard hasFreshStatus else { return "模块未连接，无法确认锁定或标记" }
+        let protection = status & 8 != 0
+            ? (status & 32 != 0 ? "卡片锁定已启用" : "卡片锁定已关闭")
+            : "锁定接口不兼容，未拦截划掉"
+        let marks = status & 16 != 0 ? "图标标记接口已连接" : "图标标记接口不兼容"
+        return protection + "；" + marks
+    }
+
     private static var hasFreshStatus: Bool {
         status >> 32 == UInt64(UInt32(ProcessInfo.processInfo.processIdentifier)) &&
             ProcessInfo.processInfo.systemUptime - receivedAt < 12
@@ -95,7 +128,8 @@ enum ForegroundBackground {
     private static func publish() {
         guard requestToken >= 0, !stopped else { return }
         let pid = UInt64(UInt32(ProcessInfo.processInfo.processIdentifier)) << 32
-        let flags: UInt64 = (enabled ? 1 : 0) | (foregroundNotifications ? 2 : 0)
+        let flags: UInt64 = (enabled ? 1 : 0) | (foregroundNotifications ? 2 : 0) |
+            (locked ? 4 : 0) | (indicators ? 8 : 0) | (lockIndicator ? 16 : 0)
         guard notify_set_state(requestToken, pid | flags) == NOTIFY_STATUS_OK else {
             Dog.shared.join("Foreground", "后台设置发送失败", level: .error)
             return

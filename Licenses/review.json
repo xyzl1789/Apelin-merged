@@ -20,6 +20,10 @@
     }
   },
   "notices": {
+    "standalone/Immortalizer": {
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "license": "GPL-3.0-or-later（仅独立 SpringBoard 模块，不提供担保）"
+    },
     "app/Apelin": {
       "sha256": "79b8af7a9877c42384ecc70ee213d554ec4ba0c65a029ff3e6af2fe045595523",
       "license": "MIT"
@@ -462,6 +466,11 @@
     }
   },
   "gplExceptions": {
+    "standalone/Immortalizer": {
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "accepted": "用户要求移植，2026-11-25",
+      "reason": "仅适用于 Background/ 的独立 SpringBoard dylib，完整 GPLv3、原作者、固定参考提交、修改日期及对应源码随包提供；不链接主应用、apelind 或 worker，不放宽任何链接依赖门禁。见 Licenses/Compatibility.md。"
+    },
     "vendored/libgit2": {
       "sha256": "e0938121c0554985fe17196ac38fc590d149268e9c46e0c0e7a2eae1354fae71",
       "accepted": "owner, 2026-10-17",
