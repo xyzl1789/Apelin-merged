@@ -18,6 +18,10 @@ final class ProviderKeyFormController: TableController {
     private let keys: [SignInProgress.KeyField]
     private let alternatives: [AgentSignInMethod]
     private let initialValues: [String: String]
+    /// 添加/编辑服务商时直接填备注：非空提交即保存到本机。
+    private let noteProvider: AgentProvider?
+    private var noteField: UITextField?
+    private var noteCell: UITableViewCell?
     private var fields: [AgentSignInField: UITextField] = [:]
     private var cells: [AgentSignInField: UITableViewCell] = [:]
     /// Minis 的开关（`appendV1`、`azure`）用 UISwitch，值仍是 "true"/"false"，
@@ -27,11 +31,13 @@ final class ProviderKeyFormController: TableController {
     private var selections: [AgentSignInField: String] = [:]
     private enum Row: Hashable {
         case field(AgentSignInField)
+        case note
         case method(AgentSignInMethod)
     }
 
     private enum Section: Hashable {
         case field(AgentSignInField)
+        case note
         case methods
     }
 
@@ -47,10 +53,16 @@ final class ProviderKeyFormController: TableController {
         primaryAction: UIAction { [weak self] _ in self?.submit() },
     )
 
-    init(keys: [SignInProgress.KeyField], alternatives: [AgentSignInMethod], initialValues: [String: String] = [:]) {
+    init(
+        keys: [SignInProgress.KeyField],
+        alternatives: [AgentSignInMethod],
+        initialValues: [String: String] = [:],
+        noteProvider: AgentProvider? = nil,
+    ) {
         self.keys = keys.filter { $0.field != .defaultModel }
         self.alternatives = alternatives
         self.initialValues = initialValues
+        self.noteProvider = noteProvider
         super.init(style: .insetGrouped)
     }
 
@@ -110,9 +122,26 @@ final class ProviderKeyFormController: TableController {
         submitItem.tintColor = .tintColor
         submitItem.accessibilityLabel = String(localized: "Fetch Models")
         updateSubmit()
+        if let noteProvider {
+            let field = UITextField()
+            field.font = .preferredFont(forTextStyle: .body)
+            field.adjustsFontForContentSizeCategory = true
+            field.clearButtonMode = .whileEditing
+            field.returnKeyType = .done
+            field.placeholder = String(localized: "Note (Optional)")
+            field.text = Preferences.ProviderNotes.note(for: noteProvider)
+            field.accessibilityLabel = String(localized: "Provider Note")
+            field.addAction(UIAction { [weak self] _ in self?.noteField?.resignFirstResponder() }, for: .editingDidEndOnExit)
+            noteField = field
+            noteCell = cell(containing: field)
+        }
+
         dataSource.headerTitle = { section in
             if case let .field(field) = section {
                 return field.title
+            }
+            if section == .note {
+                return String(localized: "Note")
             }
             return nil
         }
@@ -121,6 +150,9 @@ final class ProviderKeyFormController: TableController {
             return String(localized: "Use Azure OpenAI authentication (api-key header). Paste the full Azure endpoint above in API Base, including the ?api-version=… query parameter. Both API formats are supported.")
         }
         var sections: [(Section, [Row])] = keys.map { (.field($0.field), [.field($0.field)]) }
+        if noteProvider != nil {
+            sections.append((.note, [.note]))
+        }
         if !alternatives.isEmpty {
             sections.append((.methods, alternatives.map(Row.method)))
         }
@@ -306,10 +338,17 @@ final class ProviderKeyFormController: TableController {
     @objc private dynamic func submit() {
         guard isReady, !isSubmitting else { return }
         view.endEditing(true)
+        // 表单里直接填的备注随提交保存到本机；左滑入口继续可用。
+        if let noteProvider {
+            Preferences.ProviderNotes.save(noteField?.text ?? "", for: noteProvider)
+        }
         onSubmit?(values)
     }
 
     private func cell(for row: Row) -> UITableViewCell? {
+        if row == .note {
+            return noteCell
+        }
         if case let .field(field) = row {
             return cells[field]
         }
@@ -327,6 +366,7 @@ final class ProviderKeyFormController: TableController {
         tableView.deselectRow(at: indexPath, animated: true)
         guard let row = dataSource.value(at: indexPath) else { return }
         switch row {
+        case .note: noteField?.becomeFirstResponder()
         case let .field(field): fields[field]?.becomeFirstResponder()
         case let .method(method):
             if !isSubmitting {

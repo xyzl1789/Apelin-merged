@@ -443,6 +443,7 @@ final class ProviderLoginController: UIViewController {
                 keys: keys,
                 alternatives: methods.filter { $0 != method },
                 initialValues: savedValues,
+                noteProvider: provider,
             )
             form.onSubmit = { [weak self] values in self?.send(values) }
             form.onSwitchMethod = { [weak self] method in self?.switchMethod(to: method) }
