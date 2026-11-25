@@ -10,12 +10,12 @@ import os
 /// - reason = 1（Audio）、7（BackgroundUI）、10004 均不授予；
 /// - flags = 3（加 PreventThrottleDownCPU）也授予，但无额外收益，取 1。
 ///
+/// BKSProcessAssertion 只能经 ObjC 运行时构造，Swift 里 `alloc()`、
+/// 多参 `perform` 都不可用；这里用 `dlsym` 取 `objc_msgSend` 函数指针、
+/// 按 `@convention(c)` 强类型调用，全部是普通 Swift 表达式。
+///
 /// 本机无法直接证明断言能阻止挂起（探针只看到 valid == true）；
 /// 若系统拒绝授予，记录日志并静默降级为不保活。
-@_silgen_name("objc_msgSend")
-private func objcMsgSend(_ target: AnyObject, _ sel: Selector, _ pid: Int32, _ flags: UInt, _ reason: UInt,
-                         _ name: UnsafePointer<CChar>?, _ handler: AnyObject?) -> Unmanaged<NSObject>?
-
 @MainActor
 enum BackgroundKeepAlive {
     private static let log = Logger(subsystem: "wiki.qaq.apelin", category: "keepalive")
@@ -27,6 +27,21 @@ enum BackgroundKeepAlive {
 
     private static var assertion: NSObject?
     private static var hasLoadedClass = false
+
+    /// objc_msgSend，四对象参数形式：`initWithPID:flags:reason:name:withHandler:`。
+    /// pid/reason 走整型寄存器，name 是 C 字符串，handler 传 nil。
+    private typealias MsgSendInit = @convention(c) (
+        AnyObject, Selector, Int32, UInt, UInt, UnsafePointer<CChar>?, AnyObject?
+    ) -> Unmanaged<NSObject>?
+    /// objc_msgSend，类方法形式：`alloc`。
+    private typealias MsgSendAlloc = @convention(c) (
+        AnyObject.Type, Selector
+    ) -> Unmanaged<AnyObject>
+
+    private static func msgSend() -> UnsafeMutableRawPointer? {
+        let handle = dlopen(nil, RTLD_LAZY)
+        return dlsym(handle, "objc_msgSend")
+    }
 
     /// 计数式请求保活：`count > 0` 时持有断言。
     static func setRunningCount(_ count: Int) {
@@ -58,15 +73,20 @@ enum BackgroundKeepAlive {
             log.error("BKSProcessAssertion 类不存在，无法后台保活")
             return
         }
-        // initWithPID:flags:reason:name:withHandler:（实测：self pid、handler 传 null 可用）
+        guard let raw = msgSend() else {
+            log.error("取 objc_msgSend 失败，无法后台保活")
+            return
+        }
+        let alloc = unsafeBitCast(raw, to: MsgSendAlloc.self)
+        let send = unsafeBitCast(raw, to: MsgSendInit.self)
+        let instance = alloc(cls, NSSelectorFromString("alloc")).takeUnretainedValue()
         let selector = NSSelectorFromString("initWithPID:flags:reason:name:withHandler:")
-        let obj = objcMsgSend(objcMsgSend(cls, NSSelectorFromString("alloc"), 0, 0, 0, nil, nil)!.takeUnretainedValue(), selector,
-                               ProcessInfo.processInfo.processIdentifier,
-                               preventSuspendFlags,
-                               continuousReason,
-                               "wiki.qaq.apelin.keepalive",
-                               nil)?.takeRetainedValue()
-        guard let obj else {
+        guard let obj = send(instance, selector,
+                             ProcessInfo.processInfo.processIdentifier,
+                             preventSuspendFlags,
+                             continuousReason,
+                             "wiki.qaq.apelin.keepalive",
+                             nil)?.takeRetainedValue() else {
             log.error("BKSProcessAssertion 初始化失败，无法后台保活")
             return
         }
