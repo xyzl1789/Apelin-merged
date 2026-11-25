@@ -60,6 +60,7 @@ struct ChatsActivityWidget: Widget {
                                 ChatActivityResultRow(chat: result.chat)
                             }
                         }
+                        .id(state)
                         .padding(.leading, 8)
                         .padding(.trailing, 8)
                         .padding(.top, 4)
@@ -251,16 +252,13 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
-            // 空详情必须退出布局；非空详情只占实际高度，不能用弹性 frame 留白。
+            // 空详情退出布局；直接测量当前行，避免选型容器沿用旧的可用高度。
             if state.detailsEnabled && !details.isEmpty {
                 ChatActivityDetailLayout {
-                    ViewThatFits(in: .vertical) {
-                        flowRows(limit: 3, lines: 2)
-                        flowRows(limit: 2, lines: 1)
-                        flowRows(limit: 1, lines: 1)
-                        Color.clear.frame(height: 0)
-                    }
+                    flowRows(limit: 3, lines: 2)
                 }
+                // 只刷新详情子树的布局身份，不结束或重建 ActivityKit 活动。
+                .id(Array(details.prefix(3)))
                 .clipped()
                 .layoutPriority(-1)
             }
@@ -305,13 +303,13 @@ private struct ChatActivitySessionRow: View {
                 .privacySensitive()
             }
         }
-        // 让 ViewThatFits 以实际高度选择较短版本，而不是先压缩长版本的文字。
+        // 详情始终按当前宽度的自然高度排版；外层只裁剪超出预算的底部。
         .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-/// 给详情一个高度预算，但只向父布局返回实际选中内容的高度。
-/// 不缓存上次高度，运行中转为终态或内容清空时立即重新测量。
+/// 先以未限定高度量取详情，再裁剪到剩余预算；不把父容器高度当成内容高度。
+/// 测量与放置使用同一宽度、同一个自然高度提案，减少内容时也重新取自然尺寸。
 @available(iOS 16.2, *)
 private struct ChatActivityDetailLayout: Layout {
     private let maximumHeight: CGFloat = 76
@@ -319,7 +317,7 @@ private struct ChatActivityDetailLayout: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         guard let content = subviews.first else { return .zero }
         let height = max(0, min(proposal.height ?? maximumHeight, maximumHeight))
-        let size = content.sizeThatFits(ProposedViewSize(width: proposal.width, height: height))
+        let size = content.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
         return CGSize(width: size.width, height: min(size.height, height))
     }
 
@@ -327,7 +325,7 @@ private struct ChatActivityDetailLayout: Layout {
         subviews.first?.place(
             at: bounds.origin,
             anchor: .topLeading,
-            proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
+            proposal: ProposedViewSize(width: bounds.width, height: nil)
         )
     }
 }
@@ -370,6 +368,9 @@ private struct ChatLockScreenView: View {
                         .font(.caption2)
                     Text(verbatim: "Apelin")
                         .font(.caption.bold())
+                        .lineLimit(1)
+                        .fixedSize()
+                        .layoutPriority(10)
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
@@ -390,6 +391,8 @@ private struct ChatLockScreenView: View {
                         .background(.white.opacity(0.15), in: Capsule())
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
+            .layoutPriority(2)
             if let chat = state.mostUrgent {
                 ChatActivitySessionRow(chat: chat, state: state)
                 if let result = state.transientResult {
@@ -397,6 +400,8 @@ private struct ChatLockScreenView: View {
                 }
             }
         }
+        // 让远程视图宿主重新拟合整卡高度，而非仅替换旧高度内的详情文字。
+        .id(state)
         .foregroundStyle(theme.ink)
         .padding()
         .activityBackgroundTint(ChatWidgetAppearance.backgroundTint(for: colorScheme))

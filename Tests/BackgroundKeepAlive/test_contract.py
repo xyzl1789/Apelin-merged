@@ -46,10 +46,11 @@ class ActivityContract(unittest.TestCase):
     def test_details_and_tools_are_gated_together(self):
         flow = block(self.row, "if state.detailsEnabled && !details.isEmpty")
         self.assertIn("ChatActivityDetailLayout", flow)
-        self.assertIn("ViewThatFits(in: .vertical)", flow)
-        for candidate in ("flowRows(limit: 3, lines: 2)", "flowRows(limit: 2, lines: 1)",
-                          "flowRows(limit: 1, lines: 1)", "Color.clear.frame(height: 0)"):
-            self.assertIn(candidate, flow)
+        self.assertIn("flowRows(limit: 3, lines: 2)", flow)
+        self.assertNotIn("ViewThatFits", self.row)
+        self.assertIn(".id(Array(details.prefix(3)))", flow)
+        self.assertIn(".clipped()", flow)
+        self.assertIn(".layoutPriority(-1)", flow)
         details = block(self.row, "private var details:")
         self.assertIn("if let detail = phase.detail", details)
         self.assertIn("for tool in state.recentTools", block(details, "if state.finishedBadge == nil"))
@@ -66,7 +67,23 @@ class ActivityContract(unittest.TestCase):
         self.assertIn("proposal.height ?? maximumHeight", measure)
         self.assertIn("maximumHeight: CGFloat = 76", layout)
         self.assertNotIn("cache =", layout)
-        self.assertIn("height: bounds.height", block(layout, "func placeSubviews"))
+        self.assertIn("ProposedViewSize(width: proposal.width, height: nil)", measure)
+        self.assertIn("height: nil", block(layout, "func placeSubviews"))
+        self.assertNotIn("height: bounds.height", block(layout, "func placeSubviews"))
+
+    def test_card_and_header_refit_together(self):
+        card = block(self.widget, "private struct ChatLockScreenView")
+        self.assertIn(".id(state)", card)
+        self.assertIn(".fixedSize(horizontal: false, vertical: true)", card)
+        self.assertIn(".layoutPriority(2)", card)
+        self.assertIn(".layoutPriority(10)", card)
+        island = block(self.widget, "DynamicIslandExpandedRegion(.bottom)")
+        self.assertIn(".id(state)", island)
+        fixture = source("Tests/BackgroundKeepAlive/ActivityLayoutCheck.swift")
+        self.assertIn("NSHostingView", fixture)
+        self.assertIn("host.fittingSize", fixture)
+        self.assertIn("model.titleTop.map", fixture)
+        self.assertIn("(3, 18), (2, 18), (1, 18), (0, 18)", fixture)
 
     def test_finished_preview_remains_available(self):
         phase = block(self.widget, "if let badge = finishedBadge")
@@ -88,7 +105,9 @@ struct ProposedViewSize { let width: CGFloat?; let height: CGFloat? }
 struct Content {
     let naturalHeight: CGFloat
     func sizeThatFits(_ proposal: ProposedViewSize) -> CGSize {
-        CGSize(width: proposal.width ?? 120, height: naturalHeight)
+        // 旧实现向子树传有界高度时返回预算：让回归确实能发现旧缺口。
+        precondition(proposal.height == nil)
+        return CGSize(width: proposal.width ?? 120, height: naturalHeight)
     }
 }
 typealias Subviews = [Content]
@@ -112,6 +131,24 @@ print("通过：空内容、内容缩短、剩余高度及上限的生产高度�
         scratch = ROOT / ".build"
         scratch.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="activity-height-", dir=scratch) as temp:
+            path = Path(temp)
+            (path / "main.swift").write_text(program, encoding="utf-8")
+            subprocess.run(["xcrun", "--sdk", "macosx", "swiftc", "-swift-version", "5", str(path / "main.swift"), "-o", str(path / "check")], check=True)
+            subprocess.run([str(path / "check")], check=True)
+
+    def test_swiftui_host_shrinks_across_updates(self):
+        import shutil
+        import subprocess
+        import tempfile
+        if not shutil.which("xcrun"):
+            self.skipTest("本机缺少 Xcode；真实 SwiftUI 连续布局需在 macOS harness 补验")
+        layout = block(self.widget, "private struct ChatActivityDetailLayout")
+        fixture = source("Tests/BackgroundKeepAlive/ActivityLayoutCheck.swift")
+        program = ("import SwiftUI\n@available(macOS 13.0, *)\n"
+                   "private struct ChatActivityDetailLayout: Layout {\n" + layout + "\n}\n" + fixture)
+        scratch = ROOT / ".build"
+        scratch.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="activity-layout-", dir=scratch) as temp:
             path = Path(temp)
             (path / "main.swift").write_text(program, encoding="utf-8")
             subprocess.run(["xcrun", "--sdk", "macosx", "swiftc", "-swift-version", "5", str(path / "main.swift"), "-o", str(path / "check")], check=True)
