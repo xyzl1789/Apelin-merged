@@ -404,8 +404,14 @@ final class RootInterfaceController: UIViewController {
     /// the app is suspended, rather than at the end of its interval.
     @objc private dynamic func enteredBackground() {
         let task = UIApplication.shared.beginBackgroundTask(withName: "Save Chats")
-        chatRuntime.saveNow {
-            UIApplication.shared.endBackgroundTask(task)
+        // 后台入口先同步一次宿主状态再落盘：刚结束的回合不至于在盘上
+        // 还标着进行中，回前台时实时活动也不必先补一场对齐。
+        Task {
+            await chatRuntime.reconcileRuns()
+            ChatWidgetPublisher.shared.chatsChanged()
+            chatRuntime.saveNow {
+                UIApplication.shared.endBackgroundTask(task)
+            }
         }
     }
 
