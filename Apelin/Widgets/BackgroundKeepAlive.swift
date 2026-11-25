@@ -21,7 +21,8 @@ enum BackgroundKeepAlive {
     /// reason 10005 = Continuous（实测授予；Audio/BackgroundUI 不授予）。
     private static let continuousReason: UInt = 10005
 
-    private static var assertion: Any?
+    private static var assertion: NSObject?
+    private static var hasLoadedClass = false
 
     /// 计数式请求保活：`count > 0` 时持有断言。
     static func setRunningCount(_ count: Int) {
@@ -37,32 +38,32 @@ enum BackgroundKeepAlive {
 
     static var isHolding: Bool { assertion != nil }
 
-    private static var hasLoadedClass = false
     /// 延迟加载 BKSProcessAssertion 类（框架在 dyld 共享缓存里）。
-    private static nonisolated func loadClass() -> Bool {
-        if hasLoadedClass { return NSClassFromString("BKSProcessAssertion") != nil }
-        hasLoadedClass = true
-        if dlopen("/System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices", RTLD_LAZY) == nil {
-            _ = dlopen("/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices", RTLD_LAZY)
+    private static func loadClass() -> NSObject.Type? {
+        if !hasLoadedClass {
+            hasLoadedClass = true
+            if dlopen("/System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices", RTLD_LAZY) == nil {
+                _ = dlopen("/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices", RTLD_LAZY)
+            }
         }
-        return NSClassFromString("BKSProcessAssertion") != nil
+        return NSClassFromString("BKSProcessAssertion") as? NSObject.Type
     }
 
     private static func acquire() {
-        guard loadClass(), let cls = NSClassFromString("BKSProcessAssertion") as NSObject.Type? else {
+        guard let cls = loadClass() else {
             log.error("BKSProcessAssertion 类不存在，无法后台保活")
             return
         }
         // initWithPID:flags:reason:name:withHandler:（实测：self pid、handler 传 null 可用）
         let selector = NSSelectorFromString("initWithPID:flags:reason:name:withHandler:")
-        guard let obj = cls.alloc().perform(selector,
-                                            with: ProcessInfo.processInfo.processIdentifier,
-                                            with: preventSuspendFlags,
-                                            with: continuousReason)?.takeRetainedValue() else {
+        guard let unmanaged = cls.alloc().perform(selector,
+                                                  with: ProcessInfo.processInfo.processIdentifier,
+                                                  with: preventSuspendFlags,
+                                                  with: continuousReason),
+              let obj = unmanaged.takeRetainedValue() as? NSObject else {
             log.error("BKSProcessAssertion 初始化失败，无法后台保活")
             return
         }
-        objc_retain(obj)
         assertion = obj
         obj.perform(NSSelectorFromString("acquire"))
         let valid = (obj.perform(NSSelectorFromString("valid"))?.takeUnretainedValue() as? Bool) ?? false
@@ -78,6 +79,5 @@ enum BackgroundKeepAlive {
         guard let obj = assertion else { return }
         assertion = nil
         obj.perform(NSSelectorFromString("invalidate"))
-        objc_release(obj)
     }
 }
