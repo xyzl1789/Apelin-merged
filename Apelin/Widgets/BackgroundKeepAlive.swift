@@ -12,6 +12,10 @@ import os
 ///
 /// 本机无法直接证明断言能阻止挂起（探针只看到 valid == true）；
 /// 若系统拒绝授予，记录日志并静默降级为不保活。
+@_silgen_name("objc_msgSend")
+private func objcMsgSend4(_ target: AnyObject, _ sel: Selector, _ pid: Int32, _ flags: UInt, _ reason: UInt,
+                          _ name: UnsafePointer<CChar>?, _ handler: AnyObject?) -> Unmanaged<NSObject>?
+
 @MainActor
 enum BackgroundKeepAlive {
     private static let log = Logger(subsystem: "wiki.qaq.apelin", category: "keepalive")
@@ -56,11 +60,13 @@ enum BackgroundKeepAlive {
         }
         // initWithPID:flags:reason:name:withHandler:（实测：self pid、handler 传 null 可用）
         let selector = NSSelectorFromString("initWithPID:flags:reason:name:withHandler:")
-        guard let unmanaged = cls.alloc().perform(selector,
-                                                  with: ProcessInfo.processInfo.processIdentifier,
-                                                  with: preventSuspendFlags,
-                                                  with: continuousReason),
-              let obj = unmanaged.takeRetainedValue() as? NSObject else {
+        let obj = objcMsgSend4(cls.alloc(), selector,
+                               ProcessInfo.processInfo.processIdentifier,
+                               preventSuspendFlags,
+                               continuousReason,
+                               "wiki.qaq.apelin.keepalive",
+                               nil)?.takeRetainedValue()
+        guard let obj else {
             log.error("BKSProcessAssertion 初始化失败，无法后台保活")
             return
         }
