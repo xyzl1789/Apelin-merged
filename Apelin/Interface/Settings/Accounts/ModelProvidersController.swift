@@ -202,17 +202,17 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
         }
     }
 
-    /// The provider's mark and name on one line; signed in, who as under the
-    /// name and a `…` menu at the end.
+    /// The provider's mark and name on one line; a note, when present, is
+    /// highlighted at the end of that line. Signed-in status stays below and
+    /// the content configuration reserves the trailing `…` menu's space.
     private func accountCell(_ account: AgentAccount, note: String?) -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
         var content: UIListContentConfiguration
         if account.signedIn {
             content = .stackedValueCell()
-            let status = Self.signedInLine(account)
-            content.secondaryText = note.map { status + "\n" + $0 } ?? status
+            content.secondaryText = Self.signedInLine(account)
             content.secondaryTextProperties.color = .secondaryLabel
-            content.secondaryTextProperties.numberOfLines = note == nil ? 1 : 0
+            content.secondaryTextProperties.numberOfLines = 1
 
             cell.accessoryView = menuButton(account)
             cell.selectionStyle = .none
@@ -220,13 +220,31 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             content = .cell()
             cell.accessoryType = .disclosureIndicator
         }
-        content.text = account.provider.displayName
+        if let note, !note.isEmpty {
+            content.text = nil
+            content.attributedText = Self.providerTitle(account.provider.displayName, note: note)
+        } else {
+            content.text = account.provider.displayName
+        }
         content.textProperties.numberOfLines = 1
         content.image = account.provider.icon
         content.imageProperties.maximumSize = CGSize(width: 29, height: 29)
         content.imageProperties.reservedLayoutSize = CGSize(width: 29, height: 29)
         cell.contentConfiguration = content
         return cell
+    }
+
+    private static func providerTitle(_ name: String, note: String) -> NSAttributedString {
+        let titleFont = UIFont.preferredFont(forTextStyle: .body)
+        let result = NSMutableAttributedString(
+            string: name,
+            attributes: [.font: titleFont, .foregroundColor: UIColor.label],
+        )
+        result.append(NSAttributedString(
+            string: "  ·  \(note)",
+            attributes: [.font: titleFont, .foregroundColor: UIColor.systemBlue],
+        ))
+        return result
     }
 
     /// Who is signed in, and until when where the sign-in ends: one phrase,
