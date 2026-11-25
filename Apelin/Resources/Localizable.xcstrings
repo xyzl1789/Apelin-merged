@@ -1,6 +1,89 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "When adding multiple model providers with the same API address, give each a different note to distinguish their usage.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عند إضافة عدة مزوّدي نماذج بعنوان API نفسه، أضف ملاحظة مختلفة لكل منهم لتمييز استخدامهم."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn Sie mehrere Modellanbieter mit derselben API-Adresse hinzufügen, vergeben Sie unterschiedliche Notizen, um deren Nutzung zu unterscheiden."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When adding multiple model providers with the same API address, give each a different note to distinguish their usage."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Al añadir varios proveedores de modelos con la misma dirección API, asigne una nota diferente a cada uno para distinguir su uso."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si vous ajoutez plusieurs fournisseurs de modèles avec la même adresse API, attribuez-leur des notes différentes pour distinguer leur utilisation."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando aggiungi più fornitori di modelli con lo stesso indirizzo API, assegna a ciascuno una nota diversa per distinguerne l’utilizzo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同じ API アドレスで複数のモデルプロバイダーを追加する場合は、使用量を区別できるよう、それぞれ異なるメモを設定することをおすすめします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "같은 API 주소로 여러 모델 공급자를 추가할 때는 사용량을 구분할 수 있도록 각각 다른 메모를 작성하는 것이 좋습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ao adicionar vários provedores de modelos com o mesmo endereço de API, atribua uma observação diferente a cada um para distinguir o uso."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если вы добавляете несколько поставщиков моделей с одним адресом API, задайте каждому отдельную заметку, чтобы различать их расход."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khi thêm nhiều nhà cung cấp mô hình có cùng địa chỉ API, hãy đặt ghi chú khác nhau cho từng nhà cung cấp để phân biệt mức sử dụng."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同一 API 地址添加了多个模型服务商时，建议分别填写不同的备注，便于区分用量。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同一 API 位址新增了多個模型服務商時，建議分別填寫不同的備註，便於區分用量。"
+          }
+        }
+      }
+    },
     "Note (Optional)": {
       "localizations": {
         "ar": {

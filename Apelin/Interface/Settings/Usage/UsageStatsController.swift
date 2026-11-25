@@ -154,7 +154,6 @@ final class UsageStatsController: UIViewController {
     }
 
     private func rebuildSummary() {
-        var providers: [String: (count: Int, input: Int, output: Int)] = [:]
         var models: [String: (count: Int, input: Int, output: Int, cacheRead: Int, cacheWrite: Int)] = [:]
         var sessionCount = 0
         var maxSession = 0
@@ -163,9 +162,6 @@ final class UsageStatsController: UIViewController {
         var allOutput = 0
         var allCacheRead = 0
         for record in records {
-            let provider = record.provider ?? String(localized: "未知供应商")
-            let p = providers[provider, default: (0, 0, 0)]
-            providers[provider] = (p.count + 1, p.input + record.input, p.output + record.output)
             let m = models[record.model, default: (0, 0, 0, 0, 0)]
             models[record.model] = (
                 m.count + 1,
@@ -192,9 +188,8 @@ final class UsageStatsController: UIViewController {
             Tile(caption: String(localized: "输出"), color: .systemGreen, value: Self.tokenText(allOutput)),
             Tile(caption: String(localized: "缓存命中率"), color: .systemTeal, value: String(format: "%.1f%%", hitRate * 100)),
         ]
-        byProvider = providers
-            .map { (name: $0.key, count: $0.value.count, input: $0.value.input, output: $0.value.output) }
-            .sorted { ($0.input + $0.output) > ($1.input + $1.output) }
+        byProvider = UsageProviderPresentation.summaries(records)
+            .map { (name: $0.name, count: $0.count, input: $0.input, output: $0.output) }
         byModel = models
             .map { (model: $0.key, count: $0.value.count, input: $0.value.input, output: $0.value.output, cacheRead: $0.value.cacheRead, cacheWrite: $0.value.cacheWrite) }
             .sorted { ($0.input + $0.output) > ($1.input + $1.output) }
@@ -219,6 +214,7 @@ final class UsageStatsController: UIViewController {
 
         // 按供应商。
         for row in providersStack.arrangedSubviews { row.removeFromSuperview() }
+        providersStack.addArrangedSubview(emptyNote(UsageProviderPresentation.note))
         if byProvider.isEmpty {
             providersStack.addArrangedSubview(emptyNote(String(localized: "还没有任何请求记录。")))
         } else {

@@ -16,6 +16,8 @@ public struct UsageRecord: Codable, Sendable, Equatable {
     /// 该请求走的供应商 id（如 `anthropic`、`openai`）；旧记录没有此字段，
     /// 读作 nil，统计里归到「未知」。
     public var provider: String?
+    /// 实际使用的服务商实例与安全域名；旧记录缺少此字段，保持原来的分组。
+    public var providerIdentity: UsageProviderIdentity?
     /// 全新读取的输入 token。
     public var input: Int
     /// 输出 token。
@@ -26,13 +28,14 @@ public struct UsageRecord: Codable, Sendable, Equatable {
     public var cacheWrite: Int
 
     public init(time: Date, sessionID: String, project: String, model: String,
-                provider: String? = nil,
+                provider: String? = nil, providerIdentity: UsageProviderIdentity? = nil,
                 input: Int, output: Int, cacheRead: Int, cacheWrite: Int) {
         self.time = time
         self.sessionID = sessionID
         self.project = project
         self.model = model
         self.provider = provider
+        self.providerIdentity = providerIdentity
         self.input = input
         self.output = output
         self.cacheRead = cacheRead

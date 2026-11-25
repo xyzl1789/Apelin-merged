@@ -458,6 +458,21 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   `Apelind/Dispatch/<Domain>Handler.swift` (and `CallerPolicy` if a worker may
   call it); and this list. A worker-served operation is then a case in that
   worker's handler.
+- **用量按实际服务商实例统计，不按通用协议名称合并。** 新的 `UsageRecord`
+  额外保存 `providerIdentity`：`accountID` 与模型服务商备注共用
+  `AgentProvider.rawValue`，`endpointHost` 只保存解析后的域名，绝不保存完整 URL、
+  路径、查询、API Key 或登录信息。`AgentSession` 从实际解析的配置和凭据生成它，
+  每轮切换服务商、临时视觉模型接管和恢复主模型都必须保持归属正确。原有
+  `provider` 保留；没有 `providerIdentity` 的旧记录不迁移、不推测、不重新分类。
+  设置和会话统计都通过 `UsageProviderPresentation` / `UsageProviderSummary`
+  汇总：本机最新备注优先，无备注的自定义端点显示域名，同名用稳定实例标记消歧，
+  名字不参与分组。两处均提示同 API 的多个服务商应填写不同备注。既有 token
+  口径不变。回归测试位于 `ApelinCoreTests/UsageProviderSummaryTests.swift` 和
+  `ApelinAgentTests/UsageProviderResolutionTests.swift`，在可编译本仓库 Swift 的环境
+  分别执行对应包的 `swift test --filter UsageProviderSummaryTests` 与
+  `swift test --filter UsageProviderResolutionTests`。本机只有旧 Swift 前端时只能作
+  兼容副本语法检查；缺少 Xcode 的 `make check` 不算通过，完整构建和安装后界面
+  检查仍须补跑。
 - **每日签到只属于 App** (`Operations/CheckIn.swift`,
   `ApelinAgentWorker/CheckIn/CheckInService.swift`,
   `Apelin/Service/CheckInStore.swift`, `Interface/Settings/CheckInController.swift`)。

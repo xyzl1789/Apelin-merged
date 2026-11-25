@@ -69,6 +69,8 @@ public actor AgentSession {
     private var modelDefaults: AgentModelDefaults
     /// The main model/auth pair restored after a one-run vision override.
     private var modelRestoreAfterRun: (model: Model, authResolver: (@Sendable (Model, String?) async throws -> ResolvedProviderAuth?)?)?
+    /// 本轮临时视觉模型的统计身份，恢复主模型时一并清除。
+    private var temporaryUsageProvider: UsageProviderIdentity?
     /// The model the provider's record gives, before the app's settings
     /// override its figures: a later change of those starts from it again.
     private var recordModel: Model?
@@ -1290,6 +1292,13 @@ public actor AgentSession {
                 }
                 if let vision = resolvedVision, imageReading == nil {
                     modelRestoreAfterRun = (agent.state.model, agent.authResolver)
+                    temporaryUsageProvider = modelDefaults.vision.flatMap { selection in
+                        UsageProviderIdentity.resolved(
+                            from: .auxiliary(provider: selection.provider, model: selection.model),
+                            credentials: vision.credentials,
+                            model: vision.model,
+                        )
+                    }
                     agent.state.model = vision.model
                     agent.authResolver = vision.authResolver
                 }
@@ -1390,6 +1399,7 @@ public actor AgentSession {
         agent.state.model = restore.model
         agent.authResolver = restore.authResolver
         modelRestoreAfterRun = nil
+        temporaryUsageProvider = nil
     }
 
     /// Generates one image with the configured native image model when the
@@ -1906,6 +1916,11 @@ public actor AgentSession {
                     project: configuration.project.name.rawValue,
                     model: agent.state.model.id,
                     provider: agent.state.model.provider,
+                    providerIdentity: temporaryUsageProvider ?? UsageProviderIdentity.resolved(
+                        from: resolvedFrom.provider,
+                        credentials: resolvedFrom.credentials,
+                        model: agent.state.model,
+                    ),
                     input: usage.input,
                     output: usage.output,
                     cacheRead: usage.cacheRead,

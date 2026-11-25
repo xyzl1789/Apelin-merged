@@ -546,26 +546,15 @@ final class ChatUsageDetailController: UIViewController {
         }
     }
 
-    /// 按供应商汇总：全部记录（含旧记录归「未知」），按请求量排。
+    /// 与设置共用实例分组与命名规则；旧记录继续按原 provider 汇总。
     private func renderProviders() {
         for row in providersStack.arrangedSubviews { row.removeFromSuperview() }
+        providersStack.addArrangedSubview(emptyNote(UsageProviderPresentation.note))
         if allRecords.isEmpty {
             providersStack.addArrangedSubview(emptyNote(String(localized: "还没有任何请求记录。")))
             return
         }
-        var byProvider: [String: (count: Int, input: Int, output: Int)] = [:]
-        for record in allRecords {
-            let name = record.provider ?? String(localized: "未知供应商")
-            let entry = byProvider[name, default: (0, 0, 0)]
-            byProvider[name] = (
-                entry.count + 1,
-                entry.input + record.input + record.cacheRead + record.cacheWrite,
-                entry.output + record.output,
-            )
-        }
-        let entries: [(name: String, count: Int, input: Int, output: Int)] = byProvider
-            .map { (name: $0.key, count: $0.value.count, input: $0.value.input, output: $0.value.output) }
-            .sorted { ($0.input + $0.output) > ($1.input + $1.output) }
+        let entries = UsageProviderPresentation.summaries(allRecords, includingCache: true)
         for entry in entries {
             providersStack.addArrangedSubview(statRow(
                 title: entry.name,
