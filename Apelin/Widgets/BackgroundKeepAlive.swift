@@ -13,11 +13,8 @@ import os
 /// 本机无法直接证明断言能阻止挂起（探针只看到 valid == true）；
 /// 若系统拒绝授予，记录日志并静默降级为不保活。
 @_silgen_name("objc_msgSend")
-private func objcMsgSendAlloc(_ target: AnyObject.Type, _ sel: Selector) -> Unmanaged<AnyObject>?
-
-@_silgen_name("objc_msgSend")
-private func objcMsgSend4(_ target: AnyObject, _ sel: Selector, _ pid: Int32, _ flags: UInt, _ reason: UInt,
-                          _ name: UnsafePointer<CChar>?, _ handler: AnyObject?) -> Unmanaged<NSObject>?
+private func objcMsgSend(_ target: AnyObject, _ sel: Selector, _ pid: Int32, _ flags: UInt, _ reason: UInt,
+                         _ name: UnsafePointer<CChar>?, _ handler: AnyObject?) -> Unmanaged<NSObject>?
 
 @MainActor
 enum BackgroundKeepAlive {
@@ -63,7 +60,7 @@ enum BackgroundKeepAlive {
         }
         // initWithPID:flags:reason:name:withHandler:（实测：self pid、handler 传 null 可用）
         let selector = NSSelectorFromString("initWithPID:flags:reason:name:withHandler:")
-        let obj = objcMsgSend4(objcMsgSendAlloc(cls, NSSelectorFromString("alloc"))!.takeUnretainedValue(), selector,
+        let obj = objcMsgSend(objcMsgSend(cls, NSSelectorFromString("alloc"))!.takeUnretainedValue(), selector,
                                ProcessInfo.processInfo.processIdentifier,
                                preventSuspendFlags,
                                continuousReason,
