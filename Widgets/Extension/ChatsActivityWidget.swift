@@ -14,7 +14,7 @@ struct ChatsActivityWidget: Widget {
         } dynamicIsland: { context in
             let state = context.state.forActivityDisplay(isStale: context.isStale)
             return DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
+                DynamicIslandExpandedRegion(.leading, priority: 2) {
                     HStack(spacing: 3) {
                         Image(systemName: "sparkles")
                             .font(.caption2)
@@ -248,43 +248,61 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
-            // 关闭保活或进入终态只收起流程详情和工具记录，身份、项目与基本状态始终保留。
-            if state.detailsEnabled && state.finishedBadge == nil {
-                if let detail = phase.detail {
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Image(systemName: phase.symbol)
-                            .font(.caption)
-                            .foregroundStyle(phase.color)
-                            .frame(width: 16)
-                            .accessibilityHidden(true)
-                        Text(verbatim: detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .privacySensitive()
-                    }
+            // 身份与主状态优先保留；详情仅使用剩余高度，终态也能显示回答预览。
+            if state.detailsEnabled {
+                ViewThatFits(in: .vertical) {
+                    flowRows(limit: 3, lines: 2)
+                    flowRows(limit: 2, lines: 1)
+                    flowRows(limit: 1, lines: 1)
+                    Color.clear.frame(height: 0)
                 }
-                ForEach(state.recentTools.indices, id: \.self) { index in
-                    let tool = state.recentTools[index]
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Image(systemName: tool.symbol)
-                            .frame(width: 16)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(verbatim: tool.title).lineLimit(1)
-                            if let detail = tool.detail {
-                                Text(verbatim: detail).lineLimit(1)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .privacySensitive()
-                }
+                .frame(maxHeight: 76, alignment: .top)
+                .clipped()
+                .layoutPriority(-1)
             }
         }
+    }
+
+    /// 来源与当前步骤先显示，其他结果按余量裁剪；不把历史工具冒充终态。
+    private var details: [ChatWidgetSnapshot.ToolActivity] {
+        let phase = state.sessionPhase(for: chat)
+        var rows = state.flowNotes.filter { $0.title != phase.title || $0.detail != phase.detail }
+        if let detail = phase.detail {
+            rows.insert(.init(symbol: phase.symbol, title: detail), at: min(1, rows.count))
+        }
+        if state.finishedBadge == nil {
+            for tool in state.recentTools {
+                var row = tool
+                let suffix = [tool.result, tool.detail].compactMap { $0 }.joined(separator: " · ")
+                row.detail = suffix.isEmpty ? nil : suffix
+                rows.append(row)
+            }
+        }
+        if let metrics = state.metrics {
+            rows.append(.init(symbol: "number", title: metrics))
+        }
+        return rows
+    }
+
+    private func flowRows(limit: Int, lines: Int) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(Array(details.prefix(limit).enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Image(systemName: item.symbol)
+                        .foregroundStyle(item.failed == true ? WidgetTheme.island.red : .secondary)
+                        .frame(width: 16)
+                        .accessibilityHidden(true)
+                    Text(verbatim: [item.title, item.detail].compactMap { $0 }.joined(separator: " · "))
+                        .lineLimit(lines)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .privacySensitive()
+            }
+        }
+        // 让 ViewThatFits 以实际高度选择较短版本，而不是先压缩长版本的文字。
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
