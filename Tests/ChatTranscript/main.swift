@@ -349,20 +349,20 @@ precondition(combined[0].text == "First thought\n\nSecond thought")
 precondition(combined[0].trace.filter { $0.role == .tool }.count == 2)
 precondition(combined[0].trace.first { $0.role == .tool }?.detail != nil)
 precondition(combined[1].role == .assistant && combined[1].text == "Answer")
-let successfulBuild = ChatTranscript(events: [
-    event(1, "toolResult", [
+let artifactPrompt = UUID()
+let pendingBuildEvents = [
+    event(1, "prompt", ["id": .string(artifactPrompt.uuidString), "text": .string("构建项目")]),
+    event(2, "toolResult", [
         "tool": .string(AgentToolName.projectBuild.rawValue),
         "output": .string("{\"succeeded\":true,\"artifacts\":[{\"id\":\"artifact-1\",\"kind\":\"package\",\"name\":\"hello.deb\",\"digest\":\"abc\"}] }"),
     ]),
-]) { _ in nil }
+]
+let pendingBuild = ChatTranscript(events: pendingBuildEvents) { _ in nil }
+precondition(!pendingBuild.messages.contains(where: \\.isGeneratedFiles), "build artifact remains hidden until the turn ends")
+let successfulBuild = ChatTranscript(events: pendingBuildEvents + [event(3, "finished")]) { _ in nil }
 let artifactMessage = successfulBuild.messages.first { $0.text.contains("apelin-artifact://share/artifact-1") }
-precondition(artifactMessage?.text == String(localized: "Files generated this turn:") + "\n\n[hello.deb](apelin-artifact://share/artifact-1)", "a successful build exposes its artifact under a generic file heading")
-let rebuiltArtifactMessage = ChatTranscript(events: [
-    event(1, "toolResult", [
-        "tool": .string(AgentToolName.projectBuild.rawValue),
-        "output": .string("{\"succeeded\":true,\"artifacts\":[{\"id\":\"artifact-1\",\"kind\":\"package\",\"name\":\"hello.deb\",\"digest\":\"abc\"}] }"),
-    ]),
-]) { _ in nil }.messages.first { $0.text.contains("apelin-artifact://share/artifact-1") }
+precondition(artifactMessage?.text == String(localized: "Files generated this turn:") + "\n\n[hello.deb](apelin-artifact://share/artifact-1)", "a successful build exposes its artifact after the turn ends")
+let rebuiltArtifactMessage = ChatTranscript(events: pendingBuildEvents + [event(3, "finished")]) { _ in nil }.messages.first { $0.text.contains("apelin-artifact://share/artifact-1") }
 precondition(artifactMessage?.id == rebuiltArtifactMessage?.id, "artifact link identity survives transcript rebuild")
 let failedBuild = ChatTranscript(events: [
     event(1, "toolResult", [
@@ -423,6 +423,12 @@ do {
         let replay = ChatTranscript(events: Array(events.prefix(index + 1))) { _ in nil }
         precondition(incremental.messages == replay.messages, "逐事件追加与完整回放一致")
         let runningFooter = incremental.messages.last { $0.isGeneratedFiles }
+        if index == 1 {
+            precondition(runningFooter == nil, "构建事件到达但回合未结束时不显示文件")
+        }
+        if index == 5 {
+            precondition(runningFooter != nil, "回合完成后显示文件")
+        }
         if let runningFooter { precondition(incremental.messages.filter { $0.id == runningFooter.id }.count == 1) }
     }
     precondition(incremental.messages == full.messages)

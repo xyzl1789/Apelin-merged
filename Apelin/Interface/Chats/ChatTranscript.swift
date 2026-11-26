@@ -572,10 +572,18 @@ struct ChatTranscript {
             messages[header].headerReceivedTokens = receivedTokens
             messages[header].headerReceivedSettles = assistant != nil
         }
-        // 先完成思考状态与回合统计，再把交付文件移到各轮最后，
-        // 避免文件后面又出现本轮的工具行、回复或运行摘要。
+        // 交付文件先留在原始事件折叠里；只有回合已经结束，才把它们
+        // 放进可见消息。这样构建完成但对话仍在继续时，文件不会跟着实时内容移动。
         let turnStarts = Set(turns.compactMap { rows.indices.contains($0.start) ? rows[$0.start].id : nil })
-        messages = Self.withGeneratedFilesAtEnd(messages, turnStarts: turnStarts)
+        let completedTurnStarts = Set(turns.compactMap { turn in
+            guard turn.ended != nil, rows.indices.contains(turn.start) else { return nil }
+            return rows[turn.start].id
+        })
+        messages = Self.withGeneratedFilesAtEnd(
+            messages,
+            turnStarts: turnStarts,
+            completedTurnStarts: completedTurnStarts,
+        )
         messages += queued
         for draft in sending where !messages.contains(where: { $0.id == draft.id })
             && !pendingMessages.contains(where: { $0.id == draft.id }) {
@@ -1146,10 +1154,15 @@ struct ChatTranscript {
     }
 
     /// 文件只改变显示位置；底层事件、回合归属和已有文件均不改动。
-    private static func withGeneratedFilesAtEnd(_ rows: [ChatMessage], turnStarts: Set<UUID>) -> [ChatMessage] {
+    private static func withGeneratedFilesAtEnd(
+        _ rows: [ChatMessage],
+        turnStarts: Set<UUID>,
+        completedTurnStarts: Set<UUID>,
+    ) -> [ChatMessage] {
         var result: [ChatMessage] = []
         var files: ChatMessage?
         var links: [String] = []
+        var currentTurnStart: UUID?
         // An artifact can be replayed by a resumed/interrupted run or appear
         // again after an inserted prompt. Keep its first visible occurrence.
         var seen: Set<String> = []
@@ -1162,11 +1175,17 @@ struct ChatTranscript {
             links = []
         }
         for row in rows {
-            if turnStarts.contains(row.id) { flush() }
+            if turnStarts.contains(row.id) {
+                flush()
+                currentTurnStart = row.id
+            }
             guard row.isGeneratedFiles else {
                 result.append(row)
                 continue
             }
+            // Do not expose an active turn's files yet. The source rows remain
+            // in `rows`, so the next rebuild after `finished` can place them once.
+            if let currentTurnStart, !completedTurnStarts.contains(currentTurnStart) { continue }
             let newLinks = row.text.components(separatedBy: "  \n").filter { seen.insert($0).inserted }
             let newAttachments = row.attachments.filter { seenAttachments.insert($0.id).inserted }
             guard !newLinks.isEmpty || !newAttachments.isEmpty else { continue }
