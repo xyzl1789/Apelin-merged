@@ -299,7 +299,8 @@ private struct ChatActivitySessionRow: View {
                     Text(verbatim: [item.title, item.detail].compactMap { $0 }.joined(separator: " · "))
                         .lineLimit(lines)
                         .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, height: 16, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(height: 16, alignment: .leading)
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
