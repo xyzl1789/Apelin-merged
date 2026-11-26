@@ -78,6 +78,9 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         /// 从它起走；不在回合中为 nil。
         var startedAt: Date?
 
+        /// 是否固定为实时活动优先显示的会话。
+        var isPinned: Bool = false
+
         var isInProgress: Bool {
             status == .working || status == .stopping || status == .waiting
         }
@@ -198,12 +201,12 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
     /// to 4 KB; neither of its presentations shows more than three.
     static let activityLimit = 4
 
-    /// `chats`, each with the time the sidebar lists it by (when the reader
-    /// last started or wrote in it), put in the order the widgets list
-    /// them: waiting for an approval, then working, then the rest, newest
-    /// first within each.
+    /// 固定会话优先；其余按待审批、工作中、其他排序，各组内最近交互的排前。
     init(chats: [(chat: Chat, updated: Date)], limit: Int = listLimit) {
         let ordered = chats.sorted { lhs, rhs in
+            if lhs.chat.isPinned != rhs.chat.isPinned {
+                return lhs.chat.isPinned
+            }
             let left = Self.rank(lhs.chat.status), right = Self.rank(rhs.chat.status)
             if left != right {
                 return left < right
@@ -315,8 +318,7 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         return prefix
     }
 
-    /// The conversation a tap on the Live Activity opens: the one waiting,
-    /// else the latest working.
+    /// 实时活动点击目标：固定会话优先，否则待审批优先，再取最新工作的会话。
     var mostUrgent: Chat? {
         chats.first
     }
@@ -328,6 +330,50 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         case .working: 2
         case .done, .failed: 3
         }
+    }
+}
+
+extension ChatWidgetSnapshot.Chat {
+    private enum CodingKeys: String, CodingKey {
+        case id, title, project, status, approvalTool, startedAt, isPinned
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        project = try container.decodeIfPresent(String.self, forKey: .project)
+        status = try container.decode(Status.self, forKey: .status)
+        approvalTool = try container.decodeIfPresent(String.self, forKey: .approvalTool)
+        startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(project, forKey: .project)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(approvalTool, forKey: .approvalTool)
+        try container.encodeIfPresent(startedAt, forKey: .startedAt)
+        try container.encode(isPinned, forKey: .isPinned)
+    }
+}
+
+enum ChatActivityPinStore {
+    private static let key = "chat.liveActivityPinnedID"
+
+    static func pinnedID(defaults: UserDefaults = .standard) -> UUID? {
+        defaults.string(forKey: key).flatMap(UUID.init(uuidString:))
+    }
+
+    static func setPinnedID(_ id: UUID?, defaults: UserDefaults = .standard) {
+        guard let id else {
+            defaults.removeObject(forKey: key)
+            return
+        }
+        defaults.set(id.uuidString, forKey: key)
     }
 }
 

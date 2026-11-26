@@ -24,6 +24,22 @@ final class ChatWidgetPublisher {
     private var lastStepSignal: String?
     private var written: ChatWidgetSnapshot?
     private var shownActivity: ChatWidgetSnapshot?
+    private var pinnedChatID: UUID? {
+        ChatActivityPinStore.pinnedID()
+    }
+    /// 最多一个会话固定；新的固定会话替换旧值，并绕过流式节流立即刷新。
+    @discardableResult
+    func toggleLiveActivityPin(for id: UUID) -> Bool {
+        let shouldPin = pinnedChatID != id
+        ChatActivityPinStore.setPinnedID(shouldPin ? id : nil)
+        publishNow()
+        return shouldPin
+    }
+
+    func isPinnedForLiveActivity(_ id: UUID) -> Bool {
+        pinnedChatID == id
+    }
+
     /// 最多一个 ActivityKit 调用在执行，后面只留最新快照，不排队重播旧回答。
     private var activityWork: Task<Void, Never>?
     private var pendingActivity: ChatWidgetSnapshot?
@@ -38,6 +54,7 @@ final class ChatWidgetPublisher {
         let isStopping: Bool
         let title: String
         let project: String?
+        let isPinned: Bool
         let chat: ChatWidgetSnapshot.Chat
     }
 
@@ -45,19 +62,22 @@ final class ChatWidgetPublisher {
         let id = record.summary.id
         let title = record.summary.displayTitle
         let isStopping = record.run == .stopping
+        let isPinned = pinnedChatID == id
         if let cached = chatRows[id], cached.events == record.events.count,
            cached.working == record.summary.isWorking, cached.isStopping == isStopping,
-           cached.title == title, cached.project == projectName
+           cached.title == title, cached.project == projectName, cached.isPinned == isPinned
         {
             return cached.chat
         }
-        let chat = record.widgetChat(projectName: projectName)
+        var chat = record.widgetChat(projectName: projectName)
+        chat.isPinned = isPinned
         chatRows[id] = CachedChat(
             events: record.events.count,
             working: record.summary.isWorking,
             isStopping: isStopping,
             title: title,
             project: projectName,
+            isPinned: isPinned,
             chat: chat,
         )
         return chat
@@ -180,7 +200,12 @@ final class ChatWidgetPublisher {
             let project = record.summary.projectName.map { projectNames[$0] ?? $0 }
             return (chat: chatRow(record, projectName: project), updated: record.summary.lastInteraction, listed: record.isListedInWidgets)
         }
-        let snapshot = ChatWidgetSnapshot(chats: listed.filter { $0.listed }.map { ($0.chat, $0.updated) })
+        let widgetChats = listed.filter { $0.listed }.map { row -> (chat: ChatWidgetSnapshot.Chat, updated: Date) in
+            var chat = row.chat
+            chat.isPinned = false
+            return (chat: chat, updated: row.updated)
+        }
+        let snapshot = ChatWidgetSnapshot(chats: widgetChats)
         if snapshot != written {
             written = snapshot
             write(snapshot)

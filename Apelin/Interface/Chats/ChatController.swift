@@ -34,6 +34,9 @@ final class ChatController: UIViewController {
     @objc dynamic private var openingQueueEditor = false
     private let composer = ComposerView()
     private let topBlur = ChatTopBlurView()
+    private let liveActivityPinButton = UIBarButtonItem(
+        image: UIImage(systemName: "pin"), style: .plain, target: nil, action: nil,
+    )
     /// 没有消息的对话开场时，在输入框上方空白区中央显示的那行字。
     private let welcome = ChatWelcomeView()
     /// 在所有内容之下：读者选的纸或图片，画在消息列表和输入框下面，
@@ -177,7 +180,10 @@ final class ChatController: UIViewController {
             )
         }])
         more.accessibilityLabel = String(localized: "More")
-        navigationItem.rightBarButtonItem = more
+        liveActivityPinButton.target = self
+        liveActivityPinButton.action = #selector(toggleLiveActivityPin)
+        navigationItem.rightBarButtonItems = [more, liveActivityPinButton]
+        updateLiveActivityPinButton()
     }
 
     @available(*, unavailable)
@@ -822,6 +828,25 @@ final class ChatController: UIViewController {
         }
     }
 
+    @objc private func toggleLiveActivityPin() {
+        guard let chat else { return }
+        _ = ChatWidgetPublisher.shared.toggleLiveActivityPin(for: chat.id)
+        updateLiveActivityPinButton()
+    }
+
+    private func updateLiveActivityPinButton() {
+        let isPinned = chat.map { ChatWidgetPublisher.shared.isPinnedForLiveActivity($0.id) } ?? false
+        liveActivityPinButton.isEnabled = chat != nil
+        liveActivityPinButton.image = UIImage(systemName: isPinned ? "pin.fill" : "pin")
+        if isPinned {
+            liveActivityPinButton.accessibilityLabel = String(localized: "Unpin Live Activity", table: "LiveActivityPin")
+            liveActivityPinButton.accessibilityValue = String(localized: "Pinned", table: "LiveActivityPin")
+        } else {
+            liveActivityPinButton.accessibilityLabel = String(localized: "Pin Live Activity", table: "LiveActivityPin")
+            liveActivityPinButton.accessibilityValue = String(localized: "Not pinned", table: "LiveActivityPin")
+        }
+    }
+
     /// Shows `chat`. The same conversation again only takes its new name;
     /// another one also swaps the messages and the draft.
     func use(_ chat: ChatSummary) {
@@ -890,6 +915,7 @@ final class ChatController: UIViewController {
         title = chat.displayTitle
         // rolled only on screen; a page coming back shows its name at once
         titleView.setTitle(chat.titlePresentation, animated: previous != nil && view.window != nil)
+        updateLiveActivityPinButton()
         guard previous?.id != chat.id else { return }
         isSwitchingChat = true
         needsInitialScroll = true

@@ -1,0 +1,74 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Pin Live Activity" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "تثبيت النشاط المباشر" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Live-Aktivität anheften" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Pin Live Activity" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Fijar actividad en directo" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Épingler l’activité en direct" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Fissa attività in tempo reale" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ライブアクティビティを固定" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "실시간 활동 고정" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Fixar Atividade ao Vivo" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Закрепить Live Activity" } },
+        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Ghim Hoạt động trực tiếp" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "固定实时活动" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "固定即時動態" } }
+      }
+    },
+    "Unpin Live Activity" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "إلغاء تثبيت النشاط المباشر" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Live-Aktivität lösen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Unpin Live Activity" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Desfijar actividad en directo" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Désépingler l’activité en direct" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Sblocca attività in tempo reale" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ライブアクティビティの固定を解除" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "실시간 활동 고정 해제" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Desafixar Atividade ao Vivo" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Открепить Live Activity" } },
+        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Bỏ ghim Hoạt động trực tiếp" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "取消固定实时活动" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "取消固定即時動態" } }
+      }
+    },
+    "Pinned" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "مثبت" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Angeheftet" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Pinned" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Fijado" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Épinglé" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Fissato" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "固定済み" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "고정됨" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Fixado" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Закреплено" } },
+        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Đã ghim" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已固定" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "已固定" } }
+      }
+    },
+    "Not pinned" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "غير مثبت" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nicht angeheftet" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not pinned" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No fijado" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Non épinglé" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Non fissato" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "未固定" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "고정 안 됨" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Não fixado" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Не закреплено" } },
+        "vi" : { "stringUnit" : { "state" : "translated", "value" : "Chưa ghim" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未固定" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "未固定" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

@@ -200,9 +200,10 @@ require(Plan.arrival(of: request, current: Plan.Request(address: "https://github
 
 typealias Chat = ChatWidgetSnapshot.Chat
 let now = Date()
-func chat(_ id: String, _ status: Chat.Status, _ age: TimeInterval) -> (chat: Chat, updated: Date) {
-    (Chat(id: id, title: id, project: nil, status: status, approvalTool: status == .waiting ? "apelin_package_install" : nil),
-     now.addingTimeInterval(-age))
+func chat(_ id: String, _ status: Chat.Status, _ age: TimeInterval, pinned: Bool = false) -> (chat: Chat, updated: Date) {
+    var value = Chat(id: id, title: id, project: nil, status: status, approvalTool: status == .waiting ? "apelin_package_install" : nil)
+    value.isPinned = pinned
+    return (value, now.addingTimeInterval(-age))
 }
 
 let snapshot = ChatWidgetSnapshot(chats: [
@@ -217,6 +218,31 @@ require(snapshot.chats.map(\.id) == ["waiting", "working-new", "working-old", "n
         "Waiting first, then working, then the rest, newest first within each")
 require(snapshot.totalCount == 6 && snapshot.workingCount == 2 && snapshot.waitingCount == 1, "Counts cover every chat")
 require(snapshot.mostUrgent?.id == "waiting", "The one waiting most needs a look")
+
+let pinnedOrder = ChatWidgetSnapshot(chats: [
+    chat("waiting", .waiting, 1),
+    chat("pinned-working", .working, 500, pinned: true),
+])
+require(pinnedOrder.chats.map(\.id) == ["pinned-working", "waiting"], "固定会话应优先于常规状态排序")
+require(pinnedOrder.inProgress.mostUrgent?.id == "pinned-working", "实时活动应跳转到固定会话")
+let oldActivityData = Data(#"{"chats":[{"id":"legacy","title":"Legacy","status":"working"}]}"#.utf8)
+let oldActivity = try JSONDecoder().decode(ChatWidgetSnapshot.self, from: oldActivityData)
+require(oldActivity.chats.first?.isPinned == false, "旧实时活动快照缺少固定字段时默认未固定")
+let pinnedChatData = try JSONEncoder().encode(pinnedOrder.chats[0])
+let pinnedChatCopy = try JSONDecoder().decode(Chat.self, from: pinnedChatData)
+require(pinnedChatCopy.isPinned, "固定标记应通过 Codable 编解码往返")
+do {
+    let domain = "ApelinLink.ChatActivityPinStore.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: domain) else { fatalError("无法创建测试偏好存储") }
+    let first = UUID(), replacement = UUID()
+    ChatActivityPinStore.setPinnedID(first, defaults: defaults)
+    require(ChatActivityPinStore.pinnedID(defaults: defaults) == first, "固定选择应持久保存")
+    ChatActivityPinStore.setPinnedID(replacement, defaults: defaults)
+    require(ChatActivityPinStore.pinnedID(defaults: defaults) == replacement, "固定另一会话应替换原固定会话")
+    ChatActivityPinStore.setPinnedID(nil, defaults: defaults)
+    require(ChatActivityPinStore.pinnedID(defaults: defaults) == nil, "解除固定后应清除选择")
+    defaults.removePersistentDomain(forName: domain)
+}
 
 let activity = snapshot.inProgress
 require(activity.chats.map(\.id) == ["waiting", "working-new", "working-old", "new-done"],
