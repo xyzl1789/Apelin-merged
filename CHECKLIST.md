@@ -6,9 +6,9 @@ nothing builds until every box below is ticked.
 
 Where `make check` cannot be run at all — no `make` or Xcode, a script or
 tool it calls missing, a device that cannot build this app — code may still
-be changed, cautiously: this file gates the build and the push, not every
-edit. `make check` is then still owed before the change is pushed, and the
-box is never ticked to get past a gate that did run.
+be changed, cautiously: this file gates the build, not every edit. The check
+is still owed to the first environment that can run it, and the box is never
+ticked to get past a gate that did run.
 
 Tick a box only after doing or deciding the thing, never to get past the gate.
 An item that does not apply here is ticked with the reason written after it.
