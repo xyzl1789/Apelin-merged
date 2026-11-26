@@ -47,7 +47,10 @@ final class ChatMessageRow: ListRowView {
     /// Messages" rotor puts the cursor.
     var spokenElement: UIView { label }
     /// A generated-files reply gets a quiet container so the links read as one result group.
-    private static let generatedFilesCardPadding: CGFloat = 12
+    private static let generatedFilesCardHorizontalPadding: CGFloat = 12
+    private static let generatedFilesCardTopPadding: CGFloat = 12
+    /// 卡片靠近下一条消息的一侧收紧，避免和用户气泡之间显得断开。
+    private static let generatedFilesCardBottomPadding: CGFloat = 4
     private static let generatedFilesCardCornerRadius: CGFloat = 12
     private let generatedFilesCard = UIView()
     private var showsGeneratedFilesCard = false
@@ -388,16 +391,23 @@ final class ChatMessageRow: ListRowView {
                 ))
             }
         } else {
-            let cardPadding = showsGeneratedFilesCard ? Self.generatedFilesCardPadding : 0
+            let cardHorizontalPadding = showsGeneratedFilesCard ? Self.generatedFilesCardHorizontalPadding : 0
+            let cardTopPadding = showsGeneratedFilesCard ? Self.generatedFilesCardTopPadding : 0
+            let cardBottomPadding = showsGeneratedFilesCard ? Self.generatedFilesCardBottomPadding : 0
             let textHeight = hasText ? max(0, content.height - attachmentHeight - gap - footerHeight) : 0
             if showsGeneratedFilesCard {
                 generatedFilesCard.frame = CGRect(
                     x: content.minX,
                     y: content.minY,
                     width: content.width,
-                    height: textHeight + cardPadding * 2,
+                    height: textHeight + cardTopPadding + cardBottomPadding,
                 )
-                markdownView.frame = generatedFilesCard.frame.insetBy(dx: cardPadding, dy: cardPadding)
+                markdownView.frame = CGRect(
+                    x: generatedFilesCard.frame.minX + cardHorizontalPadding,
+                    y: generatedFilesCard.frame.minY + cardTopPadding,
+                    width: generatedFilesCard.frame.width - cardHorizontalPadding * 2,
+                    height: textHeight,
+                )
             } else {
                 generatedFilesCard.frame = .zero
                 markdownView.frame = CGRect(x: content.minX, y: content.minY, width: content.width, height: textHeight)
@@ -406,7 +416,7 @@ final class ChatMessageRow: ListRowView {
             publishStreamingHeight()
             attachmentsView.frame = CGRect(
                 x: content.minX,
-                y: content.minY + textHeight + cardPadding * 2 + gap,
+                y: content.minY + textHeight + cardTopPadding + cardBottomPadding + gap,
                 width: content.width,
                 height: attachmentHeight,
             )
@@ -415,7 +425,7 @@ final class ChatMessageRow: ListRowView {
                 let footerWidth = min(footer.contentWidth, content.width)
                 footer.frame = directionalFrame(CGRect(
                     x: content.minX,
-                    y: content.minY + textHeight + cardPadding * 2 + gap + attachmentHeight + Self.footerSpacing,
+                    y: content.minY + textHeight + cardTopPadding + cardBottomPadding + gap + attachmentHeight + Self.footerSpacing,
                     width: footerWidth,
                     height: MessageFooterView.height,
                 ))
@@ -452,8 +462,8 @@ final class ChatMessageRow: ListRowView {
         }
         sizingMarkdown.usesFileLinkColors = message.isGeneratedFiles
         let available = textWidth(for: width, user: user)
-        let cardPadding = !user && message.isGeneratedFiles ? generatedFilesCardPadding : 0
-        let markdownWidth = max(1, available - cardPadding * 2)
+        let cardHorizontalPadding = !user && message.isGeneratedFiles ? generatedFilesCardHorizontalPadding : 0
+        let markdownWidth = max(1, available - cardHorizontalPadding * 2)
         let userTextSize = user && !message.text.isEmpty ? textSize(message.text, width: available) : nil
         let textHeight: CGFloat
         if message.text.isEmpty {
@@ -486,7 +496,9 @@ final class ChatMessageRow: ListRowView {
         let gap = textHeight > 0 && attachmentHeight > 0 ? ChatMarkdownView.blockSpacing : 0
         let senderHeight = user && message.sender != nil ? Self.senderHeight : 0
         let footerHeight = MessageFooterView.shows(message) ? MessageFooterView.height + footerSpacing : 0
-        let generatedFilesCardHeight = !user && message.isGeneratedFiles ? generatedFilesCardPadding * 2 : 0
+        let generatedFilesCardHeight = !user && message.isGeneratedFiles
+            ? generatedFilesCardTopPadding + generatedFilesCardBottomPadding
+            : 0
         return senderHeight + textHeight + generatedFilesCardHeight + attachmentHeight + gap + footerHeight + insets.top + insets.bottom
     }
 
