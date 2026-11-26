@@ -50,7 +50,7 @@ final class ChatMessageRow: ListRowView {
     private static let generatedFilesCardHorizontalPadding: CGFloat = 12
     private static let generatedFilesCardTopPadding: CGFloat = 12
     /// 卡片靠近下一条消息的一侧收紧，避免和用户气泡之间显得断开。
-    private static let generatedFilesCardBottomPadding: CGFloat = 4
+    private static let generatedFilesCardBottomPadding: CGFloat = 1
     private static let generatedFilesCardCornerRadius: CGFloat = 12
     private let generatedFilesCard = UIView()
     private var showsGeneratedFilesCard = false
