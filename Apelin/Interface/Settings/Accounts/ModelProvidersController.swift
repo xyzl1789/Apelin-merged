@@ -283,7 +283,8 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
         _: UITableView,
         trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath,
     ) -> UISwipeActionsConfiguration? {
-        guard let account = account(at: indexPath), account.signedIn else { return nil }
+        guard let account = account(at: indexPath), account.signedIn,
+              account.provider.kind == .openAICompatible else { return nil }
         let provider = account.provider
         let action = UIContextualAction(style: .normal, title: noteActionTitle(for: provider)) { [weak self] _, _, completion in
             guard let self, presentedViewController == nil else { completion(false); return }

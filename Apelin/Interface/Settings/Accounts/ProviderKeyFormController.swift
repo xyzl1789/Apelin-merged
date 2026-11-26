@@ -62,7 +62,8 @@ final class ProviderKeyFormController: TableController {
         self.keys = keys.filter { $0.field != .defaultModel }
         self.alternatives = alternatives
         self.initialValues = initialValues
-        self.noteProvider = noteProvider
+        let provider = noteProvider?.kind == .openAICompatible ? noteProvider : nil
+        self.noteProvider = provider
         super.init(style: .insetGrouped)
     }
 

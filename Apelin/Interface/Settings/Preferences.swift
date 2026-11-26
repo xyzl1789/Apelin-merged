@@ -9,10 +9,12 @@ enum Preferences {
     /// 备注只保存在本机，按服务商实例区分，不进入凭据或请求。
     enum ProviderNotes {
         static func note(for provider: AgentProvider) -> String? {
-            UserDefaults.standard.string(forKey: key(for: provider))
+            guard provider.kind == .openAICompatible else { return nil }
+            return UserDefaults.standard.string(forKey: key(for: provider))
         }
 
         static func save(_ text: String, for provider: AgentProvider) {
+            guard provider.kind == .openAICompatible else { return }
             let text = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
             if text.isEmpty {
                 UserDefaults.standard.removeObject(forKey: key(for: provider))
