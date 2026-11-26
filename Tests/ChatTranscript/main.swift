@@ -377,6 +377,7 @@ print("ok: successful build artifacts appear as stable transcript links")
 do {
     let first = UUID()
     let second = UUID()
+    let inserted = UUID()
     let result: [String: JSONValue] = [
         "tool": .string(AgentToolName.projectBuild.rawValue),
         "output": .string("{\"succeeded\":true,\"artifacts\":[{\"id\":\"one\",\"name\":\"hello.deb\"},{\"id\":\"photo\",\"name\":\"photo.png\"},{\"id\":\"report\",\"name\":\"report[final]*.pdf\"},{\"id\":\"data\",\"name\":\"data.json\"},{\"id\":\"archive\",\"name\":\"archive.zip\"}] }"),
@@ -395,6 +396,13 @@ do {
         ]),
         event(9, "message", ["text": .string("第二轮完成")]),
         event(10, "finished"),
+        event(11, "prompt", ["id": .string(inserted.uuidString), "text": .string("插入一句话")]),
+        event(12, "toolResult", [
+            "tool": .string(AgentToolName.projectBuild.rawValue),
+            "output": .string("{\"succeeded\":true,\"artifacts\":[{\"id\":\"two\",\"name\":\"tool.ipa\"}] }"),
+        ]),
+        event(13, "message", ["text": .string("插入后的回复")]),
+        event(14, "finished"),
     ]
     let full = ChatTranscript(events: events) { _ in nil }
     let footers = full.messages.filter(\.isGeneratedFiles)
@@ -402,7 +410,10 @@ do {
     let firstFooter = full.messages.firstIndex(where: \.isGeneratedFiles)!
     let nextPrompt = full.messages.firstIndex { $0.id == second }!
     precondition(firstFooter == nextPrompt - 1 && full.messages[firstFooter - 1].text == "第一轮完成", "第一轮文件在回复之后、下一轮之前")
-    precondition(full.messages.last?.id == footers.last?.id && full.messages[full.messages.count - 2].text == "第二轮完成", "第二轮文件也在末尾")
+    let secondFooter = full.messages.firstIndex { $0.isGeneratedFiles && $0.id == footers[1].id }!
+    let insertedPrompt = full.messages.firstIndex { $0.id == inserted }!
+    precondition(secondFooter < insertedPrompt && full.messages[secondFooter - 1].text == "第二轮完成", "重复产物固定在第二轮首次出现的位置")
+    precondition(full.messages.filter { $0.text.contains("apelin-artifact://share/two") }.count == 1, "插入回合不重复显示已出现的产物")
     precondition(["hello.deb", "photo.png", "report\\[final\\]\\*.pdf", "data.json", "archive.zip"].allSatisfy(footers[0].text.contains), "包、图片、PDF、JSON 和压缩包均按文件名呈现")
     precondition(footers[0].text.components(separatedBy: "apelin-artifact://share/one").count == 2, "重复构建事件的同一产物链接只显示一次")
     precondition(!footers[1].text.contains("hello.deb") && footers[1].text.contains("tool.ipa"), "不同回合不串文件")

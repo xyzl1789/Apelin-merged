@@ -46,6 +46,11 @@ final class ChatMessageRow: ListRowView {
     /// The element VoiceOver reads a message by: where the chat's "Your
     /// Messages" rotor puts the cursor.
     var spokenElement: UIView { label }
+    /// A generated-files reply gets a quiet container so the links read as one result group.
+    private static let generatedFilesCardPadding: CGFloat = 12
+    private static let generatedFilesCardCornerRadius: CGFloat = 12
+    private let generatedFilesCard = UIView()
+    private var showsGeneratedFilesCard = false
     private let markdownView = ChatMarkdownView()
     private var markdownText: String?
     /// 流式视图发布已经布局的文档高度，列表只失效这一行。
@@ -140,6 +145,13 @@ final class ChatMessageRow: ListRowView {
         label.isAccessibilityElement = true
         label.lineRenderer = searchRenderer
         addSubview(label)
+        generatedFilesCard.layer.cornerRadius = Self.generatedFilesCardCornerRadius
+        generatedFilesCard.layer.cornerCurve = .continuous
+        generatedFilesCard.layer.borderWidth = 1
+        generatedFilesCard.isHidden = true
+        generatedFilesCard.isAccessibilityElement = false
+        updateGeneratedFilesCardAppearance()
+        addSubview(generatedFilesCard)
         addSubview(markdownView)
         markdownView.linkHandler = { [weak self] link, _, _ in
             let url: URL? = switch link {
@@ -182,6 +194,17 @@ final class ChatMessageRow: ListRowView {
         fatalError("Use init(frame:)")
     }
 
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.hasDifferentColorAppearance(comparedTo: traitCollection) == true else { return }
+        updateGeneratedFilesCardAppearance()
+    }
+
+    private func updateGeneratedFilesCardAppearance() {
+        generatedFilesCard.backgroundColor = UIColor.secondarySystemBackground
+        generatedFilesCard.layer.borderColor = UIColor.separator.withAlphaComponent(0.35).resolvedColor(with: traitCollection).cgColor
+    }
+
     override func prepareForReuse() {
         super.prepareForReuse()
         label.clearSelection()
@@ -201,6 +224,8 @@ final class ChatMessageRow: ListRowView {
         markdownView.setSearchHighlight(nil)
         markdownText = nil
         publishedDocumentHeight = 0
+        showsGeneratedFilesCard = false
+        generatedFilesCard.isHidden = true
         onDocumentHeightChange = nil
         attachments = []
         markdownView.usesFileLinkColors = false
@@ -218,6 +243,8 @@ final class ChatMessageRow: ListRowView {
         let isSameMessage = shownID == message.id
         let shouldStream = isStreaming && !message.isGeneratedFiles
         markdownView.usesFileLinkColors = message.isGeneratedFiles
+        showsGeneratedFilesCard = message.role == .assistant && message.isGeneratedFiles
+        generatedFilesCard.isHidden = !showsGeneratedFilesCard
         if !isSameMessage {
             publishedDocumentHeight = 0
         }
@@ -361,13 +388,25 @@ final class ChatMessageRow: ListRowView {
                 ))
             }
         } else {
+            let cardPadding = showsGeneratedFilesCard ? Self.generatedFilesCardPadding : 0
             let textHeight = hasText ? max(0, content.height - attachmentHeight - gap - footerHeight) : 0
-            markdownView.frame = CGRect(x: content.minX, y: content.minY, width: content.width, height: textHeight)
+            if showsGeneratedFilesCard {
+                generatedFilesCard.frame = CGRect(
+                    x: content.minX,
+                    y: content.minY,
+                    width: content.width,
+                    height: textHeight + cardPadding * 2,
+                )
+                markdownView.frame = generatedFilesCard.frame.insetBy(dx: cardPadding, dy: cardPadding)
+            } else {
+                generatedFilesCard.frame = .zero
+                markdownView.frame = CGRect(x: content.minX, y: content.minY, width: content.width, height: textHeight)
+            }
             markdownView.trackedScrollView = superview as? UIScrollView
             publishStreamingHeight()
             attachmentsView.frame = CGRect(
                 x: content.minX,
-                y: content.minY + textHeight + gap,
+                y: content.minY + textHeight + cardPadding * 2 + gap,
                 width: content.width,
                 height: attachmentHeight,
             )
@@ -376,7 +415,7 @@ final class ChatMessageRow: ListRowView {
                 let footerWidth = min(footer.contentWidth, content.width)
                 footer.frame = directionalFrame(CGRect(
                     x: content.minX,
-                    y: content.minY + textHeight + gap + attachmentHeight + Self.footerSpacing,
+                    y: content.minY + textHeight + cardPadding * 2 + gap + attachmentHeight + Self.footerSpacing,
                     width: footerWidth,
                     height: MessageFooterView.height,
                 ))
@@ -413,21 +452,23 @@ final class ChatMessageRow: ListRowView {
         }
         sizingMarkdown.usesFileLinkColors = message.isGeneratedFiles
         let available = textWidth(for: width, user: user)
+        let cardPadding = !user && message.isGeneratedFiles ? generatedFilesCardPadding : 0
+        let markdownWidth = max(1, available - cardPadding * 2)
         let userTextSize = user && !message.text.isEmpty ? textSize(message.text, width: available) : nil
         let textHeight: CGFloat
         if message.text.isEmpty {
             textHeight = 0
         } else if let userTextSize {
             textHeight = ceil(userTextSize.height) + textPadding * 2
-        } else if let document = ChatRowHeights.height(id: message.id, text: message.text, width: available,
+        } else if let document = ChatRowHeights.height(id: message.id, text: message.text, width: markdownWidth,
                                                       textSize: textSizeCategory.rawValue) {
             textHeight = ceil(document)
         } else {
             let document = ChatPerformance.measure("height") { () -> CGFloat in
                 sizingMarkdown.setMarkdown(message.text)
-                return sizingMarkdown.boundingSize(for: available).height
+                return sizingMarkdown.boundingSize(for: markdownWidth).height
             }
-            ChatRowHeights.store(document, id: message.id, text: message.text, width: available,
+            ChatRowHeights.store(document, id: message.id, text: message.text, width: markdownWidth,
                                  textSize: textSizeCategory.rawValue)
             textHeight = ceil(document)
         }
@@ -445,7 +486,8 @@ final class ChatMessageRow: ListRowView {
         let gap = textHeight > 0 && attachmentHeight > 0 ? ChatMarkdownView.blockSpacing : 0
         let senderHeight = user && message.sender != nil ? Self.senderHeight : 0
         let footerHeight = MessageFooterView.shows(message) ? MessageFooterView.height + footerSpacing : 0
-        return senderHeight + textHeight + attachmentHeight + gap + footerHeight + insets.top + insets.bottom
+        let generatedFilesCardHeight = !user && message.isGeneratedFiles ? generatedFilesCardPadding * 2 : 0
+        return senderHeight + textHeight + generatedFilesCardHeight + attachmentHeight + gap + footerHeight + insets.top + insets.bottom
     }
 
     private static var senderFont: UIFont {

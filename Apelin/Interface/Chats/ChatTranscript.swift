@@ -1150,14 +1150,16 @@ struct ChatTranscript {
         var result: [ChatMessage] = []
         var files: ChatMessage?
         var links: [String] = []
+        // An artifact can be replayed by a resumed/interrupted run or appear
+        // again after an inserted prompt. Keep its first visible occurrence.
         var seen: Set<String> = []
+        var seenAttachments: Set<UUID> = []
         func flush() {
             guard var footer = files else { return }
             footer.text = String(localized: "Files generated this turn:") + "\n\n" + links.joined(separator: "  \n")
             result.append(footer)
             files = nil
             links = []
-            seen = []
         }
         for row in rows {
             if turnStarts.contains(row.id) { flush() }
@@ -1165,15 +1167,16 @@ struct ChatTranscript {
                 result.append(row)
                 continue
             }
+            let newLinks = row.text.components(separatedBy: "  \n").filter { seen.insert($0).inserted }
+            let newAttachments = row.attachments.filter { seenAttachments.insert($0.id).inserted }
+            guard !newLinks.isEmpty || !newAttachments.isEmpty else { continue }
             if files == nil {
                 files = row
+                files?.attachments = newAttachments
             } else {
-                let known = Set(files?.attachments.map(\.id) ?? [])
-                files?.attachments += row.attachments.filter { !known.contains($0.id) }
+                files?.attachments += newAttachments
             }
-            for link in row.text.components(separatedBy: "  \n") where seen.insert(link).inserted {
-                links.append(link)
-            }
+            links += newLinks
         }
         flush()
         return result
