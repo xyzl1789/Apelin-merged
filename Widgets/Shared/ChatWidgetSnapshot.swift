@@ -85,6 +85,11 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
             status == .working || status == .stopping || status == .waiting
         }
 
+        /// 实时活动标题；固定标记紧跟会话名，不影响主屏小组件（其快照不会固定）。
+        var activityTitle: String {
+            isPinned ? "\(title)📌" : title
+        }
+
         var link: URL {
             ApelinLink.conversation(id).url
         }
@@ -374,6 +379,15 @@ enum ChatActivityPinStore {
             return
         }
         defaults.set(id.uuidString, forKey: key)
+    }
+
+    /// 固定只在会话进行期间有效；完成或停止后立即清除，并把会话 ID 交给
+    /// 发布器以免它继续占用实时活动的置顶行。
+    @discardableResult
+    static func clearPinIfNotRunning(runningIDs: Set<String>, defaults: UserDefaults = .standard) -> UUID? {
+        guard let id = pinnedID(defaults: defaults), !runningIDs.contains(id.uuidString) else { return nil }
+        setPinnedID(nil, defaults: defaults)
+        return id
     }
 }
 

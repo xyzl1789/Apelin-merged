@@ -37,6 +37,7 @@ final class ChatController: UIViewController {
     private let liveActivityPinButton = UIBarButtonItem(
         image: UIImage(systemName: "pin"), style: .plain, target: nil, action: nil,
     )
+    var liveActivityPinBarButtonItem: UIBarButtonItem { liveActivityPinButton }
     /// 没有消息的对话开场时，在输入框上方空白区中央显示的那行字。
     private let welcome = ChatWelcomeView()
     /// 在所有内容之下：读者选的纸或图片，画在消息列表和输入框下面，
@@ -829,15 +830,37 @@ final class ChatController: UIViewController {
     }
 
     @objc private func toggleLiveActivityPin() {
-        guard let chat else { return }
+        guard let chat, chat.isWorking else { return }
         _ = ChatWidgetPublisher.shared.toggleLiveActivityPin(for: chat.id)
         updateLiveActivityPinButton()
     }
 
+    private static func liveActivityPinImage(isPinned: Bool) -> UIImage? {
+        guard let symbol = UIImage(
+            systemName: isPinned ? "pin.fill" : "pin",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular),
+        ) else { return nil }
+        let canvas = CGSize(width: 24, height: 24)
+        let renderer = UIGraphicsImageRenderer(size: canvas)
+        let image = renderer.image { context in
+            context.cgContext.translateBy(x: canvas.width / 2, y: canvas.height / 2)
+            context.cgContext.rotate(by: -.pi / 4)
+            symbol.draw(in: CGRect(
+                x: -symbol.size.width / 2,
+                y: -symbol.size.height / 2,
+                width: symbol.size.width,
+                height: symbol.size.height,
+            ))
+        }
+        return image.withRenderingMode(.alwaysTemplate)
+    }
+
     private func updateLiveActivityPinButton() {
-        let isPinned = chat.map { ChatWidgetPublisher.shared.isPinnedForLiveActivity($0.id) } ?? false
-        liveActivityPinButton.isEnabled = chat != nil
-        liveActivityPinButton.image = UIImage(systemName: isPinned ? "pin.fill" : "pin")
+        let isRunning = chat?.isWorking == true
+        let isPinned = isRunning && (chat.map { ChatWidgetPublisher.shared.isPinnedForLiveActivity($0.id) } ?? false)
+        liveActivityPinButton.isHidden = !isRunning
+        liveActivityPinButton.isEnabled = isRunning
+        liveActivityPinButton.image = Self.liveActivityPinImage(isPinned: isPinned)
         if isPinned {
             liveActivityPinButton.accessibilityLabel = String(localized: "Unpin Live Activity", table: "LiveActivityPin")
             liveActivityPinButton.accessibilityValue = String(localized: "Pinned", table: "LiveActivityPin")
@@ -1049,6 +1072,7 @@ final class ChatController: UIViewController {
         guard let chat else { return }
         if let summary = runtime.summary(chat.id) {
             self.chat = summary
+            updateLiveActivityPinButton()
             if title != summary.displayTitle {
                 // a rename, or the agent's title: the back button's too
                 title = summary.displayTitle

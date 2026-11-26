@@ -788,19 +788,26 @@ final class RootInterfaceController: UIViewController {
             )
         }
         if isRoot, !isSidebarShown {
-            // Git 与新建会话已移入聊天自己的「…」菜单；顶栏只留搜索。
+            // Git 与新建会话已移入聊天自己的「…」菜单；顶栏保留搜索，运行中的会话另显示固定控制。
             let search = UIAction { [weak self] _ in self?.chatController.presentMessageSearch() }
+            let searchItem: RootBarItem
             if #available(iOS 26.0, *) {
-                trailing.append(
-                    RootBarItem(
-                        image: UIImage(systemName: "magnifyingglass"),
-                        primaryAction: search,
-                    ).then {
-                        $0.accessibilityLabel = String(localized: "Search in Conversation")
-                    },
-                )
+                searchItem = RootBarItem(
+                    image: UIImage(systemName: "magnifyingglass"),
+                    primaryAction: search,
+                ).then {
+                    $0.accessibilityLabel = String(localized: "Search in Conversation")
+                }
             } else {
-                trailing.append(RootBarItem(customView: rootToolGroup(search: search)))
+                searchItem = RootBarItem(customView: rootToolGroup(search: search))
+            }
+            // rightBarButtonItems 按从右向左排列；把搜索插到图钉原位，
+            // 图钉则接替原搜索位置，菜单按钮仍留在最右侧。
+            if let chats = controller as? ChatController,
+               let pinIndex = trailing.firstIndex(where: { $0 === chats.liveActivityPinBarButtonItem }) {
+                trailing.insert(searchItem, at: pinIndex)
+            } else {
+                trailing.append(searchItem)
             }
         }
         item.leftBarButtonItems = leading.isEmpty ? nil : leading

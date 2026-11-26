@@ -88,6 +88,8 @@ final class ChatWidgetPublisher {
     @objc private dynamic static var isClosedForQuit = false
     /// 提示只占展示位置，不改变进行中会话的排序、计数或跳转目标。
     private var knownProgressIDs: Set<String> = []
+    /// 本批中固定后完成的会话不再作为结果行或最终活动行出现。
+    private var hiddenPinnedCompletions: Set<String> = []
     private var noticeQueue = ChatActivityResultQueue()
     private var noticeExpiryTask: Task<Void, Never>?
     private let writer = DispatchQueue(label: "wiki.qaq.apelin.widgets.writer", qos: .utility)
@@ -212,11 +214,17 @@ final class ChatWidgetPublisher {
         }
         let running = listed.filter { $0.chat.isInProgress }
         let runningIDs = Set(running.map { $0.chat.id })
+        hiddenPinnedCompletions.subtract(runningIDs)
+        if let completedPin = ChatActivityPinStore.clearPinIfNotRunning(runningIDs: runningIDs) {
+            hiddenPinnedCompletions.insert(completedPin.uuidString)
+            chatRows.removeValue(forKey: completedPin)
+        }
 
         let endedIDs = knownProgressIDs.subtracting(runningIDs)
         knownProgressIDs = runningIDs
         let ended = listed.compactMap { row -> ChatWidgetSnapshot.Chat? in
             guard !running.isEmpty, endedIDs.contains(row.chat.id),
+                  !hiddenPinnedCompletions.contains(row.chat.id),
                   let id = UUID(uuidString: row.chat.id),
                   let outcome = runtime.records[id]?.widgetTurns.last?.outcome,
                   outcome == .succeeded || outcome == .failed else { return nil }
@@ -245,7 +253,7 @@ final class ChatWidgetPublisher {
                 guard let record = runtime.records[id] else { return nil }
                 let project = record.summary.projectName.map { projectNames[$0] ?? $0 }
                 return (chat: chatRow(record, projectName: project), updated: record.summary.lastInteraction)
-            }
+            }.filter { !hiddenPinnedCompletions.contains($0.chat.id) }
             activity = ChatWidgetSnapshot(chats: participants.map { ($0.chat, $0.updated) }).inProgress
             activity.batchOutcome = batch.outcome
             if let id = batch.finalChatID, var row = participants.first(where: { $0.chat.id == id.uuidString })?.chat {

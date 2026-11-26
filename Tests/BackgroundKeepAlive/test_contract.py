@@ -40,8 +40,29 @@ class ActivityContract(unittest.TestCase):
 
     def test_identity_and_status_remain_outside_flow(self):
         flow = self.row.index("if state.detailsEnabled && !details.isEmpty")
-        for identity in ("chat.title", "chat.projectName", "phase.title"):
+        for identity in ("chat.activityTitle", "chat.projectName", "phase.title"):
             self.assertLess(self.row.index("Text(verbatim: " + identity + ")"), flow)
+
+    def test_pinned_activity_title_and_completion_clear(self):
+        model = source("Widgets/Shared/ChatWidgetSnapshot.swift")
+        publisher = source("Apelin/Widgets/ChatWidgetPublisher.swift")
+        self.assertIn('isPinned ? "\\(title)📌" : title', block(model, "var activityTitle"))
+        clear = block(model, "static func clearPinIfNotRunning")
+        self.assertIn("!runningIDs.contains(id.uuidString)", clear)
+        self.assertIn("ChatActivityPinStore.clearPinIfNotRunning(runningIDs: runningIDs)", publisher)
+        self.assertIn("hiddenPinnedCompletions.insert(completedPin.uuidString)", publisher)
+        self.assertIn("!hiddenPinnedCompletions.contains($0.chat.id)", publisher)
+
+    def test_pin_button_is_slanted_running_only_and_swapped_with_search(self):
+        controller = source("Apelin/Interface/Chats/ChatController.swift")
+        root = source("Apelin/Interface/Root/RootInterfaceController.swift")
+        pin_image = block(controller, "private static func liveActivityPinImage")
+        self.assertIn("rotate(by: -.pi / 4)", pin_image)
+        pin_update = block(controller, "private func updateLiveActivityPinButton")
+        self.assertIn("let isRunning = chat?.isWorking == true", pin_update)
+        self.assertIn("liveActivityPinButton.isHidden = !isRunning", pin_update)
+        self.assertIn("guard let chat, chat.isWorking else { return }", block(controller, "@objc private func toggleLiveActivityPin"))
+        self.assertIn("trailing.insert(searchItem, at: pinIndex)", block(root, "@objc private dynamic func syncBarItems(on controller"))
 
     def test_details_and_tools_are_gated_together(self):
         flow = block(self.row, "if state.detailsEnabled && !details.isEmpty")

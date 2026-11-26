@@ -231,6 +231,8 @@ require(oldActivity.chats.first?.isPinned == false, "旧实时活动快照缺少
 let pinnedChatData = try JSONEncoder().encode(pinnedOrder.chats[0])
 let pinnedChatCopy = try JSONDecoder().decode(Chat.self, from: pinnedChatData)
 require(pinnedChatCopy.isPinned, "固定标记应通过 Codable 编解码往返")
+require(pinnedOrder.chats[0].activityTitle == "pinned-working📌", "实时活动标题应在固定会话名后显示图钉")
+require(snapshot.chats.first { $0.id == "waiting" }?.activityTitle == "waiting", "未固定会话标题不追加图钉")
 do {
     let domain = "ApelinLink.ChatActivityPinStore.\(UUID().uuidString)"
     guard let defaults = UserDefaults(suiteName: domain) else { fatalError("无法创建测试偏好存储") }
@@ -239,6 +241,12 @@ do {
     require(ChatActivityPinStore.pinnedID(defaults: defaults) == first, "固定选择应持久保存")
     ChatActivityPinStore.setPinnedID(replacement, defaults: defaults)
     require(ChatActivityPinStore.pinnedID(defaults: defaults) == replacement, "固定另一会话应替换原固定会话")
+    ChatActivityPinStore.setPinnedID(first, defaults: defaults)
+    require(ChatActivityPinStore.clearPinIfNotRunning(runningIDs: Set([first.uuidString]), defaults: defaults) == nil,
+            "仍在运行的固定会话不应自动解除")
+    require(ChatActivityPinStore.clearPinIfNotRunning(runningIDs: ["another-chat"], defaults: defaults) == first,
+            "固定会话完成后应自动解除并返回其 ID")
+    require(ChatActivityPinStore.pinnedID(defaults: defaults) == nil, "完成后固定选择应从存储清除")
     ChatActivityPinStore.setPinnedID(nil, defaults: defaults)
     require(ChatActivityPinStore.pinnedID(defaults: defaults) == nil, "解除固定后应清除选择")
     defaults.removePersistentDomain(forName: domain)

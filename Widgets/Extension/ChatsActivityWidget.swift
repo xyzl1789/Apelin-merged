@@ -209,7 +209,7 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.blue)
                     .frame(width: 16)
                     .accessibilityHidden(true)
-                Text(verbatim: chat.title)
+                Text(verbatim: chat.activityTitle)
                     .font(.callout.bold())
                     .lineLimit(1)
                 if state.inProgressCount > 1 {
