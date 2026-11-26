@@ -838,7 +838,7 @@ final class ChatController: UIViewController {
     private static func liveActivityPinImage(isPinned: Bool) -> UIImage? {
         UIImage(
             systemName: isPinned ? "pin.fill" : "pin",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular),
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular),
         )
     }
 

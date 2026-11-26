@@ -72,8 +72,8 @@ class ActivityContract(unittest.TestCase):
         flow = block(self.row, "if state.detailsEnabled && !details.isEmpty")
         self.assertIn("ChatActivityDetailLayout", flow)
         self.assertIn("flowRows(limit: 3, lines: 2)", flow)
+        self.assertNotIn(".id(", flow)
         self.assertNotIn("ViewThatFits", self.row)
-        self.assertIn(".id(Array(details.prefix(3)))", flow)
         self.assertIn(".clipped()", flow)
         self.assertIn(".layoutPriority(-1)", flow)
         details = block(self.row, "private var details:")
@@ -98,16 +98,16 @@ class ActivityContract(unittest.TestCase):
 
     def test_card_and_header_refit_together(self):
         card = block(self.widget, "private struct ChatLockScreenView")
-        self.assertIn(".id(state)", card)
+        self.assertNotIn(".id(state)", card)
         self.assertIn(
-            ".fixedSize(horizontal: false, vertical: true)\n        // 让远程视图宿主重新拟合整卡高度",
+            ".fixedSize(horizontal: false, vertical: true)",
             card,
         )
         self.assertIn(".activityBackgroundTint(ChatWidgetAppearance.backgroundTint(for: colorScheme))", card)
         self.assertIn(".layoutPriority(2)", card)
         self.assertIn(".layoutPriority(10)", card)
         island = block(self.widget, "DynamicIslandExpandedRegion(.bottom)")
-        self.assertIn(".id(state)", island)
+        self.assertNotIn(".id(state)", island)
         fixture = source("Tests/BackgroundKeepAlive/ActivityLayoutCheck.swift")
         self.assertIn("NSHostingView", fixture)
         self.assertIn("host.fittingSize", fixture)

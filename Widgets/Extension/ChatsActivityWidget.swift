@@ -60,7 +60,6 @@ struct ChatsActivityWidget: Widget {
                                 ChatActivityResultRow(chat: result.chat)
                             }
                         }
-                        .id(state)
                         .padding(.leading, 8)
                         .padding(.trailing, 8)
                         .padding(.top, 4)
@@ -262,8 +261,6 @@ private struct ChatActivitySessionRow: View {
                 ChatActivityDetailLayout {
                     flowRows(limit: 3, lines: 2)
                 }
-                // 只刷新详情子树的布局身份，不结束或重建 ActivityKit 活动。
-                .id(Array(details.prefix(3)))
                 .clipped()
                 .layoutPriority(-1)
             }
@@ -406,8 +403,6 @@ private struct ChatLockScreenView: View {
         }
         // 锁屏宿主可能继续提议上一次的较大高度；根视图始终按当前内容自然高度报告。
         .fixedSize(horizontal: false, vertical: true)
-        // 让远程视图宿主重新拟合整卡高度，而非仅替换旧高度内的详情文字。
-        .id(state)
         .foregroundStyle(theme.ink)
         .padding()
         .activityBackgroundTint(ChatWidgetAppearance.backgroundTint(for: colorScheme))
