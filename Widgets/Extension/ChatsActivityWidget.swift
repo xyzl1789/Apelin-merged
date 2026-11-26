@@ -259,7 +259,7 @@ private struct ChatActivitySessionRow: View {
             // 空详情退出布局；直接测量当前行，避免选型容器沿用旧的可用高度。
             if state.detailsEnabled && !details.isEmpty {
                 ChatActivityDetailLayout {
-                    flowRows(limit: 3, lines: 2)
+                    flowRows(limit: 3, lines: 1)
                 }
                 .clipped()
                 .layoutPriority(-1)
@@ -298,12 +298,17 @@ private struct ChatActivitySessionRow: View {
                         .accessibilityHidden(true)
                     Text(verbatim: [item.title, item.detail].compactMap { $0 }.joined(separator: " · "))
                         .lineLimit(lines)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, height: 16, alignment: .leading)
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .privacySensitive()
             }
+        }
+        // 流式详情只替换文本，不让 SwiftUI 为子树做隐式过渡动画。
+        .transaction { transaction in
+            transaction.animation = nil
         }
         // 详情始终按当前宽度的自然高度排版；外层只裁剪超出预算的底部。
         .fixedSize(horizontal: false, vertical: true)

@@ -71,7 +71,10 @@ class ActivityContract(unittest.TestCase):
     def test_details_and_tools_are_gated_together(self):
         flow = block(self.row, "if state.detailsEnabled && !details.isEmpty")
         self.assertIn("ChatActivityDetailLayout", flow)
-        self.assertIn("flowRows(limit: 3, lines: 2)", flow)
+        self.assertIn("flowRows(limit: 3, lines: 1)", flow)
+        self.assertIn(".truncationMode(.tail)", block(self.row, "private func flowRows"))
+        self.assertIn("height: 16", block(self.row, "private func flowRows"))
+        self.assertIn("transaction.animation = nil", block(self.row, "private func flowRows"))
         self.assertNotIn(".id(", flow)
         self.assertNotIn("ViewThatFits", self.row)
         self.assertIn(".clipped()", flow)
