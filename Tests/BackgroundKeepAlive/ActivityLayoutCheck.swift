@@ -47,6 +47,7 @@ private struct DetailFixture: View {
                 .layoutPriority(-1)
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
         .id("\(model.count)-\(model.rowHeight)")
         .coordinateSpace(name: "card")
         .onPreferenceChange(TitleTopKey.self) { model.titleTop = $0 }
@@ -59,7 +60,7 @@ if #available(macOS 13.0, *) {
     let model = DetailModel()
     let host = NSHostingView(rootView: DetailFixture(model: model))
     host.setFrameSize(NSSize(width: 240, height: 140))
-    // 同一宿主保留上一次较大的 frame，不能通过重新创建宿主掩盖只增不减。
+    // 同一宿主始终保留较大的 frame，模拟系统继续提出旧高度；不能通过重设宿主高度掩盖问题。
     for (count, rowHeight): (Int, CGFloat) in [
         (3, 18), (2, 18), (1, 18), (0, 18),
         (3, 36), (2, 36), (2, 18), (1, 18), (0, 18), (3, 18),
@@ -75,7 +76,7 @@ if #available(macOS 13.0, *) {
                      "详情数量 \(count)、行高 \(rowHeight)：实际 \(size.height)，预期 \(expected)")
         precondition(model.titleTop.map { abs($0) < 1 } == true,
                      "详情变化后标题必须仍在卡片顶部")
-        host.setFrameSize(NSSize(width: 240, height: size.height))
+        precondition(abs(host.frame.height - 140) < 1, "宿主必须持续保留旧的大高度提议")
     }
     print("通过：同一 SwiftUI 宿主三条→两条→一条→零条、行高缩短及再次增大")
 } else {

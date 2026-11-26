@@ -74,7 +74,11 @@ class ActivityContract(unittest.TestCase):
     def test_card_and_header_refit_together(self):
         card = block(self.widget, "private struct ChatLockScreenView")
         self.assertIn(".id(state)", card)
-        self.assertIn(".fixedSize(horizontal: false, vertical: true)", card)
+        self.assertIn(
+            ".fixedSize(horizontal: false, vertical: true)\n        // 让远程视图宿主重新拟合整卡高度",
+            card,
+        )
+        self.assertIn(".activityBackgroundTint(ChatWidgetAppearance.backgroundTint(for: colorScheme))", card)
         self.assertIn(".layoutPriority(2)", card)
         self.assertIn(".layoutPriority(10)", card)
         island = block(self.widget, "DynamicIslandExpandedRegion(.bottom)")
@@ -83,6 +87,8 @@ class ActivityContract(unittest.TestCase):
         self.assertIn("NSHostingView", fixture)
         self.assertIn("host.fittingSize", fixture)
         self.assertIn("model.titleTop.map", fixture)
+        self.assertIn("host.frame.height - 140", fixture)
+        self.assertNotIn("host.setFrameSize(NSSize(width: 240, height: size.height))", fixture)
         self.assertIn("(3, 18), (2, 18), (1, 18), (0, 18)", fixture)
 
     def test_finished_preview_remains_available(self):

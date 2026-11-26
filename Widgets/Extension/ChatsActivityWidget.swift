@@ -350,9 +350,8 @@ private struct ChatActivityResultRow: View {
 }
 
 /// 锁屏卡片：顶部身份胶囊 + 状态摘要胶囊，下面当前会话行。
-/// 照 Minis：不加 `activityBackgroundTint`，交给系统默认的毛玻璃材质，
-/// 深浅色永远由系统自己画——自创的半透明 tint 只在活动内容更新时被
-/// 重画，配合外观探针重推也追不稳，是实时活动整卡空白的另一个嫌疑。
+/// 半透明 tint 叠加在系统毛玻璃上，并按 colorScheme 在深浅色间切换；
+/// 外观变化时由发布器重推活动内容，使系统重新应用 tint。
 @available(iOS 16.2, *)
 private struct ChatLockScreenView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -400,6 +399,8 @@ private struct ChatLockScreenView: View {
                 }
             }
         }
+        // 锁屏宿主可能继续提议上一次的较大高度；根视图始终按当前内容自然高度报告。
+        .fixedSize(horizontal: false, vertical: true)
         // 让远程视图宿主重新拟合整卡高度，而非仅替换旧高度内的详情文字。
         .id(state)
         .foregroundStyle(theme.ink)
