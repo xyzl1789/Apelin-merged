@@ -50,7 +50,7 @@ final class ChatMessageRow: ListRowView {
     /// A generated-files reply gets a quiet container so the links read as one result group.
     private static let generatedFilesCardHorizontalPadding: CGFloat = 12
     private static let generatedFilesCardTopPadding: CGFloat = 12
-    private static let generatedFilesCardBottomPadding: CGFloat = 4
+    private static let generatedFilesCardBottomPadding: CGFloat = 1
     private static let generatedFilesCardCornerRadius: CGFloat = 12
     /// 文件卡片行额外留出的底部空白，单独拉开它与下一条消息的距离。
     private static let generatedFilesFollowingSpacing: CGFloat = 12
