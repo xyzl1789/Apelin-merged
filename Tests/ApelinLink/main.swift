@@ -231,8 +231,8 @@ require(oldActivity.chats.first?.isPinned == false, "旧实时活动快照缺少
 let pinnedChatData = try JSONEncoder().encode(pinnedOrder.chats[0])
 let pinnedChatCopy = try JSONDecoder().decode(Chat.self, from: pinnedChatData)
 require(pinnedChatCopy.isPinned, "固定标记应通过 Codable 编解码往返")
-require(pinnedOrder.chats[0].activityTitle == "pinned-working📌", "实时活动标题应在固定会话名后显示图钉")
-require(snapshot.chats.first { $0.id == "waiting" }?.activityTitle == "waiting", "未固定会话标题不追加图钉")
+require(pinnedOrder.chats[0].isPinned, "实时活动中的置顶会话应保留固定状态")
+require(snapshot.chats.first { $0.id == "waiting" }?.isPinned == false, "未固定会话不得显示固定状态")
 do {
     let domain = "ApelinLink.ChatActivityPinStore.\(UUID().uuidString)"
     guard let defaults = UserDefaults(suiteName: domain) else { fatalError("无法创建测试偏好存储") }

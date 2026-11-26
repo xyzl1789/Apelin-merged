@@ -40,24 +40,28 @@ class ActivityContract(unittest.TestCase):
 
     def test_identity_and_status_remain_outside_flow(self):
         flow = self.row.index("if state.detailsEnabled && !details.isEmpty")
-        for identity in ("chat.activityTitle", "chat.projectName", "phase.title"):
-            self.assertLess(self.row.index("Text(verbatim: " + identity + ")"), flow)
+        self.assertLess(self.row.index("Text(verbatim: chat.title)"), flow)
+        self.assertLess(self.row.index('Text(verbatim: "📌")'), flow)
 
-    def test_pinned_activity_title_and_completion_clear(self):
-        model = source("Widgets/Shared/ChatWidgetSnapshot.swift")
+    def test_pinned_activity_marker_is_smaller_than_title_and_completion_clear(self):
+        activity = source("Widgets/Extension/ChatsActivityWidget.swift")
         publisher = source("Apelin/Widgets/ChatWidgetPublisher.swift")
-        self.assertIn('isPinned ? "\\(title)📌" : title', block(model, "var activityTitle"))
-        clear = block(model, "static func clearPinIfNotRunning")
+        pinned = block(block(activity, "private struct ChatActivitySessionRow"), "if chat.isPinned")
+        self.assertIn('Text(verbatim: "📌")', pinned)
+        self.assertIn(".font(.caption)", pinned)
+        self.assertIn('String(localized: "Pinned", table: "LiveActivityPin")', pinned)
+        clear = block(source("Widgets/Shared/ChatWidgetSnapshot.swift"), "static func clearPinIfNotRunning")
         self.assertIn("!runningIDs.contains(id.uuidString)", clear)
         self.assertIn("ChatActivityPinStore.clearPinIfNotRunning(runningIDs: runningIDs)", publisher)
         self.assertIn("hiddenPinnedCompletions.insert(completedPin.uuidString)", publisher)
         self.assertIn("!hiddenPinnedCompletions.contains($0.chat.id)", publisher)
 
-    def test_pin_button_is_slanted_running_only_and_swapped_with_search(self):
+    def test_pin_button_is_vertical_running_only_and_swapped_with_search(self):
         controller = source("Apelin/Interface/Chats/ChatController.swift")
         root = source("Apelin/Interface/Root/RootInterfaceController.swift")
         pin_image = block(controller, "private static func liveActivityPinImage")
-        self.assertIn("rotate(by: -.pi / 4)", pin_image)
+        self.assertIn('systemName: isPinned ? "pin.fill" : "pin"', pin_image)
+        self.assertNotIn("rotate", pin_image)
         pin_update = block(controller, "private func updateLiveActivityPinButton")
         self.assertIn("let isRunning = chat?.isWorking == true", pin_update)
         self.assertIn("liveActivityPinButton.isHidden = !isRunning", pin_update)

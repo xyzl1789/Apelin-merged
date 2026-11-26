@@ -85,11 +85,6 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
             status == .working || status == .stopping || status == .waiting
         }
 
-        /// 实时活动标题；固定标记紧跟会话名，不影响主屏小组件（其快照不会固定）。
-        var activityTitle: String {
-            isPinned ? "\(title)📌" : title
-        }
-
         var link: URL {
             ApelinLink.conversation(id).url
         }

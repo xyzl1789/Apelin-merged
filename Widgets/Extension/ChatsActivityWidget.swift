@@ -209,9 +209,14 @@ private struct ChatActivitySessionRow: View {
                     .foregroundStyle(.blue)
                     .frame(width: 16)
                     .accessibilityHidden(true)
-                Text(verbatim: chat.activityTitle)
+                Text(verbatim: chat.title)
                     .font(.callout.bold())
                     .lineLimit(1)
+                if chat.isPinned {
+                    Text(verbatim: "📌")
+                        .font(.caption)
+                        .accessibilityLabel(Text(verbatim: String(localized: "Pinned", table: "LiveActivityPin")))
+                }
                 if state.inProgressCount > 1 {
                     Text(verbatim: "1/\(state.inProgressCount)")
                         .font(.caption.monospacedDigit())

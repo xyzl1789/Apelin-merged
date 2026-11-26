@@ -836,23 +836,10 @@ final class ChatController: UIViewController {
     }
 
     private static func liveActivityPinImage(isPinned: Bool) -> UIImage? {
-        guard let symbol = UIImage(
+        UIImage(
             systemName: isPinned ? "pin.fill" : "pin",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular),
-        ) else { return nil }
-        let canvas = CGSize(width: 24, height: 24)
-        let renderer = UIGraphicsImageRenderer(size: canvas)
-        let image = renderer.image { context in
-            context.cgContext.translateBy(x: canvas.width / 2, y: canvas.height / 2)
-            context.cgContext.rotate(by: -.pi / 4)
-            symbol.draw(in: CGRect(
-                x: -symbol.size.width / 2,
-                y: -symbol.size.height / 2,
-                width: symbol.size.width,
-                height: symbol.size.height,
-            ))
-        }
-        return image.withRenderingMode(.alwaysTemplate)
+        )
     }
 
     private func updateLiveActivityPinButton() {
