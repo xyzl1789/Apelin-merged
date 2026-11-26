@@ -17,12 +17,13 @@ final class ChatMessageRow: ListRowView {
 
     /// A row's insets at `width`: the padding, or more to centre the content
     /// in the readable width.
-    static func insets(for width: CGFloat) -> UIEdgeInsets {
+    static func insets(for width: CGFloat, generatedFilesFollowing: Bool = false) -> UIEdgeInsets {
         let side = max(horizontalPadding, ((width - readableWidth) / 2).rounded(.down))
+        let following = generatedFilesFollowing ? generatedFilesFollowingSpacing : 0
         return UIEdgeInsets(
             top: ChatMarkdownView.blockSpacing / 2,
             left: side,
-            bottom: ChatMarkdownView.blockSpacing / 2,
+            bottom: ChatMarkdownView.blockSpacing / 2 + following,
             right: side,
         )
     }
@@ -49,9 +50,10 @@ final class ChatMessageRow: ListRowView {
     /// A generated-files reply gets a quiet container so the links read as one result group.
     private static let generatedFilesCardHorizontalPadding: CGFloat = 12
     private static let generatedFilesCardTopPadding: CGFloat = 12
-    /// 卡片靠近下一条消息的一侧收紧，避免和用户气泡之间显得断开。
-    private static let generatedFilesCardBottomPadding: CGFloat = 1
+    private static let generatedFilesCardBottomPadding: CGFloat = 4
     private static let generatedFilesCardCornerRadius: CGFloat = 12
+    /// 文件卡片行额外留出的底部空白，单独拉开它与下一条消息的距离。
+    private static let generatedFilesFollowingSpacing: CGFloat = 12
     private let generatedFilesCard = UIView()
     private var showsGeneratedFilesCard = false
     private let markdownView = ChatMarkdownView()
@@ -335,7 +337,7 @@ final class ChatMessageRow: ListRowView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let content = bounds.inset(by: Self.insets(for: bounds.width))
+        let content = bounds.inset(by: Self.insets(for: bounds.width, generatedFilesFollowing: showsGeneratedFilesCard))
         let hasText = label.attributedText.length > 0
         let available = Self.textWidth(for: bounds.width, user: true)
         // The label measures itself as `height(for:)` measures it.
@@ -482,7 +484,7 @@ final class ChatMessageRow: ListRowView {
                                  textSize: textSizeCategory.rawValue)
             textHeight = ceil(document)
         }
-        let insets = Self.insets(for: width)
+        let insets = Self.insets(for: width, generatedFilesFollowing: !user && message.isGeneratedFiles)
         let contentWidth = max(1, width - insets.left - insets.right)
         let attachmentWidth = user ? available + textPadding * 2 : contentWidth
         let documentWidth = user ? bubbleWidth(textSize: userTextSize, available: available) : 350
