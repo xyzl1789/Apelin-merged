@@ -203,6 +203,7 @@ final class ChatMessageRow: ListRowView {
         publishedDocumentHeight = 0
         onDocumentHeightChange = nil
         attachments = []
+        markdownView.usesFileLinkColors = false
         attachmentsView.show([], trailing: false, animated: false)
         onAttachmentLayoutChanged = nil
         onPreview = nil
@@ -215,6 +216,8 @@ final class ChatMessageRow: ListRowView {
 
     func show(_ message: ChatMessage, isStreaming: Bool = false) {
         let isSameMessage = shownID == message.id
+        let shouldStream = isStreaming && !message.isGeneratedFiles
+        markdownView.usesFileLinkColors = message.isGeneratedFiles
         if !isSameMessage {
             publishedDocumentHeight = 0
         }
@@ -263,11 +266,11 @@ final class ChatMessageRow: ListRowView {
             // The update that ends a reply often brings its last chunk too.
             // Turning streaming off now would show that chunk and the text
             // still fading at once, so it stays on until the label is still.
-            if !isStreaming, animates, !firstFill, markdownView.isStreaming {
+            if !shouldStream, animates, !firstFill, markdownView.isStreaming {
                 finishesStreamWhenStill = true
             } else {
                 finishesStreamWhenStill = false
-                markdownView.isStreaming = isStreaming && animates
+                markdownView.isStreaming = shouldStream && animates
             }
             if firstFill || markdownText != message.text {
                 ChatPerformance.measure("markdown") {
@@ -408,6 +411,7 @@ final class ChatMessageRow: ListRowView {
             sizingMarkdownTextSize = textSizeCategory
             sizingMarkdown = ChatMarkdownView()
         }
+        sizingMarkdown.usesFileLinkColors = message.isGeneratedFiles
         let available = textWidth(for: width, user: user)
         let userTextSize = user && !message.text.isEmpty ? textSize(message.text, width: available) : nil
         let textHeight: CGFloat

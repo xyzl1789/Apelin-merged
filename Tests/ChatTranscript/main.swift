@@ -356,7 +356,7 @@ let successfulBuild = ChatTranscript(events: [
     ]),
 ]) { _ in nil }
 let artifactMessage = successfulBuild.messages.first { $0.text.contains("apelin-artifact://share/artifact-1") }
-precondition(artifactMessage?.text == "[hello.deb](apelin-artifact://share/artifact-1)", "a successful build exposes its artifact as a link")
+precondition(artifactMessage?.text == String(localized: "Files generated this turn:") + "\n\n[hello.deb](apelin-artifact://share/artifact-1)", "a successful build exposes its artifact under a generic file heading")
 let rebuiltArtifactMessage = ChatTranscript(events: [
     event(1, "toolResult", [
         "tool": .string(AgentToolName.projectBuild.rawValue),
@@ -372,6 +372,53 @@ let failedBuild = ChatTranscript(events: [
 ]) { _ in nil }
 precondition(!failedBuild.messages.contains { $0.text.contains("apelin-artifact://share/") }, "failed builds do not expose artifact links")
 print("ok: successful build artifacts appear as stable transcript links")
+
+// 不同类型交付文件汇总到各轮最后；流式追加与重放得到同一分组。
+do {
+    let first = UUID()
+    let second = UUID()
+    let result: [String: JSONValue] = [
+        "tool": .string(AgentToolName.projectBuild.rawValue),
+        "output": .string("{\"succeeded\":true,\"artifacts\":[{\"id\":\"one\",\"name\":\"hello.deb\"},{\"id\":\"photo\",\"name\":\"photo.png\"},{\"id\":\"report\",\"name\":\"report[final]*.pdf\"},{\"id\":\"data\",\"name\":\"data.json\"},{\"id\":\"archive\",\"name\":\"archive.zip\"}] }"),
+    ]
+    let events = [
+        event(1, "prompt", ["id": .string(first.uuidString), "text": .string("生成文件")]),
+        event(2, "toolResult", result),
+        event(3, "steer", ["id": .string(UUID().uuidString), "text": .string("继续")]),
+        event(4, "toolResult", result),
+        event(5, "message", ["text": .string("第一轮完成")]),
+        event(6, "finished"),
+        event(7, "prompt", ["id": .string(second.uuidString), "text": .string("再生成")]),
+        event(8, "toolResult", [
+            "tool": .string(AgentToolName.projectBuild.rawValue),
+            "output": .string("{\"succeeded\":true,\"artifacts\":[{\"id\":\"two\",\"name\":\"tool.ipa\"}]}"),
+        ]),
+        event(9, "message", ["text": .string("第二轮完成")]),
+        event(10, "finished"),
+    ]
+    let full = ChatTranscript(events: events) { _ in nil }
+    let footers = full.messages.filter(\.isGeneratedFiles)
+    precondition(footers.count == 2, "每轮只有一个文件尾行，不因 steer 分组")
+    let firstFooter = full.messages.firstIndex(where: \.isGeneratedFiles)!
+    let nextPrompt = full.messages.firstIndex { $0.id == second }!
+    precondition(firstFooter == nextPrompt - 1 && full.messages[firstFooter - 1].text == "第一轮完成", "第一轮文件在回复之后、下一轮之前")
+    precondition(full.messages.last?.id == footers.last?.id && full.messages[full.messages.count - 2].text == "第二轮完成", "第二轮文件也在末尾")
+    precondition(["hello.deb", "photo.png", "report\\[final\\]\\*.pdf", "data.json", "archive.zip"].allSatisfy(footers[0].text.contains), "包、图片、PDF、JSON 和压缩包均按文件名呈现")
+    precondition(footers[0].text.components(separatedBy: "apelin-artifact://share/one").count == 2, "重复构建事件的同一产物链接只显示一次")
+    precondition(!footers[1].text.contains("hello.deb") && footers[1].text.contains("tool.ipa"), "不同回合不串文件")
+    var incremental = ChatTranscript(events: []) { _ in nil }
+    for (index, item) in events.enumerated() {
+        incremental.append([item]) { _ in nil }
+        let replay = ChatTranscript(events: Array(events.prefix(index + 1))) { _ in nil }
+        precondition(incremental.messages == replay.messages, "逐事件追加与完整回放一致")
+        let runningFooter = incremental.messages.last { $0.isGeneratedFiles }
+        if let runningFooter { precondition(incremental.messages.filter { $0.id == runningFooter.id }.count == 1) }
+    }
+    precondition(incremental.messages == full.messages)
+    incremental.append([event(11, "historyRewound", ["id": .string(second.uuidString)])]) { _ in nil }
+    precondition(incremental.messages.filter(\.isGeneratedFiles).count == 1, "回退时移除被撤销回合的文件")
+}
+print("ok: 多类型文件、回合末尾排序、链接去重、特殊文件名、回放和回退")
 print("ok: chat replay, streaming replacement, hidden tools, alternating thought summaries, approval decisions and stable identities")
 
 let noThought = ChatTranscript(events: [event(1, "messageStarted"), event(2, "message", ["text": .string("Answer")]), event(3, "finished")]) { _ in nil }
@@ -394,8 +441,7 @@ let notified = ChatTranscript(events: [
 ]) { _ in nil }.messages
 precondition(notified.count == 1 && notified[0].trace.map(\.text) == ["Send a notification"],
              "a notice shows only as its call, named in the trace: \(notified.flatMap(\.trace).map(\.text))")
-/// A file the agent shows is an assistant row of its result's attachments,
-/// shown as any attachment is: a PDF as a document card.
+/// 工具展示的文件保留原附件，在本轮最后用文件名链接打开预览。
 precondition(ChatInlineFiles.imageReferences(in: "[hello.deb](apelin-artifact://share/artifact-1)").isEmpty,
              "a build artifact link is not resolved as a project-relative file")
 let shownFiles = ChatTranscript(events: [
@@ -413,6 +459,8 @@ let shownFiles = ChatTranscript(events: [
 }.messages
 precondition(shownFiles.contains { $0.role == .assistant && $0.attachments.map(\.name) == ["notes.pdf"] && !$0.attachments[0].isImage },
              "a shown PDF is a document attachment of the reply: \(shownFiles.map(\.attachments))")
+precondition(!shownFiles.contains(where: \.isGeneratedFiles) && shownFiles.last?.text == "There they are.",
+             "file_show attachment cards keep their original position and are not build artifact footers")
 precondition(shownFiles.flatMap(\.trace).filter { $0.role == .tool }.map(\.text) == ["Show Docs/notes.pdf", "Show 2 files", "Show a file"],
              "\(shownFiles.flatMap(\.trace).map(\.text))")
 print("ok: empty thoughts, subsecond reasoning, standalone tools, shown files and ended turns")

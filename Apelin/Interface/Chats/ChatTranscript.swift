@@ -395,7 +395,9 @@ struct ChatTranscript {
                    let output = payload?["output"]?.stringValue,
                    let artifactLinks = Self.buildArtifactLinks(from: output)
                 {
-                    add(ChatMessage(id: Self.rowID("build-artifacts:\(firstEvent + index)"), role: .assistant, text: artifactLinks))
+                    var message = ChatMessage(id: Self.rowID("build-artifacts:\(firstEvent + index)"), role: .assistant, text: artifactLinks)
+                    message.isGeneratedFiles = true
+                    add(message)
                 }
             case "approvalRequested":
                 if let approvalID = payload?["approvalID"]?.stringValue {
@@ -570,6 +572,10 @@ struct ChatTranscript {
             messages[header].headerReceivedTokens = receivedTokens
             messages[header].headerReceivedSettles = assistant != nil
         }
+        // 先完成思考状态与回合统计，再把交付文件移到各轮最后，
+        // 避免文件后面又出现本轮的工具行、回复或运行摘要。
+        let turnStarts = Set(turns.compactMap { rows.indices.contains($0.start) ? rows[$0.start].id : nil })
+        messages = Self.withGeneratedFilesAtEnd(messages, turnStarts: turnStarts)
         messages += queued
         for draft in sending where !messages.contains(where: { $0.id == draft.id })
             && !pendingMessages.contains(where: { $0.id == draft.id }) {
@@ -1139,6 +1145,50 @@ struct ChatTranscript {
         }
     }
 
+    /// 文件只改变显示位置；底层事件、回合归属和已有文件均不改动。
+    private static func withGeneratedFilesAtEnd(_ rows: [ChatMessage], turnStarts: Set<UUID>) -> [ChatMessage] {
+        var result: [ChatMessage] = []
+        var files: ChatMessage?
+        var links: [String] = []
+        var seen: Set<String> = []
+        func flush() {
+            guard var footer = files else { return }
+            footer.text = String(localized: "Files generated this turn:") + "\n\n" + links.joined(separator: "  \n")
+            result.append(footer)
+            files = nil
+            links = []
+            seen = []
+        }
+        for row in rows {
+            if turnStarts.contains(row.id) { flush() }
+            guard row.isGeneratedFiles else {
+                result.append(row)
+                continue
+            }
+            if files == nil {
+                files = row
+            } else {
+                let known = Set(files?.attachments.map(\.id) ?? [])
+                files?.attachments += row.attachments.filter { !known.contains($0.id) }
+            }
+            for link in row.text.components(separatedBy: "  \n") where seen.insert(link).inserted {
+                links.append(link)
+            }
+        }
+        flush()
+        return result
+    }
+
+    /// 文件名只作标签；转义 Markdown，避免特殊符号或换行改变链接结构。
+    private static func fileLink(name: String, destination: String) -> String {
+        let label = name.replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " ")
+            .reduce(into: "") { text, character in
+                if "\\`*_{}[]<>()!#|~".contains(character) { text.append("\\") }
+                text.append(character)
+            }
+        return "[\(label)](\(destination))"
+    }
+
     /// A successful project build returns its existing package artifact IDs
     /// and names; the link resolves the artifact record when tapped, so the
     /// transcript never stores or creates another copy of the file.
@@ -1155,10 +1205,7 @@ struct ChatTranscript {
                   let name = artifact["name"] as? String,
                   !name.isEmpty
             else { return nil }
-            let label = name.replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "[", with: "\\[")
-                .replacingOccurrences(of: "]", with: "\\]")
-            return "[\(label)](apelin-artifact://share/\(id))"
+            return Self.fileLink(name: name, destination: "apelin-artifact://share/\(id)")
         }
         return links.isEmpty ? nil : links.joined(separator: "  \n")
     }

@@ -5995,6 +5995,16 @@ ldid -STests/BackgroundKeepAlive/Tool.entitlements .build/foreground-check/scene
 分别验收开关、切后台、锁屏、活动持续更新、前台通知、后台通知、通知点击、关闭恢复、
 旋转与键盘，未验收时不得写成“后台已生效”。
 
+## 会话末尾交付文件（2026-11-26）
+
+- `ChatTranscript` 把成功构建返回的所有文件类型产物汇总到各轮回复的最后，标题为
+  “本次生成的文件：”。按真正的 `prompt` 边界分组，`steer` 不另开分组；后续
+  新回合、回退和历史重放不串文件。已有 `file_show` 附件预览保持原样。
+- `ChatMessage.isGeneratedFiles` 标识文件尾行：文件名是可点击链接；`ChatMarkdownView`
+  将标题保留为正文色、文件名指定为系统蓝色，不随黄色强调色变化；文件名按
+  Markdown 安全转义。构建文件继续按产物 ID 在点击时解析并校验原文件，不复制
+  构建产物。测试写在 `Tests/ChatTranscript/main.swift`。
+
 ## The in-app Git screen (`Apelin/Interface/Git/`)
 
 The screen draws with `GitTheme` and the app's own tokens rather than a palette

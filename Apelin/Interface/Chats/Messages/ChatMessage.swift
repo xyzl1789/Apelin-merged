@@ -56,6 +56,8 @@ struct ChatMessage: Identifiable, Hashable {
     var tool: String?
     var trace: [ChatMessage] = []
     var attachments: [ComposerAttachment]
+    /// 本轮交付文件的尾行；附件仅供链接打开，不再重复绘制文件卡片。
+    var isGeneratedFiles = false
     /// A user message sent during a run that the run has not taken yet.
     var isQueued = false
     /// The requested delivery of durable input: queue or steer.

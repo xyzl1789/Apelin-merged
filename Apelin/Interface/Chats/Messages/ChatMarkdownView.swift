@@ -8,6 +8,8 @@ import UIKit
 /// Ordinary blocks share a gap; list items keep their own compact spacing.
 final class ChatMarkdownView: MarkdownStreamView {
     static let blockSpacing: CGFloat = 16
+    /// 文件尾行的标题用普通正文色，下面的文件名固定用系统蓝色。
+    @objc dynamic var usesFileLinkColors = false
 
     /// Whether the label reads the document shown now (`updateSpokenText`).
     @objc dynamic private var spokenTextIsCurrent = false
@@ -140,6 +142,15 @@ final class ChatMarkdownView: MarkdownStreamView {
             {
                 style.paragraphSpacing = 0
                 text.addAttribute(.paragraphStyle, value: style, range: last)
+            }
+        }
+        if usesFileLinkColors, text.length > 0 {
+            let title = (text.string as NSString).paragraphRange(for: NSRange(location: 0, length: 1))
+            text.addAttribute(.foregroundColor, value: UIColor.label, range: title)
+            let start = NSMaxRange(title)
+            if start < text.length {
+                text.addAttribute(.foregroundColor, value: UIColor.systemBlue,
+                                  range: NSRange(location: start, length: text.length - start))
             }
         }
         super.applyDocument(text, newContextViews: newContextViews, animated: animated)
