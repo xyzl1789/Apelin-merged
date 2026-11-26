@@ -72,6 +72,10 @@ public enum AgentSessionEvent: Sendable, Hashable, Codable {
     /// writes it where the pill reads it, so the next prompt goes out with it.
     case runModeChanged(runMode: AgentRunMode, reason: String)
     case error(message: String)
+    /// This run ended only to compact after a provider turn limit; the same
+    /// logical task immediately continues, so its following `finished` event
+    /// must not produce a completion notification.
+    case recoveryContinues
     /// A run ended.
     case finished(reason: FinishReason)
     /// The app asked to compact the conversation, between runs.

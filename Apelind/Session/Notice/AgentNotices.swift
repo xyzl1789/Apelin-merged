@@ -79,6 +79,8 @@ struct AgentNoticeTrack: Sendable {
     /// starts with a prompt, so this never counts more than the agent's own
     /// count for its run (`UserNotices`): what the agent was told went, goes.
     private var turnNotices = 0
+    /// The recovery's intermediate finish is not a user-visible task result.
+    private var suppressNextFinishedNotice = false
 
     init(sessionID: String, headless: Bool = false) {
         self.sessionID = sessionID
@@ -87,7 +89,7 @@ struct AgentNoticeTrack: Sendable {
 
     /// The event kinds a track reads; the host skips the rest unread.
     static let kinds: Set<String> = [
-        "prompt", "message", "error", "toolCall", "approvalRequested", "finished", AgentNoticeRules.eventKind,
+        "prompt", "message", "error", "toolCall", "approvalRequested", "recoveryContinues", "finished", AgentNoticeRules.eventKind,
     ]
 
     /// Takes the task's next event and answers the banner it makes: an
@@ -105,6 +107,7 @@ struct AgentNoticeTrack: Sendable {
         switch kind {
         case "prompt":
             turnNotices = 0
+            suppressNextFinishedNotice = false
             if firstPrompt == nil {
                 firstPrompt = AgentConversationRules.title(payload?["text"]?.stringValue)
             }
@@ -143,15 +146,19 @@ struct AgentNoticeTrack: Sendable {
                 subtitle: .key(subtitle),
                 body: reason.map(AgentNotice.Text.verbatim),
             )
+        case "recoveryContinues":
+            suppressNextFinishedNotice = true
         case "finished":
             marks.turns += 1
+            let suppress = suppressNextFinishedNotice
+            suppressNextFinishedNotice = false
             defer {
                 lastMessage = nil
                 lastError = nil
                 reasons = [:]
                 turnNotices = 0
             }
-            guard !headless, marks.turns > posted.turns else { return nil }
+            guard !suppress, !headless, marks.turns > posted.turns else { return nil }
             let excerpt = lastMessage.flatMap { AgentNoticeText.excerpt($0) }
             let identifier = "\(sessionID).turn.\(marks.turns)"
             switch payload?["reason"]?.stringValue {

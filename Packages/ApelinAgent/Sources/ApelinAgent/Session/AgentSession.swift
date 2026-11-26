@@ -2381,6 +2381,9 @@ public actor AgentSession {
                 turnLimitRecoveryErrorReported = true
             }
         }
+        if recoveredTurnLimit {
+            await record(.recoveryContinues)
+        }
         if reason != .completed { await pausePending() }
         // A loop that ended on an error, or just before a message was
         // queued, never drained it: the next run takes it. Not after a

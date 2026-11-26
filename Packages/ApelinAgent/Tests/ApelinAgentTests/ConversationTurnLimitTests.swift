@@ -54,6 +54,7 @@ struct ConversationTurnLimitTests {
         let events = records.map(\.event)
         #expect(faux.state.callCount == 5)
         #expect(events.contains(.compactionStarted))
+        #expect(events.contains(.recoveryContinues))
         #expect(events.contains { event in
             guard case let .compactionFinished(result) = event else { return false }
             return result.outcome == .compacted

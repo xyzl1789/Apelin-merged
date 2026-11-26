@@ -964,6 +964,8 @@ actor EventRelay {
             ]))]
         case let .error(message):
             return [("error", .object(["message": .string(message)]))]
+        case .recoveryContinues:
+            return [("recoveryContinues", nil)]
         case let .finished(reason):
             return [("finished", .object(["reason": .string(reason.rawValue)]))]
         case .compactionStarted:

@@ -1920,7 +1920,8 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   `runModeChanged` {mode, why} (`apelin_run_mode`, 2026-11-11: the
   conversation's own run mode, which the app writes where the pill reads
   it), `error`
-  {message}, `finished` {reason}, `compactionStarted` and
+  {message}, `recoveryContinues` (the automatic turn-limit recovery's internal
+  boundary; the following `finished` is not announced), `finished` {reason}, `compactionStarted` and
 
   it, Notifications above; the transcript shows only the call), `error`
   {message, reason?} (`reason` one of `AgentFailure.swift`'s, absent when

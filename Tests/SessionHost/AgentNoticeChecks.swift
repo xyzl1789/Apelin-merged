@@ -88,6 +88,19 @@ func agentNoticeChecks() async {
         "a completed turn says its last message with text, under the session's title: \(String(describing: finished))",
     )
 
+    let continued = AgentNoticeTrack(sessionID: session)
+    _ = continued.take("prompt", payload: object(["text": .string("Continue the task")]), title: nil, posted: none)
+    _ = continued.take("message", payload: object(["text": .string("The first attempt hit the provider turn limit.")]), title: nil, posted: none)
+    _ = continued.take("recoveryContinues", payload: nil, title: nil, posted: none)
+    check(
+        continued.take("finished", payload: object(["reason": .string("completed")]), title: nil, posted: none) == nil,
+        "the automatic recovery boundary does not post a completion banner",
+    )
+    check(
+        continued.take("finished", payload: object(["reason": .string("completed")]), title: nil, posted: none) != nil,
+        "the real continuation completion still posts its normal banner",
+    )
+
     let quiet = track.take("finished", payload: object(["reason": .string("completed")]), title: "Dock Hider", posted: none)
     check(quiet?.body == .key("Done") && quiet?.identifier == "\(session).turn.2", "a turn that wrote nothing says Done")
     let stopped = track.take("finished", payload: object(["reason": .string("aborted")]), title: "Dock Hider", posted: none)

@@ -209,6 +209,21 @@ struct EventRelayTests {
     }
 
     @Test
+    func `recovery marks its intermediate finish without changing the final finish`() async {
+        let emitted = Emitted()
+        let relay = EventRelay { emitted.append($0, $1) }
+        await relay.relay(.recoveryContinues)
+        await relay.relay(.finished(reason: .completed))
+        await relay.relay(.finished(reason: .completed))
+
+        #expect(emitted.kinds == ["recoveryContinues", "finished", "finished"])
+        #expect(emitted.payloads(of: "finished") == [
+            .object(["reason": .string("completed")]),
+            .object(["reason": .string("completed")]),
+        ])
+    }
+
+    @Test
     func `the received count goes out with the streamed text, only its latest and only when new`() async {
         let emitted = Emitted()
         let relay = EventRelay { emitted.append($0, $1) }
