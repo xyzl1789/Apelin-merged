@@ -49,6 +49,12 @@ public actor AgentSession {
     private var acceptedPending: Set<UUID> = []
     private var lastPendingTimestamp: Int64 = 0
     private var runFailed = false
+    /// 仅本轮明确的供应商轮数上限错误才允许结束后尝试恢复。
+    private var turnLimitFailure = false
+    private var turnLimitErrorMessage: String?
+    private var turnLimitRecoveryErrorReported = false
+    /// 一次自动恢复后的继续请求再触顶时停止，避免压缩重试循环。
+    private var turnLimitRecoveryUsed = false
     private var pendingModelObserver: (@Sendable (PendingModelChoice) async -> Void)?
 
     public func observePendingModel(_ observer: @escaping @Sendable (PendingModelChoice) async -> Void) {
@@ -1327,6 +1333,10 @@ public actor AgentSession {
             } else {
                 aborted = false
                 runFailed = false
+                turnLimitFailure = false
+                turnLimitErrorMessage = nil
+                turnLimitRecoveryErrorReported = false
+                turnLimitRecoveryUsed = false
                 openingMessageID = item.id
                 let agent = agent
                 let modelObserver = pendingModelObserver
@@ -1531,9 +1541,10 @@ public actor AgentSession {
         }
     }
 
-    private func runCompaction(_ agent: Agent, sessionID: String) async -> AgentContextCompactionOutcome {
+    private func runCompaction(_ agent: Agent, sessionID: String, recoveringTurnLimit: Bool = false) async -> AgentContextCompactionOutcome {
         let originalModel = agent.state.model
         let originalAuthResolver = agent.authResolver
+        let turnLimitErrorDetected = turnLimitFailure
         do {
             if let compression = modelDefaults.compression {
                 let resolved = try await ProviderResolver.resolve(
@@ -1548,14 +1559,60 @@ public actor AgentSession {
                 agent.authResolver = originalAuthResolver
             }
             return try await agent.withMaintenance { cancellation in
-                await AgentContextCompactor.compactAgent(
+                guard !Task.isCancelled else { return .failed("压缩已取消。") }
+                var config = agent.autoCompact?.config ?? NativeCompactionFallback.configuration
+                let originalMessages = agent.state.messages
+                if recoveringTurnLimit {
+                    // 有些供应商把拒绝作为助手错误消息，有些直接抛错；只移除前者。
+                    guard turnLimitErrorDetected,
+                          ForkContext.hasCompleteToolResults(originalMessages)
+                    else { return .failed("会话状态不适合自动恢复，请手动压缩后继续。") }
+                    var messagesToCompact = originalMessages
+                    if case let .assistant(last)? = originalMessages.last {
+                        guard last.stopReason == .error,
+                              ConversationTurnLimit.matches(last.errorMessage ?? "")
+                                || last.providerFailure.map(ConversationTurnLimit.matches) == true,
+                              !last.content.contains(where: { if case .toolCall = $0 { return true }; return false })
+                        else { return .failed("会话状态不适合自动恢复，请手动压缩后继续。") }
+                        messagesToCompact.removeLast()
+                    } else if case .user? = originalMessages.last {
+                        // 请求在得到助手消息前被拒绝，原用户任务仍需留在摘要之后。
+                    } else {
+                        return .failed("会话状态不适合自动恢复，请手动压缩后继续。")
+                    }
+                    agent.state.messages = messagesToCompact
+                    let uncompressedMessages = messagesToCompact
+                    // 轮数上限与 token 占用无关：尽量压缩历史，只保留最小的工具安全尾段。
+                    // 继续沿用现有原生压缩或摘要回退配置。
+                    config.keepRecentTokens = 1
+                    let outcome = await AgentContextCompactor.compactAgent(
+                        agent: agent,
+                        backgroundManager: agent.autoCompact?.backgroundManager,
+                        sessionId: sessionID,
+                        config: config,
+                        ignoreStreaming: true,
+                        cancellation: cancellation
+                    )
+                    guard case .compacted = outcome,
+                          !cancellation.isCancelled, !Task.isCancelled,
+                          ConversationTurnLimit.assistantCount(agent.state.messages)
+                            < ConversationTurnLimit.assistantCount(uncompressedMessages),
+                          ForkContext.hasCompleteToolResults(agent.state.messages) else {
+                        agent.state.messages = originalMessages
+                        if cancellation.isCancelled || Task.isCancelled { return .failed("压缩已取消。") }
+                        if case .compacted = outcome { return .failed("压缩未减少模型回复轮数，请手动处理后继续。") }
+                        return outcome
+                    }
+                    return outcome
+                }
+                return await AgentContextCompactor.compactAgent(
                     agent: agent,
                     backgroundManager: agent.autoCompact?.backgroundManager,
                     sessionId: sessionID,
-                    config: agent.autoCompact?.config ?? NativeCompactionFallback.configuration,
+                    config: config,
                     // the maintenance window is what keeps a run out
                     ignoreStreaming: true,
-                    cancellation: cancellation,
+                    cancellation: cancellation
                 )
             }
         } catch {
@@ -1824,6 +1881,9 @@ public actor AgentSession {
             // the counter counts each run's output from nothing
             output = OutputTally()
             runFailure = nil
+            turnLimitFailure = false
+            turnLimitErrorMessage = nil
+            turnLimitRecoveryErrorReported = false
             journal.runStarted(model: agent.state.model, messages: agent.state.messages.count)
         case let .messageStart(message):
             if case let .user(user) = message, let id = openingMessageID {
@@ -1930,10 +1990,21 @@ public actor AgentSession {
             if assistant.stopReason == .error {
                 runFailed = true
                 journal.replyFailed(assistant)
-                await record(.error(
-                    message: assistant.errorMessage.map(ErrorDescription.localized)
-                        ?? "模型供应商返回了错误，请重试。",
-                ))
+                let failure = assistant.providerFailure
+                if let limitMessage = ConversationTurnLimit.matchingMessage([
+                    assistant.errorMessage,
+                    failure?.upstreamMessage,
+                    failure?.message,
+                ]) {
+                    turnLimitFailure = true
+                    turnLimitErrorMessage = limitMessage
+                    runFailure = .contextOverflow
+                } else {
+                    await record(.error(
+                        message: assistant.errorMessage.map(ErrorDescription.localized)
+                            ?? "模型供应商返回了错误，请重试。",
+                    ))
+                }
             }
         case .streamRewind:
             // kwwk gave up the message it was streaming; the next one replaces it
@@ -2231,8 +2302,41 @@ public actor AgentSession {
             return
         }
         journal.runFailed(error.localizedDescription)
-        runFailure = SpentAllowance.isSpent(ProviderFailure.capture(error)) ? .quota : nil
-        await record(.error(message: error.localizedDescription))
+        let failure = ProviderFailure.capture(error)
+        if let limitMessage = ConversationTurnLimit.matchingMessage(failure) {
+            turnLimitFailure = true
+            turnLimitErrorMessage = limitMessage
+            runFailure = .contextOverflow
+        } else {
+            runFailure = SpentAllowance.isSpent(failure) ? .quota : nil
+            await record(.error(message: error.localizedDescription))
+        }
+    }
+
+    /// 自动处理明确的供应商轮数上限：压缩原会话一次，只有历史确实缩短后才续跑。
+    private func recoverAfterTurnLimit() async -> Bool {
+        guard !turnLimitRecoveryUsed, !aborted, !pendingBlocked else { return false }
+        turnLimitRecoveryUsed = true
+        journal.compactionStarted(
+            .turnLimit,
+            model: agent.state.model,
+            messages: agent.state.messages.count,
+            usage: contextUsage
+        )
+        await record(.compactionStarted)
+        let outcome = await runCompaction(agent, sessionID: id, recoveringTurnLimit: true)
+        let result = await finishCompaction(outcome, stopped: aborted)
+        guard result.outcome == .compacted, !aborted, !pendingBlocked else {
+            if !aborted {
+                await record(.error(
+                    message: "自动压缩没有完成：\(result.message ?? "请手动压缩后继续。")"
+                ))
+                turnLimitRecoveryErrorReported = true
+            }
+            return false
+        }
+        journal.startup("达到供应商会话轮数上限后自动压缩")
+        return true
     }
 
     /// Returns once a run whose loop has returned has recorded its end.
@@ -2255,6 +2359,28 @@ public actor AgentSession {
             false
         }
         var reason: FinishReason = aborted ? .aborted : (lastFinishedWithError || runFailed ? .failed : .completed)
+        var recoveredTurnLimit = false
+        if turnLimitFailure {
+            if reason == .failed, !aborted, !turnLimitRecoveryUsed {
+                recoveredTurnLimit = await recoverAfterTurnLimit()
+                if recoveredTurnLimit {
+                    reason = .completed
+                    runFailed = false
+                    runFailure = nil
+                    turnLimitFailure = false
+                }
+            }
+            if aborted {
+                recoveredTurnLimit = false
+                reason = .aborted
+            }
+            if !recoveredTurnLimit, !turnLimitRecoveryErrorReported, !aborted {
+                await record(.error(
+                    message: "供应商会话达到轮数上限，自动压缩未能恢复：\(turnLimitErrorMessage ?? "请手动压缩后继续。")"
+                ))
+                turnLimitRecoveryErrorReported = true
+            }
+        }
         if reason != .completed { await pausePending() }
         // A loop that ended on an error, or just before a message was
         // queued, never drained it: the next run takes it. Not after a
@@ -2321,7 +2447,16 @@ public actor AgentSession {
             await setRunMode(planned)
         }
         // a stop or a failed durable write meanwhile blocks continuation
-        runTask = next.isEmpty || aborted || pendingBlocked ? nil : carryOver(next)
+        if reason == .completed, !recoveredTurnLimit {
+            turnLimitRecoveryUsed = false
+        }
+        if aborted || pendingBlocked {
+            runTask = nil
+        } else if !next.isEmpty {
+            runTask = carryOver(next)
+        } else {
+            runTask = recoveredTurnLimit ? carryOver([]) : nil
+        }
         runEnding = false
         schedulePending()
     }

@@ -42,6 +42,8 @@ public final class SessionJournal: @unchecked Sendable {
         case requested
         /// The agent's apelin_conversation_compact, at the step after it.
         case tool
+        /// 供应商因达到会话轮数上限而拒绝请求。
+        case turnLimit
     }
 
     let sessionID: String
