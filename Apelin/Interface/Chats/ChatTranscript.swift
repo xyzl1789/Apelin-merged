@@ -575,7 +575,7 @@ struct ChatTranscript {
         // 交付文件先留在原始事件折叠里；只有回合已经结束，才把它们
         // 放进可见消息。这样构建完成但对话仍在继续时，文件不会跟着实时内容移动。
         let turnStarts = Set(turns.compactMap { rows.indices.contains($0.start) ? rows[$0.start].id : nil })
-        let completedTurnStarts = Set(turns.compactMap { turn in
+        let completedTurnStarts: Set<UUID> = Set(turns.compactMap { turn -> UUID? in
             guard turn.ended != nil, rows.indices.contains(turn.start) else { return nil }
             return rows[turn.start].id
         })
