@@ -798,21 +798,40 @@ actor MockBackend: AgentHostBackend {
         toolSessionsEnded.insert(sessionID)
     }
 
-    func openToolExtension(id: String) -> String {
-        toolSessionsOpened.append(id)
-        return "tool-session-\(toolSessionsOpened.count)"
+    /// 控制并发测试的打开、调用与关闭时序；默认保持即时返回。
+    var toolOpening: (@Sendable (String) async throws -> Void)?
+    var toolCalling: (@Sendable (ToolExtensionCallRequest) async throws -> ToolExtensionCallResponse)?
+    var toolClosing: (@Sendable (String) async -> Void)?
+
+    func setToolSessionHooks(
+        opening: (@Sendable (String) async throws -> Void)? = nil,
+        calling: (@Sendable (ToolExtensionCallRequest) async throws -> ToolExtensionCallResponse)? = nil,
+        closing: (@Sendable (String) async -> Void)? = nil,
+    ) {
+        toolOpening = opening
+        toolCalling = calling
+        toolClosing = closing
     }
 
-    func callToolExtension(_ request: ToolExtensionCallRequest) throws -> ToolExtensionCallResponse {
+    func openToolExtension(id: String) async throws -> String {
+        toolSessionsOpened.append(id)
+        let sessionID = "tool-session-\(toolSessionsOpened.count)"
+        if let toolOpening { try await toolOpening(sessionID) }
+        return sessionID
+    }
+
+    func callToolExtension(_ request: ToolExtensionCallRequest) async throws -> ToolExtensionCallResponse {
         toolCalls.append(request)
         guard !toolSessionsEnded.contains(request.sessionID) else {
             throw ApelinError(.notFound, "no tool session \(request.sessionID)")
         }
+        if let toolCalling { return try await toolCalling(request) }
         return toolAnswer(request)
     }
 
-    func closeToolExtension(sessionID: String) {
+    func closeToolExtension(sessionID: String) async {
         toolSessionsClosed.append(sessionID)
+        if let toolClosing { await toolClosing(sessionID) }
     }
 }
 

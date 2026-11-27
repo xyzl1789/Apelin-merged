@@ -355,7 +355,7 @@ static id convertAddresses(id value) {
     NSString *digest = nil; int fd = snapshot(call, descriptor, &digest);
     RAWorker *worker = nil;
     @try {
-        NSString *key = [@[digest, call.arguments[@"arch"], _engineHash, _dataHash, @"1"] componentsJoinedByString:@":"];
+        NSString *key = [@[digest, call.arguments[@"arch"], _engineHash, _dataHash, @"2"] componentsJoinedByString:@":"];
         for (RAWorker *candidate in _sessions) if ([candidate.key isEqual:key]) { worker = candidate; break; }
         BOOL hit = worker != nil;
         if (!worker) {
@@ -364,23 +364,32 @@ static id convertAddresses(id value) {
         } else [_sessions removeObject:worker];
         [_sessions addObject:worker];
         NSString *name = call.tool, *command;
-        if ([name isEqual:@"analyze_functions"]) command = @"functions";
+        if ([name isEqual:@"analyze_functions"]) {
+            NSUInteger offset = [call.arguments[@"offset"] unsignedIntegerValue];
+            NSUInteger limit = call.arguments[@"limit"] ? [call.arguments[@"limit"] unsignedIntegerValue] : 100;
+            command = [NSString stringWithFormat:@"functions %lu %lu", (unsigned long)offset, (unsigned long)limit];
+        }
         else {
             NSString *op = [name isEqual:@"analyze_cfg"] ? @"cfg" : [name isEqual:@"decompile_function"] ? @"decompile" : [@"refs_" stringByAppendingString:call.arguments[@"direction"]];
             command = [NSString stringWithFormat:@"%@ %@", op, call.arguments[@"address"]];
         }
         id raw = [worker query:command call:call], data;
         if ([name isEqual:@"analyze_functions"]) {
-            if (![raw isKindOfClass:NSArray.class]) RAFail(@"toolFailed", @"函数列表格式错误");
-            NSArray *items = [raw sortedArrayUsingComparator:^NSComparisonResult(id a, id b) { return [a[@"addr"] compare:b[@"addr"]]; }];
+            if (![raw isKindOfClass:NSDictionary.class] || ![raw[@"functions"] isKindOfClass:NSArray.class] ||
+                ![raw[@"total"] isKindOfClass:NSNumber.class] || [raw[@"total"] compare:@0] == NSOrderedAscending)
+                RAFail(@"toolFailed", @"函数分页格式错误");
+            NSArray *page = raw[@"functions"];
             NSUInteger offset = [call.arguments[@"offset"] unsignedIntegerValue], limit = call.arguments[@"limit"] ? [call.arguments[@"limit"] unsignedIntegerValue] : 100;
-            NSMutableArray *page = [NSMutableArray array];
-            for (NSUInteger i = MIN(offset, items.count); i < items.count && page.count < limit; i++) {
-                NSDictionary *item = items[i];
-                if (!item[@"addr"] || !item[@"name"] || !item[@"size"] || !item[@"nbbs"]) RAFail(@"toolFailed", @"函数条目缺少字段");
-                [page addObject:@{@"address": [NSString stringWithFormat:@"0x%llx", [item[@"addr"] unsignedLongLongValue]], @"name": item[@"name"], @"size": item[@"size"], @"blocks": item[@"nbbs"]}];
+            NSUInteger total = [raw[@"total"] unsignedIntegerValue];
+            NSUInteger expected = offset < total ? MIN(limit, total - offset) : 0;
+            id next = offset < total && expected < total - offset ? @(offset + expected) : NSNull.null;
+            if (page.count != expected || ![raw[@"next_offset"] isEqual:next]) RAFail(@"toolFailed", @"函数分页边界错误");
+            for (id item in page) {
+                if (![item isKindOfClass:NSDictionary.class] || ![item[@"address"] isKindOfClass:NSString.class] ||
+                    ![item[@"name"] isKindOfClass:NSString.class] || ![item[@"size"] isKindOfClass:NSNumber.class] ||
+                    ![item[@"blocks"] isKindOfClass:NSNumber.class]) RAFail(@"toolFailed", @"函数条目缺少字段");
             }
-            data = @{@"functions": page, @"total": @(items.count), @"next_offset": offset < items.count && offset + page.count < items.count ? @(offset + page.count) : NSNull.null};
+            data = raw;
         } else {
             if ([name isEqual:@"decompile_function"]) {
                 if (![raw isKindOfClass:NSDictionary.class] || ![raw[@"code"] isKindOfClass:NSString.class] || ![raw[@"code"] length]) RAFail(@"toolFailed", @"未产生有效的 C 伪代码");

@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include "FunctionPage.h"
 
 extern RCorePlugin r_core_plugin_r2ghidra;
 enum { OUTPUT_LIMIT = 1024 * 1024, LINE_LIMIT = 96 };
@@ -48,6 +49,39 @@ static bool address_value(const char *text, ut64 *value) {
     }
     *value = (ut64)strtoull(text + 2, NULL, 16); return true;
 }
+static bool functions_page(RCore *core, uint64_t offset, uint64_t limit) {
+    size_t count = r_list_length(core->anal->fcns);
+    if (count > SIZE_MAX / sizeof(RAFunctionRow)) return failure("output_limit");
+    RAFunctionRow *rows = calloc(count ? count : 1, sizeof(*rows));
+    if (!rows) return failure("analysis_failed");
+    RListIter *iterator;
+    RAnalFunction *function;
+    size_t used = 0;
+    r_list_foreach(core->anal->fcns, iterator, function) {
+        if (used >= count) { free(rows); return failure("analysis_failed"); }
+        rows[used] = (RAFunctionRow){.address = function->addr,
+            .size = r_anal_function_linear_size(function),
+            .blocks = RVecAnalBlockPtr_length(&function->bbs),
+            .ordinal = used, .context = function};
+        used++;
+    }
+    if (used != count) { free(rows); return failure("analysis_failed"); }
+    ra_page_sort(rows, count);
+    size_t start = offset < count ? (size_t)offset : count;
+    size_t length = count - start < limit ? count - start : (size_t)limit;
+    bool names_ready = true;
+    for (size_t i = start; i < start + length; i++) {
+        rows[i].name = r_core_anal_fcn_name(core, (RAnalFunction *)rows[i].context);
+        if (!rows[i].name) { names_ready = false; break; }
+    }
+    char *page = names_ready ? ra_function_page_create(rows, count, offset, limit) : NULL;
+    for (size_t i = start; i < start + length; i++) free((void *)rows[i].name);
+    free(rows);
+    bool sent = page ? success(page) : failure(names_ready ? "output_limit" : "analysis_failed");
+    free(page);
+    return sent;
+}
+
 int main(int argc, char **argv) {
     // 仅让系统完成首次执行元数据处理；不打开样本、不初始化引擎。
     if (argc == 2 && !strcmp(argv[1], "--preflight")) return 0;
@@ -105,10 +139,20 @@ int main(int argc, char **argv) {
         if (ch == EOF) break;
         line[used] = 0;
         if (bad) { if (!failure("invalid_request")) break; continue; }
-        char *state = NULL, *op = strtok_r(line, " ", &state), *arg = strtok_r(NULL, " ", &state), *extra = strtok_r(NULL, " ", &state);
+        char *state = NULL, *op = strtok_r(line, " ", &state), *arg = strtok_r(NULL, " ", &state),
+            *extra = strtok_r(NULL, " ", &state), *trailing = strtok_r(NULL, " ", &state);
         const char *format = NULL; ut64 address = 0;
-        if (op && !strcmp(op, "functions") && !arg) format = "aflj";
-        else if (op && arg && !extra && address_value(arg, &address)) {
+        if (op && !strcmp(op, "functions")) {
+            uint64_t offset, limit;
+            if (trailing || !ra_page_unsigned(arg, RAFunctionOffsetLimit, &offset) ||
+                !ra_page_unsigned(extra, RAFunctionPageLimit, &limit) || !limit) {
+                if (!failure("invalid_request")) break;
+                continue;
+            }
+            if (!functions_page(core, offset, limit)) break;
+            continue;
+        }
+        if (op && arg && !extra && address_value(arg, &address)) {
             if (!strcmp(op, "cfg")) format = "agfj @ 0x%" PRIx64;
             else if (!strcmp(op, "refs_in")) format = "axtj @ 0x%" PRIx64;
             else if (!strcmp(op, "refs_out")) format = "axffj @ 0x%" PRIx64;

@@ -355,7 +355,7 @@ struct ToolExtensionTests {
         _ = try await assemble.execute("call-4", ["reason": "Encode", "arch": "arm64", "source": "nop"], nil, nil)
 
         await runner.closeToolExtensions()
-        #expect(await backend.toolSessionsClosed == ["tool-session-3", "tool-session-2"], "every session it holds, by extension id")
+        #expect(await backend.toolSessionsClosed == ["tool-session-1", "tool-session-3", "tool-session-2"], "失效会话先回收，其余会话按扩展标识关闭")
         // a call after the close was stopped with its conversation, not refused
         await #expect(throws: ConversationClosingError.self) {
             try await symbols.execute("call-5", ["reason": "Late", "binary": "/usr/lib/dyld"], nil, nil)

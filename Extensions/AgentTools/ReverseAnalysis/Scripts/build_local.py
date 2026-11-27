@@ -34,7 +34,7 @@ def preflight_worker():
                 cwd=ROOT, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 pass_fds=(4,), start_new_session=True)
             try:
-                output, diagnostic = child.communicate(b"functions\n", timeout=15)
+                output, diagnostic = child.communicate(b"functions 0 100\n", timeout=15)
             except BaseException:
                 os.killpg(child.pid, signal.SIGKILL); child.wait(); raise
         finally:

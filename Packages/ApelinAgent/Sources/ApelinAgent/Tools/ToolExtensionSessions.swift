@@ -4,84 +4,112 @@ import Foundation
 import KWWKAgent
 import KWWKAI
 
-/// The tool sessions the host opened for this agent session, one per
-/// extension: each opened on the first call of one of its tools and kept
-/// until the agent session closes. The host keeps at most 16 for the whole
-/// device, so none is opened before it is needed.
+/// 扩展会话按标识及版本复用；升级时先关闭旧版本，再启动新版本。
+/// 每次打开及关闭共享同一个任务，防止并发等待者重复关闭或泄漏迟到的会话。
 actor ToolExtensionSessions {
-    private enum Entry {
-        case opening(Task<String, Error>)
-        case open(String)
+    private final class Entry {
+        let version: String
+        let opening: Task<String, Error>
+        var closing: Task<Void, Never>?
+
+        init(version: String, opening: Task<String, Error>) {
+            self.version = version
+            self.opening = opening
+        }
     }
 
     private let backend: any AgentHostBackend
-    /// By extension ID.
     private var entries: [String: Entry] = [:]
     private var closed = false
+    private var shutdown: Task<Void, Never>?
 
     init(backend: any AgentHostBackend) {
         self.backend = backend
     }
 
-    /// Calls `tool` in its extension's session. One the host no longer has
-    /// (the extension exited, and the host let its session go) is opened
-    /// again, once, and the call made in the new one.
+    /// 仅对宿主确认已不存在的会话重试一次；不自动重放工具业务错误。
     func call(_ tool: ExtensionTool, arguments: JSONValue) async throws -> ToolExtensionCallResponse {
-        let session = try await session(for: tool.extensionID)
+        let (entry, session) = try await session(for: tool)
         do {
             return try await backend.callToolExtension(Self.request(tool, arguments, in: session))
         } catch let error as ApelinError where error.code == .notFound {
-            if case .open(session)? = entries[tool.extensionID] {
-                entries[tool.extensionID] = nil
+            if let current = entries[tool.extensionID], current !== entry, current.version != tool.extensionVersion {
+                throw error
             }
-            let reopened = try await self.session(for: tool.extensionID)
+            if entries[tool.extensionID] === entry {
+                await retire(entry).value
+                if entries[tool.extensionID] === entry {
+                    entries[tool.extensionID] = nil
+                }
+            }
+            // 关闭旧会话期间可能已升级，不能用旧工具声明重新打开旧版本。
+            if let current = entries[tool.extensionID], current !== entry, current.version != tool.extensionVersion {
+                throw error
+            }
+            let (_, reopened) = try await self.session(for: tool)
             return try await backend.callToolExtension(Self.request(tool, arguments, in: reopened))
         }
     }
 
-    /// Closes every open session; a call after this is refused, and one
-    /// still opening is closed by its opener once it is open. The host
-    /// closes whatever is left when the worker exits.
     func closeAll() async {
-        closed = true
-        let closing = entries
-        entries = [:]
-        for id in closing.keys.sorted() {
-            if case let .open(session)? = closing[id] {
-                try? await backend.closeToolExtension(sessionID: session)
-            }
+        if let shutdown {
+            await shutdown.value
+            return
         }
+        closed = true
+        let pending = entries.keys.sorted().compactMap { entries[$0] }
+        entries = [:]
+        let shutdown = Task {
+            for entry in pending { await retire(entry).value }
+        }
+        self.shutdown = shutdown
+        await shutdown.value
     }
 
-    private func session(for extensionID: String) async throws -> String {
+    private func session(for tool: ExtensionTool) async throws -> (Entry, String) {
         guard !closed else { throw Self.closing }
-        switch entries[extensionID] {
-        case let .open(session)?:
-            return session
-        case let .opening(task)?:
-            let session = try await task.value
-            guard !closed else { throw Self.closing }
-            return session
-        case nil:
+        let entry: Entry
+        if let current = entries[tool.extensionID], current.version == tool.extensionVersion, current.closing == nil {
+            entry = current
+        } else {
+            let previous = entries[tool.extensionID].map { retire($0) }
             let backend = backend
-            let task = Task { try await backend.openToolExtension(id: extensionID) }
-            entries[extensionID] = .opening(task)
-            let session: String
-            do {
-                session = try await task.value
-            } catch {
-                if case .opening(task)? = entries[extensionID] {
-                    entries[extensionID] = nil
-                }
-                throw error
+            let extensionID = tool.extensionID
+            let opening = Task {
+                if let previous { await previous.value }
+                return try await backend.openToolExtension(id: extensionID)
             }
-            guard !closed else {
-                try? await backend.closeToolExtension(sessionID: session)
-                throw Self.closing
-            }
-            entries[extensionID] = .open(session)
-            return session
+            entry = Entry(version: tool.extensionVersion, opening: opening)
+            entries[tool.extensionID] = entry
         }
+        let session: String
+        do {
+            session = try await entry.opening.value
+        } catch {
+            if entries[tool.extensionID] === entry {
+                entries[tool.extensionID] = nil
+            }
+            throw error
+        }
+        guard !closed, entries[tool.extensionID] === entry else {
+            await retire(entry).value
+            throw Self.closing
+        }
+        return (entry, session)
+    }
+
+    /// 无论升级、关闭还是迟到的打开结果，每个实际会话只关闭一次。
+    private func retire(_ entry: Entry) -> Task<Void, Never> {
+        if let closing = entry.closing { return closing }
+        let opening = entry.opening
+        let backend = backend
+        let closing = Task {
+            if let session = try? await opening.value {
+                try? await backend.closeToolExtension(sessionID: session)
+            }
+        }
+        entry.closing = closing
+        return closing
     }
 
     private static let closing = ConversationClosingError()

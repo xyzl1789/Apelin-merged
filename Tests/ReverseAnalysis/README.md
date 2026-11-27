@@ -84,6 +84,22 @@ python3 Tests/ReverseAnalysis/verify_extension.py
 
 `verify_extension.py` 也接受 `RA_RUNTIME` 指向项目内其他已签名运行目录，`RA_REPORT_NAME` 指定结果文件名。它实际执行握手、四项分析、分页与复用、两个样本各 6003 次伪代码回编译核对、20 项输入拒绝、附件传递和拒绝、真实反编译期间超时／取消、初始化取消、后台空闲回收、LRU、工作进程死亡重建、EOF 和服务被强杀后的进程回收。组件故障测试确实由主入口调用，覆盖运行中引擎变化、语言数据清单变化、诊断与内部响应超限；不是只定义测试而未执行。
 
+### 有界分页修复与大样本验证（2026-11-28）
+
+正式工作进程现直接从分析函数集合选取目标页，只序列化该页，不再先生成完整函数 JSON 后截取。`test_paging.py` 编译并执行生产分页头文件，覆盖十万函数取小页、排序、末页和越界页、转义及超大单条目拒绝；与容量、构建和打包契约合计 55 项回归通过。
+
+新编译并签名的 arm64e 独立程序，在本机以 arm64 架构读取 42,944,784 字节的 FLEQ 样本，完整返回 10,185 个函数、21 页，无重复或遗漏游标；路径与只读附件结果一致，CFG、双向引用、带注解及 P-code 的真实反编译、超时后恢复均通过。原样本摘要未变，测试进程组已回收。这仅验证所选函数及协议行为，不代表整个应用的静态语义都准确。
+
+```sh
+python3 Tests/ReverseAnalysis/verify_large_sample.py \
+  --runtime "${RUNTIME:?项目内已签名运行目录}" \
+  --binary "${SAMPLE:?项目内未加密薄 Mach-O}" --arch arm64
+```
+
+默认报告为 `build/reverse-analysis/results/large-sample-paging.json`；本轮完整协议报告为同目录的 `paging-fixed-extension-report.json`。后者重新通过两个架构合计 12,006 次伪代码回编译结果核对、48 MiB 路径与附件边界、超限拒绝、取消、缓存、进程回收及组件故障测试。
+
+宿主会话已补入按扩展版本失效、共享关闭任务、迟到打开回收及有界重试的修复，并新增 8 项测试。本机缺少可用的 `swift-test` 与 `xcodebuild`，因此这些 Swift 单测和新版宿主的真实工具调用尚未运行，完整 `make check` 仍被阻塞。本次没有安装、重启或发布软件包。
+
 `verify_package.py` 按构建 ID、bootstrap 和 SHA-256 读取现有发行包，不重新打包，也不安装：
 
 ```sh
