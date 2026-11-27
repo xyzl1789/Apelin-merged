@@ -20,15 +20,11 @@ let package = Package(
         .library(name: "ApelinAgentWorker", targets: ["ApelinAgentWorker"]),
     ],
     dependencies: [
-        // yellowplushq/kwwk v0.1.127 with Antigravity restored: the head of
-        // pull request #296, branch `claude/restore-antigravity`, which
-        // reverts kwwk's removal (#271) and is not released yet. Pinned by
-        // commit, so nothing pushed to the branch changes what is built;
-        // pin a kwwk release once one contains it (see #73). Bump
-        // deliberately.
+        // kwwk 0.1.138：修复 OpenCode Go 请求头和路径、Responses SSE 回退，
+        // 并加入 Antigravity CLI OAuth/AirRelay。固定正式版本，确保构建结果一致。
         .package(
             url: "https://github.com/yellowplushq/kwwk.git",
-            revision: "fdd68f4ac22d63ce4c68a77d3f66af33ded77bfc",
+            exact: "0.1.138",
         ),
         // kwwk's swift-nio, held below 2.104.0. That release made
         // ByteToMessageHandler's decoder `~Copyable`, and an iOS runtime

@@ -108,7 +108,27 @@ public actor AccountDesk {
         onlyExtraModels: Bool = false,
     ) async -> AgentAccountListResponse {
         let started = DispatchTime.now().uptimeNanoseconds
-        let stored = await Set(store.providerIds())
+        var stored = Set(await store.providerIds())
+        let legacyAntigravityID = "antigravity"
+        let agyID = AgyOAuth.providerId
+        if stored.contains(legacyAntigravityID), !stored.contains(agyID),
+           let legacyCredentials = try? await store.credentials(for: legacyAntigravityID)
+        {
+            do {
+                try await store.store(legacyCredentials, for: agyID)
+                stored.insert(agyID)
+                do {
+                    try await store.remove(legacyAntigravityID)
+                    stored.remove(legacyAntigravityID)
+                } catch {
+                    // The new item is already usable; sign-out also clears this old alias.
+                    Self.log.warning("Legacy Antigravity credential alias could not be removed")
+                }
+            } catch {
+                // Keep the legacy item untouched if copying it to the new id fails.
+                Self.log.warning("Legacy Antigravity credential could not be migrated")
+            }
+        }
         var accounts: [AgentAccount] = []
         accounts.reserveCapacity(AgentProvider.signInOrder.count)
         for listed in AgentProvider.signInOrder {
@@ -284,6 +304,9 @@ public actor AccountDesk {
 
     public func signOut(_ provider: AgentProvider) async throws {
         do {
+            if provider == .antigravity {
+                try await store.remove("antigravity")
+            }
             try await store.remove(provider.storeID)
         } catch {
             throw ApelinError(
@@ -293,13 +316,14 @@ public actor AccountDesk {
         }
     }
 
-    /// A typed key's endpoint host — the one it was given, else its form's
-    /// default — which tells two keys apart and is no secret. A
-    /// subscription carries no account name kwwk keeps, and a key a browser
-    /// sign-in minted (OpenRouter's, Z.ai's) names no endpoint.
+    /// Endpoint host shown as the account label for API-key and AirRelay accounts.
     static func accountLabel(_ provider: AgentProvider, _ credentials: OAuthCredentials) -> String? {
-        if case let .string(base)? = credentials.extras[AgentSignInField.baseURL.rawValue] {
-            return URLComponents(string: base)?.host
+        for key in [AgentSignInField.baseURL.rawValue, "relayUrl"] {
+            if case let .string(base)? = credentials.extras[key],
+               let host = URLComponents(string: base)?.host
+            {
+                return host
+            }
         }
         guard provider.signInMethod == .apiKey,
               let base = provider.keyFields.first(where: { $0.field == .baseURL })?.defaultValue
@@ -673,6 +697,16 @@ public actor AccountDesk {
             }
             if run.provider == .openRouter, run.method == .apiKey {
                 signedIn.extras[ProviderModels.signInMethodExtra] = .string(run.method.rawValue)
+            }
+            if run.provider == .antigravity,
+               let previous = try? await store.credentials(for: run.provider.storeID)
+            {
+                // 重新登录时保留此前配置的 AirRelay 地址。
+                for key in [AgentSignInField.baseURL.rawValue, "relayUrl"] where signedIn.extras[key] == nil {
+                    if let value = previous.extras[key] {
+                        signedIn.extras[key] = value
+                    }
+                }
             }
             try Task.checkCancellation()
             do {

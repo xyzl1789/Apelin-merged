@@ -377,10 +377,19 @@ public enum AgentWorker {
         wire.flatMap { ServiceTier(rawValue: $0.rawValue) }
     }
 
-    /// A provider with no saved sign-in is the reader's to fix in Settings,
-    /// not the agent's failure: the session waits for a credential.
-    static func signInError(_ error: ProviderResolutionError) -> ApelinError {
-        ApelinError(.denied, error.localizedDescription)
+    /// The app is told why a session's saved sign-in cannot be used.
+    static func signInError(_ error: ProviderResolutionError, inboxRejected: [String] = []) -> ApelinError {
+        switch error {
+        case .missingCredentials:
+            var message = error.localizedDescription
+            if !inboxRejected.isEmpty {
+                message += "（导入凭据：\(inboxRejected.joined(separator: "；"))）"
+            }
+            return ApelinError(.denied, message)
+        case let .unresolved(message, reason):
+            guard let reason else { return ApelinError(.internal, message) }
+            return ApelinError(.unavailable, message, reason: reason)
+        }
     }
 
     /// The kwwk provider configuration for an open request. The first four

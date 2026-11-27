@@ -42,7 +42,15 @@ public enum ProviderRegistration {
         } else {
             try await registerStored(storeId: storeID, manager: manager, modelOverride: modelOverride)
         }
-        guard let resolved = registered else { return nil }
+        guard let resolved = registered else {
+            if storeID == AgyOAuth.providerId {
+                throw ProviderResolutionError.unresolved(
+                    message: "Antigravity 需要 AirRelay 地址才能发送对话。请为 Antigravity 配置 AirRelay，或选择其他模型服务商。",
+                    reason: nil,
+                )
+            }
+            return nil
+        }
         // A model the endpoint's own record does not describe is read against
         // the catalogs: a relay's `cn:deepseek-v4.1-flash` is DeepSeek's model,
         // with its window, its ceiling and its images. An endpoint whose

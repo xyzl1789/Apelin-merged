@@ -49,7 +49,7 @@ public enum ProviderConfiguration: Sendable, Hashable, Codable {
         case .cursor: .stored(storeID: "cursor", model: model)
         case .devin: .stored(storeID: "devin", model: model)
         case .kiro: .stored(storeID: "kiro", model: model)
-        case .antigravity: .stored(storeID: "antigravity", model: model)
+        case .antigravity: .stored(storeID: AgyOAuth.providerId, model: model)
         case .qoder: .stored(storeID: "qoder", model: model)
         case .qoderCN: .stored(storeID: "qoder-cn", model: model)
         case .workBuddy: .stored(storeID: "workbuddy", model: model)
@@ -86,10 +86,14 @@ public enum ProviderResolutionError: Error, Equatable, LocalizedError {
     /// No credential for this provider; the session waits for the app to
     /// deliver or sign in again. Nothing is read from the environment.
     case missingCredentials(String)
+    /// A saved sign-in exists, but cannot route a session; preserve the
+    /// provider's message and the reason when one is known.
+    case unresolved(message: String, reason: ApelinError.Reason?)
 
     public var errorDescription: String? {
         switch self {
         case let .missingCredentials(id): "没有 \(id) 的已保存登录，请在 Apelin 中重新登录。"
+        case let .unresolved(message, _): message
         }
     }
 }

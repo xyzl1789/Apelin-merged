@@ -269,15 +269,12 @@ the same executable in session mode; the workers are its children.
   GPL-family text fails the build. Vendored code keeps its upstream `LICENSE`
   beside it and its header on each file; MIT / BSD / Apache only. `make check`
   requires the phase, the packager requires the file. Read the generated list
-  after adding a dependency. A package pinned by revision has no version in
-  its pin, so one whose checkout states its own is read there
-  (`statedVersions` in `Licenses/review.json`: kwwk's, from
-  `Sources/KWWKCli/Theme.swift`; a checkout that no longer states exactly
-  one where the rule says fails the build). The app shows a linked
-  package's version only from this list (`LinkedPackage`): Model
-  Providers' footer ends "Currently using kwwk 0.1.121." (owner,
-  2026-11-14), which is the kwwk the workers of the same build link, with
-  no number kept by hand.
+  添加依赖后要阅读生成的许可清单。固定到正式发行版的依赖优先使用
+  `Package.resolved` 中的版本；只有 revision pin 没有版本号时，才使用依赖
+  自身声明的版本（`Licenses/review.json` 中的 `statedVersions`，例如 kwwk）。
+  应用只从此清单显示依赖版本（`LinkedPackage`）：Model Providers 页脚显示
+  "Currently using kwwk 0.1.138."，与同一构建中的 worker 实际链接版本一致，
+  不在源码中手动维护版本号。
 - **No absolute build path in a shipped binary.** `#file` is concise
   (`SWIFT_UPCOMING_FEATURE_CONCISE_MAGIC_FILE`, prefix maps in `Base.xcconfig`);
   the packager greps every binary for the repository root and fails on a hit.
@@ -3019,23 +3016,16 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   only the cases, the key forms and model discovery at the plan's
   `<root>/v1/models`, which, like kwwk's routes, never reads a `baseUrl`
   an imported credential carries.
-  Antigravity (owner, 2026-11-04; kwwk 0.1.110 and 0.1.111,
-  `AntigravityOAuth`, `registerAntigravity`) is Google's: a Google sign-in
-  with Antigravity's own client, PKCE and its registered loopback, after
-  which kwwk finds the account's Code Assist project, onboarding a new
-  account and polling until Google has set it up, and keeps the project,
-  the tier and, when Google names it, the email as extras; it renews at Google (`upkeep: .refreshed`, in
-  `KimiIdentity.refreshers(for:)` for that account) and answers through Code
-  Assist's `streamGenerateContent`. A free Google account signs in too;
-  which models a plan serves is Google's. Apelin adds the case, after
-  Cursor in the order, and its mark (its official logo on a white plate):
-  the models are kwwk's bundled list for it (`antigravity`, from 0.1.111
-  Gemini 4 Argon, Gemini 3.8 Flash, Claude Opus 5.5 and Sonnet 5.5 among
-  them), enabled with no check like any subscription's, and a model the
-  account is not served fails its chat in Google's words. kwwk waits out
-  a 429 that says it is back within a minute and fails one that says the
-  quota is spent (its `ProviderFailures.md`); its quota reader
-  (`OAuthUsage`) is shown nowhere, as for every subscription.
+  Antigravity（原版直接 Code Assist 接入已由 kwwk 0.1.122 移除）现使用
+  kwwk 0.1.138 的 `AgyOAuth` / `AgyModels`（#302、#310、#317）：Google
+  OAuth2 + PKCE 使用动态本地回调端口，账号与模型按 kwwk 的 `agy` 标识
+  存储；Apelin 在线协议仍保留 `AgentProvider.antigravity`，避免改变已保存的
+  模型选择。新模型列表来自 Agy catalog，推理档位编码在模型 ID 中；聊天经
+  用户配置的 AirRelay 端点发送 Anthropic Messages 请求，地址可来自 `baseUrl`
+  或 `relayUrl`。旧 `antigravity` 凭据在账号列表读取时迁移到 `agy`：只有新项
+  成功写入后才移除旧项，复制失败则保留旧凭据；退出登录会清理两个标识。重新
+  登录会保留已配置的 AirRelay 地址，并显示其主机名；未配置地址时明确提示
+  需要 AirRelay，而不再误报没有保存登录。
   Trae and Raccoon (owner, 2026-11-11; JanXiao's providers of PR #40,
   moved into kwwk as OpenCode Go was: kwwk 0.1.118, `TraeOAuth`,
   `TraeProvider`, `RaccoonOAuth`, `RaccoonProvider`) are signed in to as
@@ -3149,7 +3139,7 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   thing the flow shows. A loopback redirect is the URI kwwk registered for
   that provider (Claude's `http://localhost:53692/callback`, Codex's port
   1455, Devin's `127.0.0.1:59653`, OpenRouter's port 53693, Antigravity's
-  `http://localhost:51121/oauth-callback`), or, for Trae and Raccoon, whose
+  dynamic `localhost:0/oauth-callback`), or, for Trae and Raccoon, whose
   pages take any, whichever port is free (`127.0.0.1:<port>/authorize` and
   `/auth/callback`): kwwk's NIO listener in
   the worker, through kwwk's `loopback` seam (`PasteableLoopback`), answers
