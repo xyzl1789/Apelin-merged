@@ -94,6 +94,18 @@ python3 Tests/ReverseAnalysis/verify_package.py \
 
 0.1.2 的 roothide 包（arm64e）及 rootless 包（arm64、arm64e）均已按上述切片路径实际运行。包级报告在 `build/reverse-analysis/results/package-<bootstrap>-verification.json`，逐切片协议报告及两轮日志也在 `results/`。这里的 rootless 结论是同一台 roothide 设备上解包执行其二进制，不代表已在 rootless 实机安装验收。
 
+## 构建隔离契约与交叉编译检查
+
+```sh
+python3 Tests/ReverseAnalysis/test_build.py
+```
+
+此契约使用假编译器验证宿主／目标 SDK 分离、显式 iOS target、两种架构、缺失环境拒绝、链接后签名、失败不签名、路径转换、平台识别和语言数据摘要；不下载依赖，也不执行分析引擎。它不能证明 macOS 上的真实编译已成功。
+
+`.github/workflows/reverse-analysis.yml` 在匹配路径的 push／pull request 和手动触发时先执行契约，再由 `xcode-27` 专用 runner 的 Xcode 27.1 分别交叉编译 arm64 和 arm64e。`Scripts/ci_build.py` 在 macOS 上单独为 sdb 生成器选择 macOS SDK，为协议服务和静态工作进程选择 iPhoneOS SDK，并静态核验最终二进制和数据。
+
+成功的检查产物包含对应源码和许可；`verification.json` 明确记录未执行 iOS 程序、未验收设备、未打包及未安装。此路径不调用 `verify_extension.py`／`verify_package.py`，不生成 `.deb`，不发布独立扩展，也不改动主应用发行链。专用 runner 不在线时编译作业会排队，不能用契约通过代替真实编译通过。
+
 ## 真实限制
 
 - 动态 `core_ghidra.dylib` 已编译、签名，但本机加载时被系统拒绝映射；成功路径是将同一套真实反编译对象静态链接到独立的 `reverse-native`，没有修改系统权限或安装设置。

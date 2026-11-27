@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import stat
@@ -143,10 +144,27 @@ def prepare(base):
     return result
 
 
+def cross_compile():
+    value = os.environ.get('RA_CROSS_COMPILE', '0')
+    if value not in ('0', '1'):
+        raise RuntimeError('RA_CROSS_COMPILE 只能为 0 或 1')
+    return value == '1'
+
+
 def environment(arch, patch):
+    if arch not in ('arm64', 'arm64e'):
+        raise RuntimeError('目标架构必须为 arm64 或 arm64e')
     if not os.environ.get('APELIN_PROJECT_ROOT'):
         raise RuntimeError('项目环境缺少 APELIN_PROJECT_ROOT')
     env = os.environ.copy()
+    cross = cross_compile()
+    if cross:
+        for name in ('SDKROOT', 'RA_HOST_SDKROOT'):
+            if not env.get(name) or not Path(env[name]).is_dir():
+                raise RuntimeError('交叉编译缺少有效 SDK 目录：' + name)
+        if Path(env['SDKROOT']).resolve() == Path(env['RA_HOST_SDKROOT']).resolve():
+            raise RuntimeError('交叉编译的 iPhoneOS 与 macOS SDK 不得相同')
+        env['APELIN_REVERSE_HOST_SDKROOT'] = env['RA_HOST_SDKROOT']
     archiver = shutil.which('ar')
     if not archiver:
         raise RuntimeError('工具链缺少 ar')
@@ -160,8 +178,10 @@ def environment(arch, patch):
     maps = ' '.join('-ffile-prefix-map=' + value + '=.' for value in
                     {str(ROOT), os.environ['APELIN_PROJECT_ROOT']})
     common = f'-O2 -arch {arch} -miphoneos-version-min=16.0 -fPIC {maps}'
-    env.update({'CC': 'reverse-cc', 'CXX': 'reverse-cxx', 'HOST_CC': 'reverse-cc',
-                'HOSTCC': 'reverse-cc', 'CC_FOR_BUILD': 'reverse-cc', 'WANT_ZYDIS': '0',
+    host_cc = 'reverse-host-cc' if cross else 'reverse-cc'
+    env.update({'CC': 'reverse-cc', 'CXX': 'reverse-cxx', 'HOST_CC': host_cc,
+                'HOSTCC': host_cc, 'CC_FOR_BUILD': host_cc, 'WANT_ZYDIS': '0',
+                'HOST_CFLAGS': '-O2 ' + maps, 'HOST_LDFLAGS': '',
                 'CAPSTONE_ARCHS': 'arm aarch64', 'PYTHON': 'python3', 'CFLAGS': common,
                 'CXXFLAGS': common + ' -stdlib=libc++',
                 'LDFLAGS': f'-arch {arch} -miphoneos-version-min=16.0'})
@@ -177,6 +197,13 @@ def engine_key(arch):
             h.update(path.read_bytes())
     h.update((EXT / 'Packaging/entitlements.plist').read_bytes())
     h.update(arch.encode())
+    h.update(str(cross_compile()).encode())
+    if cross_compile():
+        host_sdk = os.environ.get('RA_HOST_SDKROOT')
+        if not host_sdk:
+            raise RuntimeError('交叉编译缺少 RA_HOST_SDKROOT')
+        host_settings = Path(host_sdk) / 'SDKSettings.plist'
+        h.update(host_settings.read_bytes())
     version = subprocess.check_output(['clang', '--version']).decode().splitlines()[0]
     h.update(version.encode())
     sdk = Path(os.environ['SDKROOT']) / 'SDKSettings.plist'
@@ -214,8 +241,8 @@ def build_engine(arch, jobs=2):
         path.write_text(path.read_text().replace('xcrun libtool -static', 'libtool -static').replace('xcrun ranlib ', 'ranlib '))
     path = r2 / 'libr/syscall/d/Makefile'
     path.write_text(path.read_text().replace('$(SDB) -r -r $(shell pwd)', '$(SDB) -r -r .'))
-    execute(label + 'radare2', ['make', f'-j{jobs}', 'blob', 'CC=reverse-cc', 'HOST_CC=reverse-cc',
-        'HOSTCC=reverse-cc', 'AR=reverse-ar', 'CAPSTONE_ARCHS=arm aarch64'], r2, env)
+    execute(label + 'radare2', ['make', f'-j{jobs}', 'blob', 'CC=reverse-cc', 'HOST_CC=' + env['HOST_CC'],
+        'HOSTCC=' + env['HOSTCC'], 'CC_FOR_BUILD=' + env['CC_FOR_BUILD'], 'AR=reverse-ar', 'CAPSTONE_ARCHS=arm aarch64'], r2, env)
     execute(label + 'archive', ['make', '-C', 'libr', 'libr.a', 'AR=reverse-ar'], r2, env, 180)
     src = ghidra / 'src'
     include = '-I' + os.path.relpath(r2 / 'libr/include', src) + ' -I' + os.path.relpath(r2 / 'subprojects/sdb/include', src)
@@ -276,6 +303,11 @@ def tool_path(path):
     return value.removeprefix('/rootfs') if value.startswith('/rootfs/') else value
 
 
+def is_ios_header(headers):
+    return (re.search(r'^\s*platform\s+(?:2|IOS)\s*$', headers, re.MULTILINE) is not None
+            or 'LC_VERSION_MIN_IPHONEOS' in headers)
+
+
 def check_binary(path, expected):
     archs = subprocess.check_output(['lipo', '-archs', tool_path(path)]).decode().split()
     if set(archs) != set(expected):
@@ -286,7 +318,7 @@ def check_binary(path, expected):
             raise RuntimeError('存在非系统动态依赖：' + line)
     for arch in expected:
         headers = subprocess.check_output(['otool', '-arch', arch, '-l', tool_path(path)]).decode()
-        if 'platform 2' not in headers and 'LC_VERSION_MIN_IPHONEOS' not in headers:
+        if not is_ios_header(headers):
             raise RuntimeError('不是 iOS 目标')
     data = path.read_bytes()
     for value in {str(ROOT), os.environ['APELIN_PROJECT_ROOT'], str(Path.home())}:

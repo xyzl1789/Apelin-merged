@@ -48,6 +48,16 @@ RA_OFFLINE=1 python3 Extensions/AgentTools/ReverseAnalysis/Scripts/rebuild.py --
 
 产物在 `build/reverse-analysis/distribution/v1/<架构>/runtime/`：协议程序、独立工作进程、SLEIGH 数据与数据摘要。只修改协议程序或 `Worker.c` 会复用摘要核验后的上游对象；修改引擎构建配方时指定新的非空 `RA_BUILD_TAG`，不会悄悄混用旧对象。可重新编译、链接、签名和替换工作进程；无额外禁止调试、为修改而逆向或替换的限制。
 
+## 交叉编译检查
+
+GitHub 的独立工作流分别编译 arm64 和 arm64e，使用独立的 macOS 宿主生成器和明确指定 iOS target 的编译器。它静态核验架构、平台、系统动态依赖、签名权限、私有路径与语言数据摘要，保存完整对应源码和许可；不在 Mac 上执行 iOS 程序，不生成或安装软件包，也不替代设备验收。专用 `xcode-27` runner 不在线时仍待检查。
+
+构建隔离契约可以在已有 Python 3 与 bash 的项目环境中独立运行，不下载依赖：
+
+```sh
+python3 Tests/ReverseAnalysis/test_build.py
+```
+
 ## 许可边界与真实限制
 
 协议服务器沿用仓库 MIT；静态工作进程整体按 GPL-3.0-only 交付，所有上游文件保留原始许可。通知、LGPL/GPL 原文、Apache、BSD、Capstone、zlib 等声明随包保留。引擎、数据和对应源码仅属于本独立扩展，不进入主应用的许可证集合或分发产物。

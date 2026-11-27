@@ -6069,3 +6069,18 @@ arm64／arm64e 自有样本的函数列表、6 块 7 边 CFG、双向调用、Gh
 不降低门槛，不勾选新条目，不将独立回归当成主应用构建通过。脚本语法、JSON／权限解析、
 删除变量守卫、schema fixtures 和差异空白检查已通过；附加的 `check-templates.py --no-build`
 因本机缺少 `/private/tmp` 无法建立临时目录而未通过，不修改系统目录绕过它。
+
+续接的独立编译检查为 `.github/workflows/reverse-analysis.yml`。先运行
+`python3 Tests/ReverseAnalysis/test_build.py` 的假编译器契约，再由 `xcode-27` 专用 runner
+的 Xcode 27.1 分别运行 `Scripts/ci_build.py --arch arm64`／`--arch arm64e`。CI 设置
+`RA_CROSS_COMPILE=1`：`reverse-host-cc` 单独使用 macOS SDK 编译 sdb 生成器，
+`reverse-cc` 显式指定 iOS target 和 iPhoneOS SDK，不能再将 HOST_CC 硬编码为目标编译器。
+最终 iOS 程序只做架构、平台、系统依赖、权限、路径和数据摘要静态核验，不在 Mac 执行。
+检查产物同时保存完整对应源码和许可，明确不是 deb、未安装、未做设备验收；没有专用
+runner 时仍为排队，不把契约测试通过写成 macOS 编译通过。现有主应用发行链保持原样。
+构建配方改变后更换 RA_BUILD_TAG，不复用 v1 发行缓存；旧包和旧验收报告不得冒充新构建。
+本轮在本机复用 v1 的上游对象重新编译／链接双架构协议服务与工作进程，先剥离对象来源
+调试符号，再重新签名，静态核验与各架构完整协议回归通过；报告为
+`results/native-ci-build-regression.json` 和 `results/native-ci-<arch>-protocol.json`。
+这没有重新构建上游引擎，也没有生成新发行包；19 项构建契约通过不代表 macOS 交叉编译
+已经通过，真实 CI 状态仍须推送后核实。

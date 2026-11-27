@@ -1,0 +1,7 @@
+#!/bin/bash
+# macOS 生成器独立使用宿主 SDK，不继承 iOS 目标、架构或权限。
+set -eu
+: "${APELIN_REVERSE_HOST_SDKROOT:?}"
+unset IPHONEOS_DEPLOYMENT_TARGET MACOSX_DEPLOYMENT_TARGET
+export SDKROOT="$APELIN_REVERSE_HOST_SDKROOT"
+exec clang -isysroot "$SDKROOT" "$@"

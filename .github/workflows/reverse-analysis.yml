@@ -1,0 +1,108 @@
+# 只检查独立扩展；不执行 iOS 程序，不重建或发布发行包。
+name: 原生逆向扩展编译检查
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/reverse-analysis.yml'
+      - 'Extensions/AgentTools/ReverseAnalysis/**'
+      - 'Tests/ReverseAnalysis/**'
+      - 'LICENSE'
+  pull_request:
+    paths:
+      - '.github/workflows/reverse-analysis.yml'
+      - 'Extensions/AgentTools/ReverseAnalysis/**'
+      - 'Tests/ReverseAnalysis/**'
+      - 'LICENSE'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reverse-analysis-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: 构建隔离契约
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 读取源码
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 检查清单门禁
+        run: bash Scripts/check-checklist.sh
+      - name: 验证宿主与目标编译参数、签名和失败路径
+        env:
+          APELIN_PROJECT_ROOT: ${{ github.workspace }}
+        run: python3 Tests/ReverseAnalysis/test_build.py
+      - name: 检查 Python 语法
+        run: python3 -m compileall -q Extensions/AgentTools/ReverseAnalysis/Scripts Tests/ReverseAnalysis
+
+  cross-compile:
+    name: iOS ${{ matrix.arch }} 交叉编译及静态核验
+    needs: contracts
+    # 外部 fork 的未审查代码只在托管 runner 跑契约，不进入专用构建机。
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # 沿用仓库的专用 Xcode 27.1 runner；没有 runner 时排队，不冒充通过。
+    runs-on: xcode-27
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, arm64e]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_ANALYTICS: '1'
+      APELIN_PROJECT_ROOT: ${{ github.workspace }}
+      RA_CROSS_COMPILE: '1'
+      RA_BUILD_TAG: ci-v1
+    steps:
+      - name: 读取源码
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 核对 Xcode 和双 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d "${DEVELOPER_DIR:?}" ]; then
+            echo '::error::缺少约定的 Xcode 27.1，不能用其他 SDK 冒充完成检查'
+            exit 1
+          fi
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk macosx --show-sdk-version
+          dirname "$(xcrun --find clang)" >> "$GITHUB_PATH"
+      - name: 准备独立签名工具
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ldid >/dev/null 2>&1; then
+            brew install ldid
+          fi
+      - name: 下载并核验固定源码归档
+        run: python3 -c 'import sys; sys.path.insert(0, "Extensions/AgentTools/ReverseAnalysis/Scripts"); from build_support import archives; archives()'
+      - name: 编译独立原生程序并静态核验
+        run: python3 Extensions/AgentTools/ReverseAnalysis/Scripts/ci_build.py --arch '${{ matrix.arch }}' --jobs 2
+      - name: 保存检查产物、对应源码与许可
+        uses: actions/upload-artifact@v4
+        with:
+          name: reverse-analysis-ios-${{ matrix.arch }}-${{ github.sha }}
+          path: build/reverse-analysis/ci-artifacts/${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 30
+      - name: 保留构建诊断
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reverse-analysis-logs-${{ matrix.arch }}-${{ github.sha }}
+          path: build/reverse-analysis/distribution/logs/
+          if-no-files-found: ignore
+          retention-days: 14

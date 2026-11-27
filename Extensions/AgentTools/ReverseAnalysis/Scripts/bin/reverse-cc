@@ -23,6 +23,14 @@ for arg in "$@"; do
     esac
 done
 if [ "$has_arch" = 0 ]; then args=(-arch "$APELIN_REVERSE_ARCH" "${args[@]}"); fi
+case "${RA_CROSS_COMPILE:-0}" in
+    0) ;;
+    1)
+        : "${SDKROOT:?}"
+        args=(-target "${APELIN_REVERSE_ARCH:?}-apple-ios16.0" -isysroot "$SDKROOT" "${args[@]}")
+        ;;
+    *) echo 'RA_CROSS_COMPILE 只能为 0 或 1' >&2; exit 1 ;;
+esac
 clang -DAPPLE_SDK_IPHONEOS=1 -DUSE_DLSYSTEM=1 "${args[@]}"
 if [ "$link" = 1 ] && [ -f "${output:?}" ]; then
     ldid -S"${APELIN_REVERSE_ENTITLEMENTS:?}" "${output:?}"

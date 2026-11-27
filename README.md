@@ -45,6 +45,15 @@ The development extensions add the project templates and come with Apelin by def
 | `wiki.qaq.apelin.dev.preferences` | Preference bundles |
 | `wiki.qaq.apelin.agent-tools.disassembler` | A disassembler for the agent, on Capstone |
 | `wiki.qaq.apelin.agent-tools.assembler` | An assembler for the agent, on Keystone (GPL-2.0; its source is published with each release) |
+| `com.xyzl.agent-tools.reverse-analysis` | 可选的独立原生逆向分析：函数列表、控制流图、双向静态引用及 Ghidra C 伪代码 |
+
+## 可选的原生逆向分析工具
+
+独立扩展提供 `analyze_functions`、`analyze_cfg`、`analyze_references` 和 `decompile_function`。它分析最大 32 MiB、未加密的 arm64／arm64e 薄 Mach-O，不执行样本，也不恢复原始 Swift／Objective-C 工程。
+
+扩展需要单独的软件包，主应用不内置分析引擎，也不强制依赖它；扩展本身没有把主应用列为强制依赖。使用支持现有工具扩展协议的宿主时，可以在安装后让 AI 先列函数，再查看函数控制流、调用关系和 C 伪代码。其他脚本或客户端也能适配 JSONL 协议使用，但它不是现成的 MCP／HTTP 服务或独立图形软件。
+
+详细的功能区别、roothide／rootless 包选择、自然语言用法、参数与完整协议示例，以及已测和未测范围，见[原生逆向分析使用说明](Documents/ReverseAnalysis.md)。当前仍未完成真实主应用会话中的安装发现验收，也不承诺本仓库的主应用 Release 已附带独立扩展包。
 
 ## Open in Apelin
 
