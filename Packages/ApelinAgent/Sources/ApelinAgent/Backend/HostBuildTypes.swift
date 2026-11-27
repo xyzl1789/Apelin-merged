@@ -64,12 +64,15 @@ public struct BuildArtifact: Sendable, Hashable, Codable {
     public var name: String
     /// SHA-256 of the artifact, hex.
     public var digest: String
+    /// 该产物所属的 bootstrap 构建目标。
+    public var bootstrap: String?
 
-    public init(id: String, kind: Kind, name: String, digest: String) {
+    public init(id: String, kind: Kind, name: String, digest: String, bootstrap: String? = nil) {
         self.id = id
         self.kind = kind
         self.name = name
         self.digest = digest
+        self.bootstrap = bootstrap
     }
 }
 

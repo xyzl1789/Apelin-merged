@@ -186,6 +186,7 @@ public struct ChannelHostBackend: AgentHostBackend {
                         kind: .package,
                         name: file ?? "\(artifact.packageID)_\(artifact.version)\(bootstrap).deb",
                         digest: artifact.digest,
+                        bootstrap: artifact.bootstrap,
                     ))
                     // The artifact names the APELIN_BUILD_ID apelin_package_confirm_loaded matches.
                     if let named = artifact.buildID, !named.isEmpty {

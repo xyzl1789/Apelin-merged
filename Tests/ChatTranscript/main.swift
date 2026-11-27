@@ -373,6 +373,39 @@ let failedBuild = ChatTranscript(events: [
 precondition(!failedBuild.messages.contains { $0.text.contains("apelin-artifact://share/") }, "failed builds do not expose artifact links")
 print("ok: successful build artifacts appear as stable transcript links")
 
+// 同一回合每个 bootstrap 只保留最后一次成功构建的链接。
+do {
+    let result: (UInt64, String, String) -> TaskEvent = { seq, id, target in
+        event(seq, "toolResult", [
+            "tool": .string(AgentToolName.projectBuild.rawValue),
+            "output": .string("{\"succeeded\":true,\"artifacts\":[{\"id\":\"\(id)\",\"name\":\"\(id).deb\",\"bootstrap\":\"\(target)\"}] }"),
+        ])
+    }
+    let events = [
+        event(1, "prompt", ["id": .string(UUID().uuidString), "text": .string("分别构建各目标")]),
+        result(2, "rootless-old", "rootless"),
+        result(3, "roothide-only", "roothide"),
+        result(4, "rootless-last", "rootless"),
+        event(5, "finished"),
+    ]
+    let footer = ChatTranscript(events: events) { _ in nil }.messages.first(where: \\.isGeneratedFiles)
+    precondition(footer?.text.contains("rootless-last") == true, "同目标保留最后一个产物")
+    precondition(footer?.text.contains("rootless-old") == false, "同目标旧产物不再显示")
+    precondition(footer?.text.contains("roothide-only") == true, "另一构建目标仍保留")
+
+    let sameBuild = ChatTranscript(events: [
+        event(1, "prompt", ["id": .string(UUID().uuidString), "text": .string("重叠构建结果")]),
+        event(2, "toolResult", [
+            "tool": .string(AgentToolName.projectBuild.rawValue),
+            "output": .string("{\"succeeded\":true,\"artifacts\":[{\"id\":\"first\",\"name\":\"first.deb\",\"bootstrap\":\"rootless\"},{\"id\":\"last\",\"name\":\"last.deb\",\"bootstrap\":\"rootless\"}] }"),
+        ]),
+        event(3, "finished"),
+    ]) { _ in nil }.messages.first(where: \\.isGeneratedFiles)
+    precondition(sameBuild?.text.contains("last.deb") == true && sameBuild?.text.contains("first.deb") == false,
+                 "同一结果里的同目标也只保留最后一个")
+}
+print("通过：每个构建目标只显示最后生成的产物")
+
 // 不同类型交付文件汇总到各轮最后；流式追加与重放得到同一分组。
 do {
     let first = UUID()

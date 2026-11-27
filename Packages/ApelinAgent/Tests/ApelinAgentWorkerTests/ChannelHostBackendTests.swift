@@ -821,5 +821,6 @@ struct ChannelHostBackendTests {
         let response = try await fixture.backend.build(BuildRequest(context: fixture.context(), configuration: .debug, buildDescriptionDigest: "d"))
         #expect(response.buildID == "B-7")
         #expect(response.artifacts.first?.name == "wiki.qaq.hello_0.0.1_iphoneos-arm64.deb")
+        #expect(response.artifacts.first?.bootstrap == "rootless")
     }
 }

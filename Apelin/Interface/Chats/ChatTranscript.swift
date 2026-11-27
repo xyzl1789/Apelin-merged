@@ -392,12 +392,18 @@ struct ChatTranscript {
                 }
                 if payload?["tool"]?.stringValue == AgentToolName.projectBuild.rawValue,
                    payload?["isError"]?.boolValue != true,
-                   let output = payload?["output"]?.stringValue,
-                   let artifactLinks = Self.buildArtifactLinks(from: output)
+                   let output = payload?["output"]?.stringValue
                 {
-                    var message = ChatMessage(id: Self.rowID("build-artifacts:\(firstEvent + index)"), role: .assistant, text: artifactLinks)
-                    message.isGeneratedFiles = true
-                    add(message)
+                    for group in Self.buildArtifactLinks(from: output) {
+                        var message = ChatMessage(
+                            id: Self.rowID("build-artifacts:\(firstEvent + index):\(group.target ?? "unclassified")"),
+                            role: .assistant,
+                            text: group.links,
+                        )
+                        message.isGeneratedFiles = true
+                        message.generatedFilesTarget = group.target
+                        add(message)
+                    }
                 }
             case "approvalRequested":
                 if let approvalID = payload?["approvalID"]?.stringValue {
@@ -1161,7 +1167,9 @@ struct ChatTranscript {
     ) -> [ChatMessage] {
         var result: [ChatMessage] = []
         var files: ChatMessage?
-        var links: [String] = []
+        var linkGroups: [(target: String?, links: [String])] = []
+        var targetGroupIndices: [String: Int] = [:]
+        var unclassifiedGroupIndex: Int?
         var currentTurnStart: UUID?
         // An artifact can be replayed by a resumed/interrupted run or appear
         // again after an inserted prompt. Keep its first visible occurrence.
@@ -1169,10 +1177,13 @@ struct ChatTranscript {
         var seenAttachments: Set<UUID> = []
         func flush() {
             guard var footer = files else { return }
+            let links = linkGroups.flatMap { $0.links }
             footer.text = String(localized: "Files generated this turn:") + "\n\n" + links.joined(separator: "  \n")
             result.append(footer)
             files = nil
-            links = []
+            linkGroups = []
+            targetGroupIndices = [:]
+            unclassifiedGroupIndex = nil
         }
         for row in rows {
             if turnStarts.contains(row.id) {
@@ -1195,7 +1206,22 @@ struct ChatTranscript {
             } else {
                 files?.attachments += newAttachments
             }
-            links += newLinks
+            guard !newLinks.isEmpty else { continue }
+            if let target = row.generatedFilesTarget {
+                if let index = targetGroupIndices[target] {
+                    // 同目标的最新一次成功构建替换较早的包链接，其他目标互不影响。
+                    linkGroups[index].links = newLinks
+                } else {
+                    targetGroupIndices[target] = linkGroups.count
+                    linkGroups.append((target: target, links: newLinks))
+                }
+            } else if let index = unclassifiedGroupIndex {
+                // 较早版本的工具结果没有目标字段；保留原行为，不猜测其构建目标。
+                linkGroups[index].links += newLinks
+            } else {
+                unclassifiedGroupIndex = linkGroups.count
+                linkGroups.append((target: nil, links: newLinks))
+            }
         }
         flush()
         return result
@@ -1211,25 +1237,48 @@ struct ChatTranscript {
         return "[\(label)](\(destination))"
     }
 
-    /// A successful project build returns its existing package artifact IDs
-    /// and names; the link resolves the artifact record when tapped, so the
-    /// transcript never stores or creates another copy of the file.
-    private static func buildArtifactLinks(from output: String) -> String? {
+    private struct GeneratedArtifactGroup {
+        var target: String?
+        var links: String
+    }
+
+    /// 成功的项目构建会返回产物 ID、名称和构建目标；链接仍解析到原有产物记录，
+    /// 不在转录中保存或复制文件。
+    private static func buildArtifactLinks(from output: String) -> [GeneratedArtifactGroup] {
         guard let data = output.data(using: .utf8),
               let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               result["succeeded"] as? Bool == true,
               let artifacts = result["artifacts"] as? [[String: Any]]
-        else { return nil }
-        let links = artifacts.compactMap { artifact -> String? in
+        else { return [] }
+        var groups: [GeneratedArtifactGroup] = []
+        var targetIndices: [String: Int] = [:]
+        var unclassifiedIndex: Int?
+        for artifact in artifacts {
             guard let id = artifact["id"] as? String,
                   !id.isEmpty,
                   id.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-")).contains($0) }),
                   let name = artifact["name"] as? String,
                   !name.isEmpty
-            else { return nil }
-            return Self.fileLink(name: name, destination: "apelin-artifact://share/\(id)")
+            else { continue }
+            let link = Self.fileLink(name: name, destination: "apelin-artifact://share/\(id)")
+            let target = (artifact["bootstrap"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            if let target {
+                if let index = targetIndices[target] {
+                    // 同一个构建结果可能为同一目标列出多个产物，只保留最后一个包链接。
+                    groups[index].links = link
+                } else {
+                    targetIndices[target] = groups.count
+                    groups.append(GeneratedArtifactGroup(target: target, links: link))
+                }
+            } else if let index = unclassifiedIndex {
+                // 较早的工具结果没有目标字段，继续显示其文件，不擅自推断构建目标。
+                groups[index].links += "  \n" + link
+            } else {
+                unclassifiedIndex = groups.count
+                groups.append(GeneratedArtifactGroup(target: nil, links: link))
+            }
         }
-        return links.isEmpty ? nil : links.joined(separator: "  \n")
+        return groups
     }
 
     private static func rowID(_ value: String) -> UUID {
