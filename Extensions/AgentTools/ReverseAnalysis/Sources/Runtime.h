@@ -3,7 +3,7 @@
 #include <signal.h>
 
 extern volatile sig_atomic_t RAStopping;
-enum { RAMaxFile = 32 * 1024 * 1024, RAMaxFrame = 1024 * 1024, RAMaxReply = 256 * 1024 };
+enum { RAMaxFile = 48 * 1024 * 1024, RAMaxFrame = 1024 * 1024, RAMaxReply = 256 * 1024 };
 double RANow(void);
 void RAFail(NSString *code, NSString *message) __attribute__((noreturn));
 BOOL RAInteger(id value, long long minimum, long long maximum);

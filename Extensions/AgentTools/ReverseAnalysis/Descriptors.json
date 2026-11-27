@@ -5,7 +5,7 @@
   "tools": [
     {
       "name": "analyze_functions",
-      "description": "列出原生静态分析发现的函数，按地址排序并分页。支持未加密、最大 32 MiB 的 arm64/arm64e 薄 Mach-O；不是仅列符号表。",
+      "description": "列出原生静态分析发现的函数，按地址排序并分页。支持未加密、最大 48 MiB 的 arm64/arm64e 薄 Mach-O；不是仅列符号表。",
       "parameters": {
         "type": "object", "additionalProperties": false,
         "properties": {

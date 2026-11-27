@@ -222,7 +222,7 @@ static int snapshot(RACall *call, int provided, NSString **digest) {
         }
         struct stat before, after;
         if (source < 0 || fstat(source, &before) || !S_ISREG(before.st_mode)) RAFail(@"invalidArguments", @"只接受普通二进制文件");
-        if (before.st_size < 32 || before.st_size > RAMaxFile) RAFail(@"invalidArguments", @"输入文件必须为 32 字节至 32 MiB");
+        if (before.st_size < 32 || before.st_size > RAMaxFile) RAFail(@"invalidArguments", @"输入文件必须为 32 字节至 48 MiB");
         NSString *folder = NSProcessInfo.processInfo.environment[@"TMPDIR"] ?: NSTemporaryDirectory();
         temporaryName = strdup([[folder stringByAppendingPathComponent:@"xyzl-reverse.XXXXXX"] fileSystemRepresentation]);
         if (!temporaryName) RAFail(@"toolFailed", @"无法分配快照名称");

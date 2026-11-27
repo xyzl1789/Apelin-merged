@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
     /* 引擎不兼容 iOS 的 /dev/fd 文件加载，故将只读 fd 复制到私有 malloc I/O。
        这里只写引擎的私有副本，原文件与传入描述符从未以写模式打开。 */
     struct stat input;
-    if (fstat(4, &input) || !S_ISREG(input.st_mode) || input.st_size < 32 || input.st_size > 32 * 1024 * 1024) {
+    if (fstat(4, &input) || !S_ISREG(input.st_mode) || input.st_size < 32 || input.st_size > 48 * 1024 * 1024) {
         failure("invalid_binary"); r_core_free(core); return 66;
     }
     char uri[64]; snprintf(uri, sizeof(uri), "malloc://%" PRIu64, (uint64_t)input.st_size);

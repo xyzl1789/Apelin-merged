@@ -73,6 +73,8 @@ python3 Tests/ReverseAnalysis/verify_service.py
 
 独立扩展使用 Objective-C 协议服务及 C/C++ 静态工作进程，提供 `analyze_functions`、`analyze_cfg`、`analyze_references`、`decompile_function`，遵循现有 JSONL、取消和 SCM_RIGHTS 只读附件协议；不向主应用或守护进程链接分析引擎，也不依赖 Python 运行时。完整用法、资源边界与离线重建说明见扩展目录的 `README.md`。
 
+正式扩展的输入上限现为 48 MiB，路径、附件和工作进程采用相同边界；上方 32 MiB 仅属于保留作对照的旧 Python 原型，不随此次修改改变。`test_capacity.py` 检查源码、描述符与真实回归入口的一致性，不执行引擎。`verify_extension.py` 的容量回归在两个架构上分析尾部填充至 32 MiB 加一字节、41 MiB、48 MiB 的自有样本，并核对 48 MiB 附件复用、超限拒绝、失败恢复及输入摘要；填充样本通过不代表大型应用准确性验收。
+
 已完成上述隔离试验构建时，可复用上游对象进行本机联调，链接后自动签名：
 
 ```sh

@@ -30,6 +30,8 @@ if not RUNTIME.is_relative_to(ROOT):
 RESULTS = CACHE / "results"
 NATIVE_ROOT = os.environ["APELIN_PROJECT_ROOT"]
 ALL_PIDS = set()
+INPUT_LIMIT = 48 * 1024 * 1024
+CAPACITY_SIZES = (32 * 1024 * 1024 + 1, 41 * 1024 * 1024, INPUT_LIMIT)
 
 
 def native(path):
@@ -233,9 +235,11 @@ def boundaries():
             struct.pack_into("<I", data, 20, 0xffffffff); malformed.write_bytes(data)
             client.reject("invalidArguments", binary=native(malformed))
             oversized = folder / "oversized"
-            with oversized.open("wb") as stream:
-                stream.truncate(32 * 1024 * 1024 + 1)
-            client.reject("invalidArguments", binary=native(oversized))
+            shutil.copyfile(CACHE / "fixture-arm64", oversized)
+            with oversized.open("r+b") as stream:
+                stream.truncate(INPUT_LIMIT + 1)
+            rejected = client.reject("invalidArguments", binary=native(oversized))
+            require("48 MiB" in rejected["error"]["message"], "超限输入没有返回新容量提示")
             client.reject("invalidArguments", binary=native(CACHE / "fixture-arm64e"))
             count += 4
         client.proc.stdin.write(b"x" * (1048576 + 1) + b"\n"); client.proc.stdin.flush()
@@ -263,6 +267,45 @@ def attachments():
         client.reject("attachmentRejected", attachments=[{"id": "not-bound", "argument": "other"}])
         client.reject("attachmentRejected", attachments=[{"id": "many" + str(i), "argument": "binary"} for i in range(9)])
     return {"scm_rights_binary": True, "size_mismatch": True, "multiple_descriptors": True, "missing_descriptor": True, "argument_binding": True, "reference_limit": True}
+
+
+def input_capacity():
+    """尾部填充真实样本验收容量；不据此声称大型应用分析准确。"""
+    reports = []
+    with tempfile.TemporaryDirectory(prefix="formal-capacity-", dir=CACHE) as folder:
+        folder = Path(folder)
+        for arch in ("arm64", "arm64e"):
+            with Client() as client:
+                baseline = client.call(arch=arch)["data"]["functions"]
+                padded = folder / ("padded-" + arch)
+                for size in CAPACITY_SIZES:
+                    shutil.copyfile(CACHE / ("fixture-" + arch), padded)
+                    with padded.open("r+b") as stream:
+                        stream.truncate(size)
+                    digest = hashlib.sha256(padded.read_bytes()).hexdigest()
+                    result = client.call(arch=arch, binary=native(padded))
+                    require(result["data"]["functions"] == baseline, "容量样本函数列表与原样本不符")
+                    require(result["meta"]["sha256"] == digest, "容量样本快照摘要不符")
+                    require(hashlib.sha256(padded.read_bytes()).hexdigest() == digest, "容量测试修改了输入")
+                with padded.open("rb") as stream:
+                    client.attach("capacity-limit", [stream.fileno()])
+                    attached = client.call(arch=arch, binary="descriptor-only", attachments=[
+                        {"id": "capacity-limit", "argument": "binary", "byteCount": INPUT_LIMIT}])
+                require(attached["data"]["functions"] == baseline and attached["meta"]["cache_hit"],
+                        "48 MiB 附件没有成功分析并复用同内容会话")
+                require(hashlib.sha256(padded.read_bytes()).hexdigest() == digest, "附件测试修改了输入")
+                with padded.open("r+b") as stream:
+                    stream.truncate(INPUT_LIMIT + 1)
+                with padded.open("rb") as stream:
+                    client.attach("capacity-oversized", [stream.fileno()])
+                    client.reject("attachmentRejected", arch=arch, binary="descriptor-only", attachments=[
+                        {"id": "capacity-oversized", "argument": "binary", "byteCount": INPUT_LIMIT + 1}])
+                client.call(arch=arch)
+                reports.append({"arch": arch, "accepted_path_bytes": list(CAPACITY_SIZES),
+                                "accepted_attachment_bytes": INPUT_LIMIT,
+                                "rejected_attachment_bytes": INPUT_LIMIT + 1,
+                                "input_unchanged": True, "failure_recovery": True})
+    return reports
 
 
 def lifecycle(folder):
@@ -364,7 +407,8 @@ def component_faults(folder):
 def main():
     paths = [CACHE / "fixture-arm64", CACHE / "fixture-arm64e", ROOT / "Tests/ReverseAnalysis/fixture.c"]
     original = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
-    report = {"features": features(), "boundaries": boundaries(), "attachments": attachments()}
+    report = {"features": features(), "boundaries": boundaries(), "attachments": attachments(),
+              "capacity": input_capacity()}
     with tempfile.TemporaryDirectory(prefix="formal-check-", dir=CACHE) as folder:
         report["lifecycle"] = lifecycle(Path(folder))
         report["component_faults"] = component_faults(Path(folder))
