@@ -1,6 +1,6 @@
 # 原生逆向分析隔离试验
 
-验证 iOS 原生进程中完成函数列表、CFG、双向调用引用和真正的 Ghidra C 伪代码输出。本目录是实验与验收代码，尚未接入 AI 工具、主应用或界面，也不生成安装包。
+验证 iOS 原生进程中完成函数列表、CFG、双向调用引用和真正的 Ghidra C 伪代码输出。本目录保留隔离原型及正式扩展的验收代码；独立扩展位于 `Extensions/AgentTools/ReverseAnalysis/`，已生成并验收双 bootstrap 软件包，尚未安装，也未完成主应用工具发现验收。
 
 ## 已实测
 
@@ -69,14 +69,39 @@ python3 Tests/ReverseAnalysis/verify_service.py
 
 机器可读报告为 `build/reverse-analysis/results/session-report.json`，新接口回编译产物同在 `results/`。这些是可复现的实验验收，不是正式扩展、主程序集成或恶意输入安全审计。
 
+## 正式独立扩展与软件包验收（2026-11-27）
+
+独立扩展使用 Objective-C 协议服务及 C/C++ 静态工作进程，提供 `analyze_functions`、`analyze_cfg`、`analyze_references`、`decompile_function`，遵循现有 JSONL、取消和 SCM_RIGHTS 只读附件协议；不向主应用或守护进程链接分析引擎，也不依赖 Python 运行时。完整用法、资源边界与离线重建说明见扩展目录的 `README.md`。
+
+已完成上述隔离试验构建时，可复用上游对象进行本机联调，链接后自动签名：
+
+```sh
+python3 Extensions/AgentTools/ReverseAnalysis/Scripts/build_local.py
+python3 Tests/ReverseAnalysis/verify_extension.py
+```
+
+`verify_extension.py` 也接受 `RA_RUNTIME` 指向项目内其他已签名运行目录，`RA_REPORT_NAME` 指定结果文件名。它实际执行握手、四项分析、分页与复用、两个样本各 6003 次伪代码回编译核对、20 项输入拒绝、附件传递和拒绝、真实反编译期间超时／取消、初始化取消、后台空闲回收、LRU、工作进程死亡重建、EOF 和服务被强杀后的进程回收。组件故障测试确实由主入口调用，覆盖运行中引擎变化、语言数据清单变化、诊断与内部响应超限；不是只定义测试而未执行。
+
+`verify_package.py` 按构建 ID、bootstrap 和 SHA-256 读取现有发行包，不重新打包，也不安装：
+
+```sh
+# BUILD_ID、PACKAGE_SHA256 分别使用该发行包的实际构建 ID 和摘要。
+python3 Tests/ReverseAnalysis/verify_package.py \
+  --build-id "$BUILD_ID" --bootstrap rootless --digest "$PACKAGE_SHA256"
+```
+
+包级验收核对包摘要、发现清单、完整对应源码及 63 份通知摘要；随后对原包程序和每个提取后的唯一架构切片分别运行两轮完整协议回归。提取保留原有签名，不重新编译或签名。区分 roothide 首启元数据更新与代码／权限变化，第二轮要求完整文件摘要稳定；最后确认输入未变、全部测试工作进程组已回收、原包解出程序没有被切片验收改动。
+
+0.1.2 的 roothide 包（arm64e）及 rootless 包（arm64、arm64e）均已按上述切片路径实际运行。包级报告在 `build/reverse-analysis/results/package-<bootstrap>-verification.json`，逐切片协议报告及两轮日志也在 `results/`。这里的 rootless 结论是同一台 roothide 设备上解包执行其二进制，不代表已在 rootless 实机安装验收。
+
 ## 真实限制
 
 - 动态 `core_ghidra.dylib` 已编译、签名，但本机加载时被系统拒绝映射；成功路径是将同一套真实反编译对象静态链接到独立的 `reverse-native`，没有修改系统权限或安装设置。
-- `driver.c` 的任意命令参数仅用于旧的受控验收；新的固定操作入口位于 `session_driver.c`，外部 JSON 原型在 `analysis_service.py`。正式工具注册、宿主级取消传播和发行集成尚未实现。
-- 会话缓存与复用已在隔离原型验收，但尚未接入正式扩展生命周期、后台空闲定时器和进程内存硬限额。
+- `driver.c` 的任意命令参数仅用于旧的受控验收；新的固定操作入口位于 `session_driver.c`，外部 JSON 原型在 `analysis_service.py`。它们保留作实验对照，不作为正式扩展入口。
+- 原型的空闲清理由请求或显式调用驱动；正式扩展已有独立生命周期、后台定时回收及原生取消传播，但两者均无进程内存硬限额。
 - 仅使用两个保留符号的自有薄 Mach-O 验收分析结果；大型文件、去符号、胖二进制、Objective-C 消息派发、Swift 类型信息和混淆尚未验证。少量畸形头及加密标志只验证提前拒绝，不代表通过恶意样本语料或解析器安全审计。
 - 引用是静态分析候选；验收只对 `CALL` 类型核对已知调用图，不能把全部数据/代码候选当作真实执行路径。
 - 最小化插件集合会出现缺少 ARM 文本格式化器的诊断；不影响已验证的 CFG、调用和反编译结果，但不是完整工具包的兼容性验收。
-- 上游包含 LGPL/GPL 家族许可文本；依赖源码、数据和生成物留在忽略的缓存目录，未加入主应用依赖或发行包。正式独立扩展的许可与分发方式需要另行审查。
+- 上游包含 LGPL/GPL 家族许可文本；实验生成物留在忽略的缓存目录。正式扩展将引擎、数据、通知和完整对应源码放在自身独立软件包中，未加入主应用依赖、许可集合或发行包；未进行公开发布。
 
-完整 `make check` 本机仍受缺少 xcodebuild 阻塞，不能用本试验替代主应用的检查门槛。恢复到具备 Xcode 的环境后仍须执行。
+完整 `make check` 本机仍受缺少 xcodebuild 阻塞，不能用本试验替代主应用的检查门槛。恢复到具备 Xcode 的环境后仍须执行。补跑的脚本语法、JSON／权限解析、删除变量守卫、schema fixtures 和差异空白检查通过；`check-templates.py --no-build` 在读取四类模板后因本机缺少 `/private/tmp` 无法建立测试临时目录，整项仍未通过，没有为此修改系统目录或跳过检查。

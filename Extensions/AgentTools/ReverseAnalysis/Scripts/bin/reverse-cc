@@ -1,0 +1,29 @@
+#!/bin/bash
+# 原生编译器包装：转换路径，补齐目标架构，链接后签名。
+set -eu
+: "${APELIN_REVERSE_ENTITLEMENTS:?}" "${APELIN_REVERSE_ARCH:?}"
+output=a.out
+link=1
+next=0
+has_arch=0
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        /rootfs/*) args+=("${arg#/rootfs}") ;;
+        -I/rootfs/*) args+=("-I${arg#-I/rootfs}") ;;
+        -L/rootfs/*) args+=("-L${arg#-L/rootfs}") ;;
+        *) args+=("$arg") ;;
+    esac
+    if [ "$next" = 1 ]; then output="$arg"; next=0; continue; fi
+    case "$arg" in
+        -arch|-target|--target=*) has_arch=1 ;;
+        -o) next=1 ;;
+        -c|-E|-S|-r|-fsyntax-only|-###|--version|-v) link=0 ;;
+        -o?*) output="${arg#-o}" ;;
+    esac
+done
+if [ "$has_arch" = 0 ]; then args=(-arch "$APELIN_REVERSE_ARCH" "${args[@]}"); fi
+clang -DAPPLE_SDK_IPHONEOS=1 -DUSE_DLSYSTEM=1 "${args[@]}"
+if [ "$link" = 1 ] && [ -f "${output:?}" ]; then
+    ldid -S"${APELIN_REVERSE_ENTITLEMENTS:?}" "${output:?}"
+fi

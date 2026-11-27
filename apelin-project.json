@@ -4,5 +4,10 @@
   "kind": "workspace",
   "buildSystem": "external",
   "displayName": "Apelin-merged",
-  "autoName": false
+  "autoName": false,
+  "external": {
+    "script": "Extensions/AgentTools/ReverseAnalysis/Scripts/build_package.py",
+    "interpreter": "python3",
+    "arguments": []
+  }
 }

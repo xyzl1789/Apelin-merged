@@ -1,0 +1,5 @@
+#!/bin/sh
+# 固定版本补丁实现随对应源码交付，不安装 Python 包。
+set -eu
+: "${APELIN_REVERSE_PATCH:?}"
+exec python3 "${APELIN_REVERSE_PATCH:?}" "$@"

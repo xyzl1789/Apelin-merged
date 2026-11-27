@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "name": "原生逆向分析",
+  "license": "GPL-3.0-only AND MIT AND Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND NCSA AND Zlib",
+  "executable": "usr/libexec/apelin/agent-tools/xyzl-reverse-analysis/xyzl-reverse-analysis",
+  "licenseFiles": [
+    "licenses/NOTICE.md",
+    "licenses/project-LICENSE",
+    "licenses/radare2/COPYING.md",
+    "licenses/radare2/doc/licenses/LGPL-3.0-only.txt",
+    "licenses/radare2/doc/licenses/GPL-3.0-only.txt",
+    "licenses/r2ghidra/LICENSE.md",
+    "licenses/r2ghidra/LESSER.md",
+    "licenses/r2ghidra/COPYING",
+    "licenses/r2ghidra/subprojects/ghidra-native/LICENSE",
+    "licenses/r2ghidra/subprojects/zlib/LICENSE",
+    "licenses/source.json",
+    "licenses/notices-sha256.json"
+  ]
+}

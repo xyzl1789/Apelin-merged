@@ -1,0 +1,12 @@
+#!/bin/bash
+# 转换原生归档器的路径视角，不依赖 xcrun。
+set -eu
+: "${APELIN_REVERSE_AR:?}"
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        /rootfs/*) args+=("${arg#/rootfs}") ;;
+        *) args+=("$arg") ;;
+    esac
+done
+exec "${APELIN_REVERSE_AR:?}" "${args[@]}"

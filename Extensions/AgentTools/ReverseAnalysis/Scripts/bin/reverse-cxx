@@ -1,0 +1,4 @@
+#!/bin/sh
+# C++ 与 C 使用一致的架构、路径转换和链接后签名规则。
+set -eu
+exec reverse-cc --driver-mode=g++ "$@"

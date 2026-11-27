@@ -6033,19 +6033,39 @@ colour or a bug.
 - The page's segment control sets no title fonts: the platform draws them, and
   scales them with the reader's text size, which a font set here would freeze.
 
-## 原生逆向分析隔离试验（2026-11-27）
+## 原生逆向分析隔离试验与独立扩展（2026-11-27）
 
-`Tests/ReverseAnalysis/README.md` 记录固定源码版本、依赖校验、原生构建和验收流程。
-执行 `fetch_sources.py`、`build_native.py all --jobs 2`、`verify_native.py` 和
+`Tests/ReverseAnalysis/README.md` 记录固定源码版本、原型与正式扩展的构建、验收及限制。
+隔离原型执行 `fetch_sources.py`、`build_native.py all --jobs 2`、`verify_native.py` 和
 `verify_service.py`，结果在 `build/reverse-analysis/results/`。所有链接输出运行前签名，
-不安装包，不修改主应用依赖。
-本机动态 Ghidra 插件被系统拒绝映射；可行路径是静态链接到独立原生试验驱动。
-arm64/arm64e 自有样本的函数列表、CFG、双向调用、Ghidra C 反编译、伪代码回编译、
-超时取消、进程组回收和输入 SHA-256 不变已实测。此结论不覆盖大型、去符号或胖二进制，
-也不表示已有正式 AI 扩展或界面。`session_driver.c` 的固定原生操作与
-`analysis_service.py` 的隔离 JSON 宿主已验收内容指纹缓存、同进程复用、分页、内容变化
-失效、LRU/请求次数/显式空闲清理、死亡进程重建、排队及初始化取消和响应超限回收。
-`expire()` 需由请求入口或未来宿主定时器驱动，目前没有后台空闲定时器和内存硬限额。
-原始命令入口仅供受控验收，不向代理开放；正式宿主的取消令牌尚未接入。
-上游 GPL/LGPL 家族许可须在正式分发前另审，不能混入主应用。完整 `make check`
-仍因本机没有 xcodebuild 而未通过；未降低门槛，也未勾选新条目。
+不安装包，不修改主应用依赖。本机动态 Ghidra 插件被系统拒绝映射；使用相同引擎对象
+静态链接到独立工作进程，不调整系统签名策略。
+
+正式实现位于 `Extensions/AgentTools/ReverseAnalysis/`，Objective-C 协议服务与 C/C++
+引擎各自独立，按现有 `ApelinToolHost` v1 清单发现、JSONL、取消和 SCM_RIGHTS 附件契约
+提供四项固定工具。引擎、SLEIGH 数据及完整对应源码仅属于独立扩展包，不链接到主应用、
+守护进程，也不加入它们的许可集合。离线完整重建见扩展 README 的 `rebuild.py`；
+本机联调可运行 `Scripts/build_local.py` 复用隔离试验对象，随后执行
+`Tests/ReverseAnalysis/verify_extension.py`。软件包仅由构建宿主调用
+`Scripts/build_package.py` 生成，不从 shell 手工打包；不自动安装或发布。
+
+0.1.2 双 bootstrap 软件包已经构建，并从包内实际执行：roothide 的 arm64e，rootless
+的 arm64／arm64e。`verify_package.py` 按构建 ID、bootstrap、摘要读取现有包，核对
+发现清单、当前扩展完整对应源码、固定上游归档和许可通知，再对原包与每个唯一架构切片
+分别跑两轮完整回归，不重编译或重签名这些切片。包级和逐切片报告位于上述 `results/`。
+这是同一 roothide 设备上的解包执行，不算 rootless 实机安装验收。
+
+arm64／arm64e 自有样本的函数列表、6 块 7 边 CFG、双向调用、Ghidra C 反编译、
+每个样本 6003 次伪代码回编译结果核对、输入 SHA-256 不变均已实测。正式回归同时覆盖
+会话复用与分页、内容变化失效、后台空闲与 LRU 回收、死亡进程重建、初始化及真实反编译
+超时／取消、宿主 EOF／强杀清理、运行中引擎／数据清单变化拒绝，以及诊断／内部帧超限
+回收。`component_faults()` 必须由验收主入口实际调用；不能仅保留未执行的测试定义。
+首启元数据变化与代码／权限变化分开核对，第二轮要求完整文件摘要稳定。
+
+原型的 `expire()` 仍需请求或显式调用驱动；正式扩展已有后台回收，但尚无进程内存硬限额。
+未验证大型、去符号、胖二进制输入、Objective-C 动态派发、Swift 类型恢复或恶意样本安全性。
+未安装本扩展、未通过真实 Swift `ToolHostClient` 验收工具发现与调用，不能宣称已在主应用
+可用。完整 `make check` 仍因本机没有 xcodebuild 而未通过；在具备 Xcode 的环境补验，
+不降低门槛，不勾选新条目，不将独立回归当成主应用构建通过。脚本语法、JSON／权限解析、
+删除变量守卫、schema fixtures 和差异空白检查已通过；附加的 `check-templates.py --no-build`
+因本机缺少 `/private/tmp` 无法建立临时目录而未通过，不修改系统目录绕过它。

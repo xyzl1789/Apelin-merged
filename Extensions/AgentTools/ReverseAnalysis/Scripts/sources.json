@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {"name":"radare2-6.2.6.tar.xz","url":"https://github.com/radareorg/radare2/releases/download/6.2.6/radare2-6.2.6.tar.xz","sha256":"1a0e09c0f781337ae8cd3f4a1d295ac64344d0b019031f75755dbc8e246b9f8a","bytes":46826944,"directory":"radare2-6.2.6-source","root":"radare2-6.2.6"},
+    {"name":"r2ghidra-6.2.6.tar.xz","url":"https://github.com/radareorg/r2ghidra/releases/download/6.2.6/r2ghidra-6.2.6.tar.xz","sha256":"4fe9aeb4ab226b6b552b5d61a284f9b6b08b20579bbac1bcaa6785bfe957991f","bytes":4017168,"directory":"r2ghidra-6.2.6-source","root":"r2ghidra-6.2.6"},
+    {"name":"r2ghidra_sleigh-6.2.6.zip","url":"https://github.com/radareorg/r2ghidra/releases/download/6.2.6/r2ghidra_sleigh-6.2.6.zip","sha256":"dc824a89a0cdb589407932875da1e3e5eb86f8f8fa37e01920489a73b73efc2c","bytes":10385502,"directory":"r2ghidra_sleigh-6.2.6-source","root":"r2ghidra_sleigh-6.2.6"},
+    {"name":"patch_ng-1.19.1.tar.gz","url":"https://files.pythonhosted.org/packages/da/b6/8ea8095f964f93567bbe28709298b30104ad418b50d4217538387bf48f7d/patch_ng-1.19.1.tar.gz","sha256":"036a3cc00134ec53f37e92333958ee75e117f2e62a5ec2b85c7122e5e815c29e","bytes":18525,"directory":"patch_ng-1.19.1-source","root":"patch_ng-1.19.1"}
+  ]
+}

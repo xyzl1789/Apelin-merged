@@ -1,0 +1,69 @@
+{
+  "id": "com.xyzl.agent-tools.reverse-analysis",
+  "version": "0.1.2",
+  "protocolVersions": [1],
+  "tools": [
+    {
+      "name": "analyze_functions",
+      "description": "列出原生静态分析发现的函数，按地址排序并分页。支持未加密、最大 32 MiB 的 arm64/arm64e 薄 Mach-O；不是仅列符号表。",
+      "parameters": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "binary": {"type": "string", "minLength": 1, "description": "二进制绝对路径；宿主也可用绑定 binary 的只读描述符附件替代此路径。"},
+          "arch": {"type": "string", "enum": ["arm64", "arm64e"]},
+          "offset": {"type": "integer", "minimum": 0, "maximum": 2147483647},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+          "timeout_seconds": {"type": "number", "minimum": 0.001, "maximum": 60, "description": "包含读取、初始化和分析的总时限，默认 15 秒。"}
+        },
+        "required": ["binary", "arch"]
+      },
+      "risk": "readOnly", "timeoutSeconds": 65
+    },
+    {
+      "name": "analyze_cfg",
+      "description": "恢复指定函数的基本块、指令和控制流边。地址必须为分析发现的十六进制函数入口，不执行表达式或任意引擎命令。",
+      "parameters": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "binary": {"type": "string", "minLength": 1, "description": "二进制绝对路径，或由宿主绑定 binary 附件。"},
+          "arch": {"type": "string", "enum": ["arm64", "arm64e"]},
+          "address": {"type": "string", "minLength": 3, "maxLength": 18, "pattern": "^0x[0-9a-fA-F]{1,16}$"},
+          "timeout_seconds": {"type": "number", "minimum": 0.001, "maximum": 60}
+        },
+        "required": ["binary", "arch", "address"]
+      },
+      "risk": "readOnly", "timeoutSeconds": 65
+    },
+    {
+      "name": "analyze_references",
+      "description": "查询函数的入向或出向静态引用。CALL 项可用于调用图候选；数据引用、间接调用和 Objective-C 动态派发不保证完整。",
+      "parameters": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "binary": {"type": "string", "minLength": 1, "description": "二进制绝对路径，或由宿主绑定 binary 附件。"},
+          "arch": {"type": "string", "enum": ["arm64", "arm64e"]},
+          "address": {"type": "string", "minLength": 3, "maxLength": 18, "pattern": "^0x[0-9a-fA-F]{1,16}$"},
+          "direction": {"type": "string", "enum": ["in", "out"]},
+          "timeout_seconds": {"type": "number", "minimum": 0.001, "maximum": 60}
+        },
+        "required": ["binary", "arch", "address", "direction"]
+      },
+      "risk": "readOnly", "timeoutSeconds": 65
+    },
+    {
+      "name": "decompile_function",
+      "description": "使用原生 Ghidra 反编译引擎输出真实 C 伪代码、地址注解和 P-code。不是汇编改写，不恢复原始 Swift/Objective-C 工程；过大结果报错，不静默截断。",
+      "parameters": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "binary": {"type": "string", "minLength": 1, "description": "二进制绝对路径，或由宿主绑定 binary 附件。"},
+          "arch": {"type": "string", "enum": ["arm64", "arm64e"]},
+          "address": {"type": "string", "minLength": 3, "maxLength": 18, "pattern": "^0x[0-9a-fA-F]{1,16}$"},
+          "timeout_seconds": {"type": "number", "minimum": 0.001, "maximum": 60}
+        },
+        "required": ["binary", "arch", "address"]
+      },
+      "risk": "readOnly", "timeoutSeconds": 65
+    }
+  ]
+}
