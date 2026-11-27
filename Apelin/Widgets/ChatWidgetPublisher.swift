@@ -347,10 +347,23 @@ final class ChatWidgetPublisher {
             }
             return true
         }
+
+        // ActivityKit can retain an older stale instance while a newer active
+        // one is already present. Keep exactly one canonical activity before
+        // updating or creating; otherwise every later refresh keeps the extra
+        // activity alive because only `existing.first` was updated.
+        let primary = existing.first(where: { $0.activityState == .active }) ?? existing.first
+        if let primary {
+            let duplicates = existing.filter { $0.id != primary.id }
+            for duplicate in duplicates {
+                await duplicate.end(nil, dismissalPolicy: .immediate)
+            }
+        }
+
         // 让系统到期重绘；组件只隐藏提示，不清除运行中的会话。
         let content = ActivityContent(state: state, staleDate: state.transientResult?.expiresAt)
-        if let activity = existing.first {
-            await activity.update(content)
+        if let primary {
+            await primary.update(content)
             return true
         }
         // 手动关闭后不重新创建纯终态活动。
