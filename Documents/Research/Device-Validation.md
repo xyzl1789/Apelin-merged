@@ -198,6 +198,8 @@ console now goes on after a restart only past a successful respring.
 
 ## Still to run on the owner's devices
 
+- [ ] 0.4.11 升级到 0.4.12 后的 Antigravity 清理（2026-11-27，kwwk 0.1.139，相关变更见 0.4.12 发行说明；尚未在设备上验收）。在 0.4.11 中分别准备 `agy`（以及可选的旧版 `antigravity`）占位凭据，登录另一个仍受支持的服务商，启用一项旧 Antigravity 模型，并把旧模型设为 composer 的全局选择和一个会话选择。安装 0.4.12 后打开「设置 ▸ 模型服务商」触发账号列表：日志应只记录被移除的旧 store ID（`Removed saved sign-in for retired provider agy`，以及存在时的 `antigravity`），不含凭据内容；两个旧 ID 均不再出现在可用 provider 或凭据导入列表。检查模型偏好及旧 composer 选择被清理，其他 provider 的启用/自定义/隐藏模型、限额和选择仍保留；旧会话在发送前切换到其他已登录账号的模型，或要求重新选择。模型服务商页不再显示 Antigravity，页脚显示 kwwk 0.1.139。
+
 - [ ] A load check that waits for its target, stops with its call and
       says whether the target ran (2026-11-22, issue #76, AGENTS.md ▸
       Diagnostics). On the Mac only so far: `ConfirmLoadedTests`, the
@@ -1453,17 +1455,7 @@ console now goes on after a restart only past a successful respring.
       key fails verification without the key in what the app shows. Kimi
       For Coding Global signs in with its code on kimi.ai, a chat answers,
       and a sign-in again keeps the device id the first one recorded.
-- [ ] Antigravity's Google sign-in (2026-11-04, kwwk 0.1.111, AGENTS.md ▸
-      Agent sign-in; no Google account has signed in on a device). With a
-      Google account, Settings ▸ Model Providers ▸ Antigravity opens
-      Google's page in Safari, which comes back to
-      `localhost:51121/oauth-callback` (or the address pasted from
-      Safari's address bar where it cannot), and Antigravity is listed
-      signed in. A chat on `gemini-4-argon` and one on `claude-sonnet-5-5`
-      read a file with file_read and answer, Compact… compacts one, and the
-      chat still answers after the hour Google's token lasts. A free
-      account and a Google AI Pro one say which of the listed models each
-      serves; one it does not serve fails in Google's words.
+- [x] Antigravity Google 登录验收（2026-11-04，kwwk 0.1.111）：不再适用。0.4.12 已退役 Antigravity，`agy` 与更早版本的 `antigravity` 凭据清理改由上方 0.4.12 升级验收覆盖。
 - [ ] Skills from GitHub (2026-11-22, issue #78, AGENTS.md ▸ Skills are
       global ▸ From GitHub…). Only the Mac has run it: the scripted GitHub
       of `make harness` and one live scan of mattpocock/skills at

@@ -160,6 +160,31 @@ struct ComposerModelSelection: Codable, Equatable {
         }
     }
 
+    /// 清除已经退役服务商的全局及会话模型选择；全局旧格式中的推理档位与速度偏好会先迁移。
+    static func forgetRetiredProvider(in defaults: UserDefaults = .standard) {
+        struct Named: Decodable {
+            var provider: String
+        }
+        let retiredNames = Set(AgentProvider.retired.map(\.name))
+        if let data = defaults.data(forKey: key),
+           let named = try? JSONDecoder().decode(Named.self, from: data),
+           retiredNames.contains(named.provider)
+        {
+            ComposerModelPreferences.adoptLegacyPicks(in: defaults)
+            defaults.removeObject(forKey: key)
+        }
+
+        let conversationPrefix = key + ".conversation."
+        let conversationKeys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix(conversationPrefix) }
+        for selectionKey in conversationKeys {
+            guard let data = defaults.data(forKey: selectionKey),
+                  let named = try? JSONDecoder().decode(Named.self, from: data),
+                  retiredNames.contains(named.provider)
+            else { continue }
+            defaults.removeObject(forKey: selectionKey)
+        }
+    }
+
     fileprivate static let key = "composer.modelSelection"
 }
 
@@ -206,15 +231,18 @@ enum ComposerModelPreferences {
     }
 
     private static var legacy: Legacy? {
-        UserDefaults.standard.data(forKey: ComposerModelSelection.key)
+        legacy(in: .standard)
+    }
+
+    private static func legacy(in defaults: UserDefaults) -> Legacy? {
+        defaults.data(forKey: ComposerModelSelection.key)
             .flatMap { try? JSONDecoder().decode(Legacy.self, from: $0) }
     }
 
-    /// Before a new selection replaces one that still holds the picks.
-    fileprivate static func adoptLegacyPicks() {
-        let defaults = UserDefaults.standard
+    /// 覆盖旧选择前先迁移其中仍有效的推理档位和速度偏好。
+    fileprivate static func adoptLegacyPicks(in defaults: UserDefaults = .standard) {
         guard defaults.object(forKey: effortKey) == nil || defaults.object(forKey: tierKey) == nil,
-              let legacy
+              let legacy = legacy(in: defaults)
         else { return }
         if defaults.object(forKey: effortKey) == nil, let effort = legacy.effort {
             defaults.set(effort.rawValue, forKey: effortKey)

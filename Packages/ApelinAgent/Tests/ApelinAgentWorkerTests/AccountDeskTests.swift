@@ -104,6 +104,34 @@ final class SilentListener: OAuthLoopbackListener, @unchecked Sendable {
     }
 }
 
+/// 模拟凭据删除第一次失败、后续重试成功的钥匙串存储。
+actor RemovalRefusedOnce: CredentialSource {
+    private var entries: [String: OAuthCredentials]
+    private(set) var removals = 0
+
+    init(_ entries: [String: OAuthCredentials]) {
+        self.entries = entries
+    }
+
+    func providerIds() -> [String] {
+        entries.keys.sorted()
+    }
+
+    func credentials(for providerId: String) -> OAuthCredentials? {
+        entries[providerId]
+    }
+
+    func store(_ credentials: OAuthCredentials, for providerID: String) {
+        entries[providerID] = credentials
+    }
+
+    func remove(_ providerID: String) throws {
+        removals += 1
+        guard removals > 1 else { throw POSIXError(.EIO) }
+        entries.removeValue(forKey: providerID)
+    }
+}
+
 @Suite("Sign-in: kwwk's flows in apelin-agent, nothing secret on the wire", .timeLimit(.minutes(1)))
 struct AccountDeskTests {
     static let silent: OAuthLoopbackFactory = { SilentListener(host: $0, port: $1, path: $2) }
@@ -212,81 +240,6 @@ struct AccountDeskTests {
         #expect(try await store.credentials(for: "anthropic") == Self.issued)
         #expect(!recorder.transcript.contains("SECRET"))
         #expect(!recorder.transcript.contains("c1&"))
-    }
-
-    /// Antigravity's own Google PKCE flow: the listener chooses a free port,
-    /// and the browser redirect follows it. Cancelled before network access.
-    @Test
-    func `Antigravity signs in with Google through a dynamic loopback`() async throws {
-        let opened = SignInRecorder()
-        let listener: OAuthLoopbackFactory = { host, port, path in
-            opened.reporter.emit(TaskID("listener"), "\(host):\(port)\(path)", nil)
-            return SilentListener(host: host, port: port, path: path)
-        }
-        let desk = AccountDesk(store: DeliveredCredentialSource(), login: KWWKSignIn.login, listener: listener, verifyKey: { _, _, _ in })
-        let recorder = SignInRecorder()
-        #expect(AgentProvider.antigravity.signInMethods == [.browser])
-        try await desk.start(AgentSignInRequest(provider: .antigravity), taskID: TaskID("g1"), reporter: recorder.reporter)
-        try await recorder.waitFor { !$0.events.isEmpty }
-        #expect(opened.events.map(\.kind) == ["localhost:0/oauth-callback"])
-        #expect(recorder.events.map(\.kind) == ["authorize"])
-        #expect(recorder.events[0].payload?["acceptsCallbackURL"] == .bool(true))
-        let page = try #require(recorder.events[0].payload?["url"]?.stringValue.flatMap(URLComponents.init(string:)))
-        #expect(page.host == "accounts.google.com")
-        #expect(page.path == "/o/oauth2/v2/auth")
-        #expect(page.queryItems?.first { $0.name == "redirect_uri" }?.value == "http://localhost:0/oauth-callback")
-        #expect(page.queryItems?.first { $0.name == "code_challenge_method" }?.value == "S256")
-        #expect(await desk.cancel(TaskID("g1")))
-        try await recorder.waitFor { $0.state != nil }
-        #expect(recorder.state == .cancelled)
-    }
-
-    @Test
-    func `Antigravity re-sign-in preserves its AirRelay endpoint and displays its host`() async throws {
-        let previous = OAuthCredentials(
-            access: "old-SECRET",
-            refresh: "old-refresh-SECRET",
-            expires: 1,
-            extras: ["baseUrl": .string("https://relay.example.invalid/v1")],
-        )
-        let store = DeliveredCredentialSource([AgyOAuth.providerId: previous])
-        let login: SignInLogin = { provider, _, _ in
-            #expect(provider == .antigravity)
-            return Self.issued
-        }
-        let desk = AccountDesk(store: store, login: login, listener: Self.silent, verifyKey: { _, _, _ in })
-        let recorder = SignInRecorder()
-        try await desk.start(AgentSignInRequest(provider: .antigravity), taskID: TaskID("g2"), reporter: recorder.reporter)
-        try await recorder.waitFor { $0.state != nil }
-        #expect(recorder.state == .succeeded)
-        let stored = try #require(try await store.credentials(for: AgyOAuth.providerId))
-        #expect(stored.access == Self.issued.access)
-        #expect(stored.extras["baseUrl"] == .string("https://relay.example.invalid/v1"))
-        let account = try #require(await desk.list().accounts.first { $0.provider == .antigravity })
-        #expect(account.signedIn)
-        #expect(account.account == "relay.example.invalid")
-    }
-
-    @Test
-    func `a legacy antigravity credential migrates to agy and sign out clears both IDs`() async throws {
-        let legacy = OAuthCredentials(
-            access: "legacy-SECRET",
-            refresh: "legacy-refresh-SECRET",
-            expires: 1,
-            extras: ["baseUrl": .string("https://relay.example.invalid/v1")],
-        )
-        let store = DeliveredCredentialSource(["antigravity": legacy])
-        let desk = AccountDesk(store: store, login: Self.neverCalled, listener: Self.silent, verifyKey: { _, _, _ in })
-
-        let account = try #require(await desk.list().accounts.first { $0.provider == .antigravity })
-        #expect(account.signedIn)
-        #expect(account.account == "relay.example.invalid")
-        #expect(try await store.credentials(for: AgyOAuth.providerId) == legacy)
-        #expect(try await store.credentials(for: "antigravity") == nil)
-
-        try await desk.signOut(.antigravity)
-        #expect(try await store.credentials(for: AgyOAuth.providerId) == nil)
-        #expect(try await store.credentials(for: "antigravity") == nil)
     }
 
     /// Trae's and Raccoon's own logins, kwwk's: each page takes any
@@ -950,6 +903,48 @@ struct AccountDeskTests {
         #expect(saved.extras[AgentSignInField.imageEndpointMode.rawValue] == .string("chat_completions"))
     }
 
+    /// 已退役服务商留下的凭据在首次账号列表读取时删除，其他登录保持不变。
+    @Test
+    func `the first list deletes a retired provider's sign-in and keeps every other`() async throws {
+        let retired = OAuthCredentials(access: "retired-SECRET", refresh: "retired-refresh-SECRET", expires: 4_102_444_800_000)
+        let store = DeliveredCredentialSource([
+            "antigravity": retired,
+            "agy": retired,
+            "github-copilot": Self.issued,
+        ])
+        let desk = AccountDesk(store: store, login: Self.neverCalled, listener: Self.silent, verifyKey: { _, _, _ in })
+        let listed = await desk.list().accounts
+        #expect(await store.providerIds() == ["github-copilot"])
+        #expect(listed.map(\.provider) == AgentProvider.signInOrder)
+        #expect(listed.filter(\.signedIn).map(\.provider) == [.githubCopilot])
+        _ = await desk.list()
+        #expect(try await store.credentials(for: "github-copilot") == Self.issued)
+    }
+
+    @Test
+    func `a failed retired sign-in deletion is retried on the next list`() async {
+        let store = RemovalRefusedOnce(["antigravity": Self.issued, "agy": Self.issued])
+        let desk = AccountDesk(store: store, login: Self.neverCalled, listener: Self.silent, verifyKey: { _, _, _ in })
+        _ = await desk.list()
+        #expect(await store.providerIds() == ["antigravity"])
+        _ = await desk.list()
+        #expect(await store.providerIds().isEmpty)
+        _ = await desk.list()
+        #expect(await store.removals == 3)
+    }
+
+    @Test
+    func `retired sign-in IDs are not owned by current providers or the kwwk catalogs`() {
+        let current = Set(AgentProvider.allCases.map(\.storeID))
+        let kwwk = Set(providerDirectory.map(\.storeId)).union(OAuthSubscriptions.providers.map(\.id))
+        for retired in AgentProvider.retired {
+            #expect(!current.contains(retired.storeID))
+            #expect(CredentialProviderID.endpointNumber(retired.storeID) == nil)
+            #expect(!kwwk.contains(retired.storeID))
+            #expect(!CredentialInbox.isKnown(retired.storeID))
+        }
+    }
+
     @Test
     func `every provider maps to the store id its session reads`() {
         #expect(Set(AgentProvider.allCases.map(\.storeID)) == CredentialInbox.knownProviders)
@@ -980,16 +975,13 @@ struct AccountDeskTests {
         let relay = OAuthCredentials(access: "relay-SECRET", refresh: "", expires: .max, extras: [
             "baseUrl": .string("https://relay.example.invalid/v1"), "defaultModel": .string("relay-default"),
         ])
-        let subscription = OAuthCredentials(access: "token", refresh: "refresh", expires: 1)
         let key = OAuthCredentials(access: "deepseek-SECRET", refresh: "", expires: .max)
         let desk = AccountDesk(store: DeliveredCredentialSource([
             CredentialProviderID.openAICompatible: relay,
             CredentialProviderID.deepSeek: key,
-            "antigravity": subscription,
         ]))
         let asked = [
             AgentProvider.openAICompatible.rawValue: ["cn:deepseek-v4.1-flash", "cn:deepseek-v4.1-flash", "", "another"],
-            AgentProvider.antigravity.rawValue: ["gemini-4-argon", "live-only-model"],
         ]
         let narrow = await desk.list(extraModels: asked, onlyExtraModels: true)
 
@@ -998,13 +990,6 @@ struct AccountDeskTests {
         let relayed = try #require(narrow.accounts.first { $0.provider == .openAICompatible })
         #expect(relayed.signedIn)
         #expect(relayed.models == ["cn:deepseek-v4.1-flash", "another"])
-        // A subscription keeps what it was asked for too, including a model
-        // only its live config names: the account list must not drop one the
-        // app enabled because a bundled catalog never heard of it.
-        let subscribed = try #require(narrow.accounts.first { $0.provider == .antigravity })
-        #expect(subscribed.signedIn)
-        #expect(subscribed.models == ["gemini-4-argon", "live-only-model"])
-
         // An account asked for nothing names no model, and no catalog is read
         // for it: no levels, no tiers, no capabilities.
         let quiet = try #require(narrow.accounts.first { $0.provider == .deepSeek })
@@ -1018,10 +1003,8 @@ struct AccountDeskTests {
         // the caller's own models added to it.
         let wide = await desk.list(extraModels: [AgentProvider.openAICompatible.rawValue: ["another"]]).accounts
         let wideRelay = try #require(wide.first { $0.provider == .openAICompatible })
-        let wideSubscription = try #require(wide.first { $0.provider == .antigravity })
         let wideKey = try #require(wide.first { $0.provider == .deepSeek })
         #expect(wideRelay.models == ["relay-default", "another"])
-        #expect(wideSubscription.models?.contains("gemini-4-argon") == true)
         #expect(wideKey.models == ["deepseek-flash", "deepseek-v4-pro"])
         #expect(wideKey.capabilities?.isEmpty == false)
     }
@@ -1034,19 +1017,15 @@ struct AccountDeskTests {
         let subscription = OAuthCredentials(access: "token", refresh: "refresh", expires: 1)
         let desk = AccountDesk(store: DeliveredCredentialSource([
             AgentProvider.openAICodex.storeID: subscription,
-            AgentProvider.antigravity.storeID: subscription,
         ]))
         let asked = [
             AgentProvider.openAICodex.rawValue: ["gpt-6-sol"],
-            AgentProvider.antigravity.rawValue: ["gemini-4-argon"],
         ]
         let narrow = await desk.list(extraModels: asked, onlyExtraModels: true).accounts
         let codex = try #require(narrow.first { $0.provider == .openAICodex })
         #expect(codex.models == ["gpt-6-sol"])
         #expect(codex.serviceTiers?.keys.sorted() == ["gpt-6-sol"])
         #expect(codex.reasoningEfforts?.keys.allSatisfy { $0 == "gpt-6-sol" } == true)
-        let antigravity = try #require(narrow.first { $0.provider == .antigravity })
-        #expect(antigravity.reasoningEfforts?.keys.sorted() == ["gemini-4-argon"])
 
         let wide = await desk.list().accounts
         let wideCodex = try #require(wide.first { $0.provider == .openAICodex })

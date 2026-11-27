@@ -23,11 +23,24 @@ enum EnabledModels {
     }
 
     static func remove(for provider: AgentProvider) {
-        UserDefaults.standard.removeObject(forKey: key(provider))
-        UserDefaults.standard.removeObject(forKey: "customModels.\(provider.rawValue)")
-        UserDefaults.standard.removeObject(forKey: "hiddenModels.\(provider.rawValue)")
-        ModelLimitsStore.remove(for: provider)
+        forget(provider.rawValue)
         NotificationCenter.default.post(name: .enabledModelsChanged, object: nil)
+    }
+
+    /// 按协议名称清理服务商的启用、自定义、隐藏模型和限额偏好。
+    private static func forget(_ name: String, in defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: "enabledModels.\(name)")
+        defaults.removeObject(forKey: "customModels.\(name)")
+        defaults.removeObject(forKey: "hiddenModels.\(name)")
+        ModelLimitsStore.remove(forName: name, in: defaults)
+    }
+
+    /// 启动时删除已退役服务商留下的模型偏好与失效的 composer 选择。
+    static func forgetRetiredProviders(in defaults: UserDefaults = .standard) {
+        for name in Set(AgentProvider.retired.map(\.name)) {
+            forget(name, in: defaults)
+        }
+        ComposerModelSelection.forgetRetiredProvider(in: defaults)
     }
 
     static func customIDs(for provider: AgentProvider) -> [String] {

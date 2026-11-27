@@ -85,6 +85,20 @@ final class OperationTableTests: XCTestCase {
         XCTAssertNil(account.alternativeMethods)
     }
 
+    /// 退役 provider 不再解码为当前 wire provider；旧请求会被拒绝，而旧偏好可单独清理。
+    func testRetiredProviderDoesNotDecode() throws {
+        XCTAssertEqual(Set(AgentProvider.retired.map(\.name)), ["antigravity"])
+        XCTAssertEqual(AgentProvider.retired.map(\.storeID), ["antigravity", "agy"])
+        for retired in AgentProvider.retired {
+            XCTAssertNil(AgentProvider(rawValue: retired.name))
+            XCTAssertThrowsError(try JSONCoding.decode(AgentProvider.self, from: Data("\"\(retired.name)\"".utf8)))
+            XCTAssertThrowsError(try JSONCoding.decode(
+                AgentOpenRequest.self,
+                from: Data("{\"provider\":\"\(retired.name)\",\"model\":\"m\"}".utf8),
+            ))
+        }
+    }
+
     /// The console writes requests by hand; Documents/Console.md shows these.
     func testHandWrittenRequestsDecode() throws {
         let setup = try JSONCoding.decode(ToolchainSetupRequest.self, from: Data(#"{"source":{"appleCatalog":{}},"components":["c"]}"#.utf8))

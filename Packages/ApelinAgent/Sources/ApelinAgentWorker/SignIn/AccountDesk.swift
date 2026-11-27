@@ -49,6 +49,8 @@ public actor AccountDesk {
     /// One balance lookup at a time: a second caller joins the request the
     /// first one started, rather than asking every provider twice.
     private var balanceInFlight: Task<AgentProviderBalancesResponse, Error>?
+    /// 本进程已检查过退役服务商的登录凭据。
+    private var retiredSignInsLookedFor = false
     /// 签到同一时间只跑一遍：自动签到与设置页的手动签到撞上时后者等前者的结果。
     private var checkInInFlight: Task<AgentCheckInResponse, Error>?
 
@@ -64,6 +66,25 @@ public actor AccountDesk {
         self.listener = listener
         self.timeoutSeconds = timeoutSeconds
         self.verifyKey = verifyKey
+    }
+
+    /// 删除应用已不再提供的服务商凭据。
+    /// 删除失败时在下一次账号列表请求中重试；日志只记录存储 ID，不记录凭据内容。
+    func forgetRetiredSignIns() async {
+        guard !retiredSignInsLookedFor else { return }
+        retiredSignInsLookedFor = true
+        let stored = Set(await store.providerIds())
+        var allRemoved = true
+        for retired in AgentProvider.retired where stored.contains(retired.storeID) {
+            do {
+                try await store.remove(retired.storeID)
+                Self.log.warning("Removed saved sign-in for retired provider \(retired.storeID, privacy: .public)")
+            } catch {
+                allRemoved = false
+                Self.log.error("Could not remove saved sign-in for retired provider \(retired.storeID, privacy: .public)")
+            }
+        }
+        if !allRemoved { retiredSignInsLookedFor = false }
     }
 
     /// kwwk's NIO listener with Apelin's own pages.
@@ -108,27 +129,8 @@ public actor AccountDesk {
         onlyExtraModels: Bool = false,
     ) async -> AgentAccountListResponse {
         let started = DispatchTime.now().uptimeNanoseconds
-        var stored = Set(await store.providerIds())
-        let legacyAntigravityID = "antigravity"
-        let agyID = AgyOAuth.providerId
-        if stored.contains(legacyAntigravityID), !stored.contains(agyID),
-           let legacyCredentials = try? await store.credentials(for: legacyAntigravityID)
-        {
-            do {
-                try await store.store(legacyCredentials, for: agyID)
-                stored.insert(agyID)
-                do {
-                    try await store.remove(legacyAntigravityID)
-                    stored.remove(legacyAntigravityID)
-                } catch {
-                    // The new item is already usable; sign-out also clears this old alias.
-                    Self.log.warning("Legacy Antigravity credential alias could not be removed")
-                }
-            } catch {
-                // Keep the legacy item untouched if copying it to the new id fails.
-                Self.log.warning("Legacy Antigravity credential could not be migrated")
-            }
-        }
+        await forgetRetiredSignIns()
+        let stored = Set(await store.providerIds())
         var accounts: [AgentAccount] = []
         accounts.reserveCapacity(AgentProvider.signInOrder.count)
         for listed in AgentProvider.signInOrder {
@@ -304,9 +306,6 @@ public actor AccountDesk {
 
     public func signOut(_ provider: AgentProvider) async throws {
         do {
-            if provider == .antigravity {
-                try await store.remove("antigravity")
-            }
             try await store.remove(provider.storeID)
         } catch {
             throw ApelinError(
@@ -318,12 +317,10 @@ public actor AccountDesk {
 
     /// Endpoint host shown as the account label for API-key and AirRelay accounts.
     static func accountLabel(_ provider: AgentProvider, _ credentials: OAuthCredentials) -> String? {
-        for key in [AgentSignInField.baseURL.rawValue, "relayUrl"] {
-            if case let .string(base)? = credentials.extras[key],
-               let host = URLComponents(string: base)?.host
-            {
-                return host
-            }
+        if case let .string(base)? = credentials.extras[AgentSignInField.baseURL.rawValue],
+           let host = URLComponents(string: base)?.host
+        {
+            return host
         }
         guard provider.signInMethod == .apiKey,
               let base = provider.keyFields.first(where: { $0.field == .baseURL })?.defaultValue
@@ -697,16 +694,6 @@ public actor AccountDesk {
             }
             if run.provider == .openRouter, run.method == .apiKey {
                 signedIn.extras[ProviderModels.signInMethodExtra] = .string(run.method.rawValue)
-            }
-            if run.provider == .antigravity,
-               let previous = try? await store.credentials(for: run.provider.storeID)
-            {
-                // 重新登录时保留此前配置的 AirRelay 地址。
-                for key in [AgentSignInField.baseURL.rawValue, "relayUrl"] where signedIn.extras[key] == nil {
-                    if let value = previous.extras[key] {
-                        signedIn.extras[key] = value
-                    }
-                }
             }
             try Task.checkCancellation()
             do {

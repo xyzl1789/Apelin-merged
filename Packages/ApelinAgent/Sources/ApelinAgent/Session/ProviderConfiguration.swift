@@ -49,7 +49,6 @@ public enum ProviderConfiguration: Sendable, Hashable, Codable {
         case .cursor: .stored(storeID: "cursor", model: model)
         case .devin: .stored(storeID: "devin", model: model)
         case .kiro: .stored(storeID: "kiro", model: model)
-        case .antigravity: .stored(storeID: AgyOAuth.providerId, model: model)
         case .qoder: .stored(storeID: "qoder", model: model)
         case .qoderCN: .stored(storeID: "qoder-cn", model: model)
         case .workBuddy: .stored(storeID: "workbuddy", model: model)

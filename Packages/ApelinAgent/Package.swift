@@ -20,11 +20,11 @@ let package = Package(
         .library(name: "ApelinAgentWorker", targets: ["ApelinAgentWorker"]),
     ],
     dependencies: [
-        // kwwk 0.1.138：修复 OpenCode Go 请求头和路径、Responses SSE 回退，
-        // 并加入 Antigravity CLI OAuth/AirRelay。固定正式版本，确保构建结果一致。
+        // yellowplushq/kwwk 0.1.139 更新模型目录并增加运行时 host-provider 注册；
+        // 上游同时退役只支持 AirRelay 的 Antigravity，Apelin 在 0.4.12 跟进移除。
         .package(
             url: "https://github.com/yellowplushq/kwwk.git",
-            exact: "0.1.138",
+            exact: "0.1.139",
         ),
         // kwwk's swift-nio, held below 2.104.0. That release made
         // ByteToMessageHandler's decoder `~Copyable`, and an iOS runtime

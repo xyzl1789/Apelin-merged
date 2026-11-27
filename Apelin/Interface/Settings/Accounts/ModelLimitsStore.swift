@@ -52,6 +52,12 @@ enum ModelLimitsStore {
 
     /// Every model's, on sign-out.
     static func remove(for provider: AgentProvider) {
-        UserDefaults.standard.removeObject(forKey: key(provider))
+        remove(forName: provider.rawValue)
+    }
+
+    /// 按协议 wire 名称清理模型限额，包括已退役服务商。
+    static func remove(forName name: String, in defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: "modelLimits.\(name)")
+        defaults.removeObject(forKey: "modelLimits.\(name).unreadable")
     }
 }

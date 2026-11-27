@@ -179,8 +179,6 @@ public enum AgentProvider: Hashable, Sendable {
     case devin
     /// Kiro, through AWS Builder ID, Google or GitHub (`kiro`).
     case kiro
-    /// Antigravity, Google's, through a Google sign-in (`antigravity`).
-    case antigravity
     /// Qoder, qoder.com (`qoder`).
     case qoder
     /// Qoder CN, qoder.cn (`qoder-cn`).
@@ -248,7 +246,6 @@ extension AgentProvider: RawRepresentable, Codable {
         case .cursor: "cursor"
         case .devin: "devin"
         case .kiro: "kiro"
-        case .antigravity: "antigravity"
         case .qoder: "qoder"
         case .qoderCN: "qoderCN"
         case .workBuddy: "workBuddy"
@@ -314,7 +311,6 @@ extension AgentProvider: CaseIterable {
         .cursor,
         .devin,
         .kiro,
-        .antigravity,
         .qoder,
         .qoderCN,
         .workBuddy,
@@ -336,7 +332,24 @@ extension AgentProvider: CaseIterable {
     ]
 }
 
+/// 已不再提供的服务商；旧 wire 名称和凭据存储 ID 仅供升级清理残留数据。
+public struct RetiredAgentProvider: Sendable, Equatable {
+    public var name: String
+    public var storeID: String
+
+    public init(name: String, storeID: String) {
+        self.name = name
+        self.storeID = storeID
+    }
+}
+
 public extension AgentProvider {
+    /// Antigravity 曾在 0.3.7–0.4.11 提供；kwwk 0.1.139 移除了仅依赖 AirRelay 的 `agy` 集成。
+    static let retired: [RetiredAgentProvider] = [
+        RetiredAgentProvider(name: "antigravity", storeID: "antigravity"),
+        RetiredAgentProvider(name: "antigravity", storeID: "agy"),
+    ]
+
     /// The provider whose sign-in form, transport and name this one has:
     /// itself, and `openAICompatible` for a further endpoint.
     var kind: AgentProvider {

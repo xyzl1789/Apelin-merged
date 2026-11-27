@@ -22,7 +22,7 @@ env:
   # the Xcode 27.1 image is the one that carries it. The deployment floor
   # stays 16.0. The marketing version stays the source of truth; the run
   # number keeps each CI build's tag unique.
-  PACKAGE_VERSION: "0.4.7-${{ github.run_number }}"
+  PACKAGE_VERSION: "0.4.12-${{ github.run_number }}"
 
 jobs:
   build:

@@ -28,6 +28,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             AppJournal.note(recovered)
         }
         NetworkAccess.start()
+        EnabledModels.forgetRetiredProviders()
         ForegroundBackground.start()
         ConversationNotices.start()
         // 偏好设置页改外观后，本进程所有 window 跟着变。

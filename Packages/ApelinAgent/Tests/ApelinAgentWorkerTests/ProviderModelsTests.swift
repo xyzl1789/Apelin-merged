@@ -21,43 +21,6 @@ struct ProviderModelsTests {
         #expect(try AgentWorker.provider(.init(provider: provider)) == .stored(storeID: plan.id, model: nil))
     }
 
-    /// Antigravity now uses kwwk's Agy catalog and AirRelay transport.
-    @Test
-    func `Antigravity uses the agy store ID and requires AirRelay for chat`() async throws {
-        let subscription = OAuthCredentials(access: "token", refresh: "refresh", expires: 4_102_444_800_000)
-        let models = ProviderModels.list(.antigravity, credentials: subscription)
-        #expect(models.contains(AgyModels.defaultModelId))
-        #expect(models.contains("claude-opus-5-5-high"))
-        #expect(ProviderModels.reasoningEfforts(.antigravity, credentials: subscription)[AgyModels.defaultModelId] == [])
-        #expect(!ProviderModels.usesAPIKey(.antigravity, credentials: subscription))
-        #expect(ProviderModels.modelRequest(.antigravity, credentials: subscription) == nil)
-        #expect(try AgentWorker.provider(.init(provider: .antigravity))
-            == .stored(storeID: AgyOAuth.providerId, model: nil))
-        #expect(try AgentWorker.provider(.init(provider: .antigravity, model: AgyModels.defaultModelId))
-            == .stored(storeID: AgyOAuth.providerId, model: AgyModels.defaultModelId))
-
-        let withoutRelay = OAuthManager(source: DeliveredCredentialSource([AgyOAuth.providerId: subscription]))
-        await #expect(throws: ProviderResolutionError.unresolved(
-            message: "Antigravity 需要 AirRelay 地址才能发送对话。请为 Antigravity 配置 AirRelay，或选择其他模型服务商。",
-            reason: nil,
-        )) {
-            _ = try await ProviderRegistration.resolve(storeID: AgyOAuth.providerId, manager: withoutRelay)
-        }
-
-        var relayed = subscription
-        relayed.extras["baseUrl"] = .string("https://relay.example.invalid/v1")
-        let withRelay = OAuthManager(source: DeliveredCredentialSource([AgyOAuth.providerId: relayed]))
-        let resolved = try #require(try await ProviderRegistration.resolve(
-            storeID: AgyOAuth.providerId,
-            manager: withRelay,
-            modelOverride: "claude-opus-5-5-high",
-        ))
-        #expect(resolved.model.provider == AgyOAuth.providerId)
-        #expect(resolved.model.api == "anthropic-messages")
-        #expect(resolved.model.id == "claude-opus-5-5-high")
-        #expect(resolved.model.baseURL == "https://relay.example.invalid")
-    }
-
     /// What Settings shows beside an empty limit field (#68): each model as
     /// a session resolves it, from the stored key, with no request.
     @Test
@@ -170,24 +133,21 @@ struct ProviderModelsTests {
         #expect(ProviderModels.usesAPIKey(.anthropic, credentials: credentials))
     }
 
-    /// The account list reads an account's levels and its capabilities in one
-    /// pass; both must still be what the catalogs say, and a model no catalog
-    /// knows is still left unmeasured.
+    /// 账号列表会一次读取某账号各模型的推理档位与能力；未知模型不猜测能力。
     @Test
     func `an account's levels and capabilities come from one read of the catalogs`() {
         let subscription = OAuthCredentials(access: "token", refresh: "refresh", expires: 1)
         let facts = ProviderModels.catalogFacts(
-            .antigravity,
+            .openAICodex,
             credentials: subscription,
-            models: ["gemini-4-argon", "made-up-model"],
+            models: ["gpt-6-sol", "made-up-model"],
         )
-        #expect(facts.reasoningEfforts["gemini-4-argon"]?.isEmpty == false)
-        #expect(facts.capabilities["gemini-4-argon"] != nil)
+        #expect(facts.reasoningEfforts["gpt-6-sol"]?.isEmpty == false)
+        #expect(facts.capabilities["gpt-6-sol"] != nil)
         #expect(facts.capabilities["made-up-model"] == nil)
-        #expect(ProviderModels.capabilities(.antigravity, credentials: subscription, models: ["gemini-4-argon"])
-            == facts.capabilities)
-        // Nothing to read for an account with no model.
-        let quiet = ProviderModels.catalogFacts(.antigravity, credentials: subscription, models: [])
+        #expect(ProviderModels.capabilities(.openAICodex, credentials: subscription, models: ["gpt-6-sol"])
+            == facts.capabilities.filter { $0.key == "gpt-6-sol" })
+        let quiet = ProviderModels.catalogFacts(.openAICodex, credentials: subscription, models: [])
         #expect(quiet.capabilities.isEmpty)
     }
 }

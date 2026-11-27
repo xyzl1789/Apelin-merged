@@ -1708,3 +1708,4 @@ checkActivityLayout()
 checkToolCallSections()
 checkUntrackedGroup()
 
+checkRetiredProviderCleanup()
