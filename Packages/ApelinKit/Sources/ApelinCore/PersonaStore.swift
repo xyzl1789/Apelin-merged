@@ -86,8 +86,12 @@ public struct PersonaStore: Sendable {
     }
 
     @discardableResult
-    public func save(_ snapshot: PersonaSnapshot) throws -> PersonaSnapshot {
+    public func save(_ snapshot: PersonaSnapshot, replacing expected: PersonaSnapshot? = nil) throws -> PersonaSnapshot {
         try locked { directory in
+            // 比较与写入必须共用同一把文件锁，旧窗口不能覆盖更新或删除后的集合。
+            if let expected, try read(in: directory) != expected {
+                throw PersonaStoreError.changed
+            }
             try validate(snapshot)
             try write(snapshot, in: directory)
             return snapshot
@@ -99,7 +103,12 @@ public struct PersonaStore: Sendable {
     @discardableResult
     public func createRootIfNeeded(folder: DataFolder) throws -> PersonaSnapshot {
         try folder.makeLevels(to: root.appendingPathComponent("Personas", isDirectory: true))
-        return try save(read())
+        return try locked { directory in
+            // 初始化也在锁内读写，避免分开的 read/save 把并发保存还原成旧版本。
+            let current = try read(in: directory)
+            try write(current, in: directory)
+            return current
+        }
     }
 
     private func validate(_ snapshot: PersonaSnapshot) throws {
@@ -204,8 +213,16 @@ public struct PersonaStore: Sendable {
     }
 }
 
-public enum PersonaStoreError: Error, Equatable {
+public enum PersonaStoreError: Error, Equatable, LocalizedError {
     case full
     case invalidContent
     case unsafeFile
+    case changed
+
+    public var errorDescription: String? {
+        switch self {
+        case .changed: "指令已在其他窗口更改或清空，本次未保存。当前草稿仍保留，请复制需要的内容，再重新打开页面核对最新版本。"
+        default: nil
+        }
+    }
 }

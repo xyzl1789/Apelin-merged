@@ -1287,6 +1287,7 @@ final class ChatRuntime {
                     modelLimits: selected?.limits,
                     approvalMode: AgentPermissions.mode,
                     asksBeforeScreen: AgentPermissions.asksBeforeScreen,
+                    allowsUnlock: AgentPermissions.allowsUnlock,
                     runMode: ComposerModeStore.mode(for: id).runMode,
                     promptInjection: Preferences.PromptInjection.forPrompt(
                         model: selected?.model,
@@ -1620,6 +1621,7 @@ final class ChatRuntime {
             modelDefaults: Preferences.DefaultModels.wire,
             approvalMode: mode,
             asksBeforeScreen: AgentPermissions.asksBeforeScreen,
+            allowsUnlock: AgentPermissions.allowsUnlock,
             reasoningEffort: selected?.effort,
             serviceTier: selected?.tier,
             modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,

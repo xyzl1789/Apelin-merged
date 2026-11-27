@@ -219,6 +219,9 @@ struct PackageReleaseToolTests {
             (["build_ids": ["build-roothide"], "repository": "no-owner"], "name the GitHub repository as owner/name"),
             (["build_ids": ["build-roothide"], "notes": .string(String(repeating: "x", count: 17 * 1024))], "the notes are at most 16 KB"),
             (["build_ids": ["build-roothide"], "notes": "token ghp_0123456789abcdefghijklmnopqrstuvwxyz"], "a public release must not carry"),
+            // 完整哈希可能被误认为设备标识，报错需要给出行号；令牌只显示前缀。
+            (["build_ids": ["build-roothide"], "notes": "修复说明\n3ce304f3e0a1b2c3d4e5f60718293a4b5c6d7e8f."], "on line 2 of the body"),
+            (["build_ids": ["build-roothide"], "notes": "token ghp_0123456789abcdefghijklmnopqrstuvwxyz"], "`ghp_…` (a token or key; 40 characters"),
         ]
         for (arguments, words) in refused {
             await #expect {

@@ -45,6 +45,9 @@ final class DevicePasscodeController: TableController {
         self?.cell(in: table, row: row)
     }
 
+    /// 仅在密码保存并实测通过，或确认设备无需密码后通知权限页面。
+    @objc dynamic var onSaved: (() -> Void)?
+
     /// What apelin-diagnostics last answered; nil until it has.
     private var state: DevicePasscodeState?
     @objc private dynamic var failure: Error?
@@ -243,6 +246,9 @@ final class DevicePasscodeController: TableController {
             state = response.state
             failure = nil
             updateRows()
+            if response.state.saved || response.state.device == .noPasscode {
+                onSaved?()
+            }
             report(response.outcome)
         case let .failure(error):
             updateRows()
@@ -281,6 +287,9 @@ final class DevicePasscodeController: TableController {
             state = answer
             failure = nil
             updateRows()
+            if answer.saved {
+                onSaved?()
+            }
             report(answer.saved ? .saved : .failed)
         } catch {
             failure = error
@@ -306,6 +315,7 @@ final class DevicePasscodeController: TableController {
         Task { [weak self] in
             do {
                 try await ApelinService.app.devicePasscodeRemove()
+                AgentPermissions.allowsUnlock = false
                 SPIndicator.present(title: String(localized: "Removed"), preset: .done, haptic: .success)
             } catch {
                 self?.presentNotice(title: "Unable to Remove Passcode", message: error.readableMessage)

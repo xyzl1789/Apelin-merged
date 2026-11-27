@@ -122,6 +122,15 @@ actor ToolRunner {
         policy.asksBeforeScreen
     }
 
+    /// 设置在下一条 App 消息到达时更新，工具执行立即采用新值。
+    func setAllowsUnlock(_ allows: Bool) {
+        policy.allowsUnlock = allows
+    }
+
+    var allowsUnlock: Bool {
+        policy.allowsUnlock
+    }
+
     /// The composer's pill, sent with each prompt: a plan run is a hard
     /// sandbox, not a request of the model's. Write and system tools are
     /// denied here whatever the approval mode allows, so a plan answers

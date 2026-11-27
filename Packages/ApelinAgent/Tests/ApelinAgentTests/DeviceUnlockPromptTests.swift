@@ -42,9 +42,33 @@ struct DeviceUnlockPromptTests {
                 detail: .screenControl(unlock),
             ), "\(mode)")
         }
-        let strict = ApprovalPolicy(mode: .confirm, asksBeforeScreen: false).evaluate(facts, root: root)
+        let strict = ApprovalPolicy(mode: .confirm, asksBeforeScreen: false, allowsUnlock: true).evaluate(facts, root: root)
         #expect(strict == .ask(reason: "This action changes this device. Review it before running.", detail: .none))
-        #expect(ApprovalPolicy(mode: .relaxed, asksBeforeScreen: false).evaluate(facts, root: root) == .allow(.relaxed))
+        for mode: ApprovalMode in [.relaxed, .full] {
+            #expect(ApprovalPolicy(mode: mode, asksBeforeScreen: false, allowsUnlock: true).evaluate(facts, root: root) == .allow(.relaxed))
+        }
+    }
+
+    @Test
+    func `关闭独立解锁后所有模式均拒绝解锁但不阻止其他屏幕操作`() {
+        defer { home.remove() }
+        var facts = InvocationFacts(tool: .local(.screenInteract))
+        facts.screenControl = .interact(targetID: nil, action: .pressButton("unlock"))
+        for mode: ApprovalMode in [.confirm, .relaxed, .full] {
+            let policy = ApprovalPolicy(mode: mode, asksBeforeScreen: false)
+            guard case let .deny(reason) = policy.evaluate(facts, root: root) else {
+                Issue.record("\(mode) 未拒绝已关闭的自动解锁")
+                continue
+            }
+            #expect(reason.contains("自动解锁已关闭"))
+            #expect(reason.contains("不要运行 icli device passcode"))
+            var wake = InvocationFacts(tool: .local(.screenInteract))
+            wake.screenControl = .interact(targetID: nil, action: .pressButton("wake"))
+            let expected: GateVerdict = mode == .confirm
+                ? .ask(reason: "This action changes this device. Review it before running.", detail: .none)
+                : .allow(.relaxed)
+            #expect(policy.evaluate(wake, root: root) == expected)
+        }
     }
 
     @Test

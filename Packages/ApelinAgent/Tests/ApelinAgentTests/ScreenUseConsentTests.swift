@@ -221,7 +221,17 @@ struct ScreenUseConsentTests {
             languages: ["en-US"], region: "US", date: date, timeZone: zone, mode: .relaxed, asksBeforeScreen: false,
         ))
         #expect(off.contains("- Ask Before Using the Screen: off."))
-        #expect(on.utf8.count < 440, "\(on.utf8.count) bytes")
+        #expect(on.contains("- Unlocking the screen: allowed."))
+        #expect(off.contains("- Unlocking the screen: off."))
+        #expect(on.utf8.count < 800, "\(on.utf8.count) bytes")
+        let source = SystemStateSource(languages: { ["en-US"] }, region: { "US" })
+        for asks in [false, true] {
+            for allows in [false, true] {
+                let facts = SystemState.facts(source, mode: .full, asksBeforeScreen: asks, allowsUnlock: allows)
+                #expect(facts.canUnlock == (asks || allows))
+                #expect(SystemState.make(facts).contains("- Unlocking the screen: \(asks || allows ? "allowed" : "off")."))
+            }
+        }
 
         let provider = await registerFauxProvider()
         defer { provider.unregister() }
@@ -238,17 +248,26 @@ struct ScreenUseConsentTests {
         provider.setResponses([reply])
         try await session.prompt("Hello.")
         await session.waitForIdle()
+        await session.setAllowsUnlock(true)
+        provider.setResponses([reply])
+        try await session.prompt("验证独立解锁授权。")
+        await session.waitForIdle()
         await session.setAsksBeforeScreen(true)
+        await session.setAllowsUnlock(false)
         provider.setResponses([reply])
         try await session.prompt("Check the screen.")
         await session.waitForIdle()
         await session.close()
         let seen = await requests.messages
-        try #require(seen.count == 2)
+        try #require(seen.count == 3)
         #expect(seen[0].contains("- Ask Before Using the Screen: off."))
-        #expect(seen[1].contains("- Ask Before Using the Screen: on."))
+        #expect(seen[0].contains("- Unlocking the screen: off."))
+        #expect(seen[1].contains("- Ask Before Using the Screen: off."))
+        #expect(seen[1].contains("- Unlocking the screen: allowed."))
+        #expect(seen[2].contains("- Ask Before Using the Screen: on."))
+        #expect(seen[2].contains("- Unlocking the screen: allowed."))
         let prompts = await requests.systemPrompts
-        #expect(prompts.count == 2 && prompts.allSatisfy { !$0.contains("Ask Before Using the Screen: o") })
+        #expect(prompts.count == 3 && prompts.allSatisfy { !$0.contains("Ask Before Using the Screen: o") && !$0.contains("Unlocking the screen:") })
     }
 
     /// The last user message and the system prompt of each request.

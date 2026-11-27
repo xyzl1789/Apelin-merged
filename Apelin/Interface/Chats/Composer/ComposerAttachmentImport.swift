@@ -42,10 +42,11 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
         presenter?.present(picker, animated: true)
     }
 
-    @objc dynamic func photos() {
+    /// 图片仍按图片导入，视频保留完整文件，避免只收到首帧。
+    @objc dynamic func media() {
         var configuration = PHPickerConfiguration()
         configuration.selectionLimit = 4
-        configuration.filter = .images
+        configuration.filter = .any(of: [.images, .videos])
         let picker = PHPickerViewController(configuration: configuration)
         picker.delegate = self
         presenter?.present(picker, animated: true)
@@ -75,10 +76,42 @@ final class ComposerAttachmentImport: NSObject, UIImagePickerControllerDelegate,
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         picker.dismiss(animated: true)
         for result in results {
-            result.itemProvider.loadObject(ofClass: UIImage.self) { [self] reading, _ in
-                Task { @MainActor in
-                    guard let image = reading as? UIImage else { return }
-                    importImage(image)
+            let provider = result.itemProvider
+            // 先识别视频：部分提供者也能把视频首帧交给 UIImage。
+            if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+                importVideo(from: provider)
+            } else if provider.canLoadObject(ofClass: UIImage.self) {
+                provider.loadObject(ofClass: UIImage.self) { [self] reading, _ in
+                    Task { @MainActor in
+                        guard let image = reading as? UIImage else { return }
+                        importImage(image)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 提供者的临时文件只在回调期间有效，先复制进附件存储再交给草稿。
+    private func importVideo(from provider: NSItemProvider) {
+        let suggested = provider.suggestedName ?? String(localized: "Video")
+        provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { [self] url, error in
+            let read = Result { () throws -> ComposerAttachment in
+                guard let url else {
+                    throw error ?? ApelinError(.badRequest, String(localized: "The selected file could not be read."))
+                }
+                let extensionName = url.pathExtension
+                let baseName = (suggested as NSString).lastPathComponent
+                let name = extensionName.isEmpty || (baseName as NSString).pathExtension.caseInsensitiveCompare(extensionName) == .orderedSame
+                    ? baseName : baseName + "." + extensionName
+                let type = UTType(filenameExtension: extensionName)
+                let mimeType = type?.conforms(to: .movie) == true ? type?.preferredMIMEType : nil
+                return try Self.readAttachment(at: url, name: name, mimeType: mimeType)
+            }
+            Task { @MainActor in
+                do {
+                    receive(try read.get())
+                } catch {
+                    presenter?.presentNotice(title: "Unable to Import File", message: error.readableMessage)
                 }
             }
         }

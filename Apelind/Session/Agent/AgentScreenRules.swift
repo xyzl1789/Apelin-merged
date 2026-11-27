@@ -23,6 +23,17 @@ enum AgentScreenRules {
         guard let session, let entry = await AgentSessionTable.shared.entry(session) else {
             return ApelinError(.denied, "no agent session for this worker")
         }
+        // 全模式都先检查解锁许可，不能被 Relaxed 或 Full 绕过。
+        if request.operation == .uiAction,
+           let action = try? request.decode(UIActionRequest.self),
+           action.action == .press(button: DevicePasscode.unlockButton),
+           !ScreenConsent.mayUnlock(asksBeforeScreen: entry.asksBeforeScreen, allowsUnlock: entry.allowsUnlock)
+        {
+            return ApelinError(
+                .denied,
+                "设置 ▸ 权限模式中的自动解锁已关闭。请用户自行解锁，或由用户开启「让智能体自行解锁设备」。",
+            )
+        }
         guard entry.asksBeforeScreen else { return nil }
         let covers: (JSONValue) -> Bool
         let what: String

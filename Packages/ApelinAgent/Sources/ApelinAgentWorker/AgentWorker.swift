@@ -68,6 +68,9 @@ public enum AgentWorker {
                 if let asks = prompt.asksBeforeScreen {
                     await session.setAsksBeforeScreen(asks)
                 }
+                if let unlock = prompt.allowsUnlock {
+                    await session.setAllowsUnlock(unlock)
+                }
                 if let runMode = prompt.runMode {
                     await session.setRunMode(runMode)
                 }
@@ -494,6 +497,7 @@ actor WorkerState {
                     approval: ApprovalPolicy(
                         mode: AgentWorker.approvalMode(open.approvalMode),
                         asksBeforeScreen: ScreenConsent.asks(open.asksBeforeScreen),
+                        allowsUnlock: ScreenConsent.allowsUnlock(open.allowsUnlock),
                     ),
                     dataRoot: dataRoot,
                     mcpServers: (open.mcpServers ?? []).compactMap { connection in

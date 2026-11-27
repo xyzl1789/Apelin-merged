@@ -1,4 +1,6 @@
 import enum ApelinProtocol.AgentToolName
+import enum ApelinProtocol.DevicePasscode
+import enum ApelinProtocol.ScreenConsent
 import CryptoKit
 import Foundation
 import KWWKAI
@@ -240,11 +242,19 @@ public struct ApprovalPolicy: Sendable, Hashable {
     /// on, the UI tree, every UI action and every command that runs icli
     /// ask each time, in every mode (`evaluateScreen`).
     public var asksBeforeScreen: Bool
+    /// App 的独立解锁授权；旧配置默认关闭。
+    public var allowsUnlock: Bool
 
-    public init(mode: ApprovalMode, presets: ApprovalPresets = .default, asksBeforeScreen: Bool = true) {
+    public init(
+        mode: ApprovalMode,
+        presets: ApprovalPresets = .default,
+        asksBeforeScreen: Bool = true,
+        allowsUnlock: Bool = false,
+    ) {
         self.mode = mode
         self.presets = presets
         self.asksBeforeScreen = asksBeforeScreen
+        self.allowsUnlock = allowsUnlock
     }
 
     public func evaluate(_ facts: InvocationFacts, root: ScopedRoot) -> GateVerdict {
@@ -330,6 +340,12 @@ public struct ApprovalPolicy: Sendable, Hashable {
     /// there; the host spends that one approval. Nil leaves the call to the
     /// mode.
     private func evaluateScreen(_ facts: InvocationFacts) -> GateVerdict? {
+        if !ScreenConsent.mayUnlock(asksBeforeScreen: asksBeforeScreen, allowsUnlock: allowsUnlock),
+           case let .interact(_, .pressButton(button))? = facts.screenControl,
+           button == DevicePasscode.unlockButton
+        {
+            return .deny("自动解锁已关闭。请用户自行解锁，或在设置 ▸ 权限模式开启「让智能体自行解锁设备」。不要索取、读取或输入密码，也不要运行 icli device passcode。")
+        }
         guard asksBeforeScreen else { return nil }
         switch facts.tool {
         case .local(.screenReadTree), .local(.screenInteract):

@@ -350,6 +350,8 @@ actor AgentSessionTable {
         /// Ask Before Using the Screen, as the app last sent it; an agent's
         /// session has its opener's.
         var asksBeforeScreen = true
+        /// 仅继承 App 或开启者确认的独立解锁授权，旧会话默认关闭。
+        var allowsUnlock = false
         /// The reader's standing instructions, as the session opened with
         /// them: an agent's session has its opener's.
         var promptInjection: String? = nil
@@ -453,6 +455,10 @@ actor AgentSessionTable {
 
     func setAsksBeforeScreen(_ asks: Bool, session: String) {
         entries[session]?.asksBeforeScreen = asks
+    }
+
+    func setAllowsUnlock(_ allows: Bool, session: String) {
+        entries[session]?.allowsUnlock = allows
     }
 
     /// The reader's standing instructions as they are now: a conversation an

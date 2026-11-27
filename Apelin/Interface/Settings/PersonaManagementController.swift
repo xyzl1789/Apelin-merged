@@ -73,7 +73,7 @@ final class PersonaManagementController: UITableViewController {
         var next = snapshot
         next.enabled = on
         do {
-            try Preferences.PromptInjection.save(next)
+            try Preferences.PromptInjection.save(next, replacing: snapshot)
             snapshot = next
         } catch {
             presentNotice(title: "Error", message: error.readableMessage)

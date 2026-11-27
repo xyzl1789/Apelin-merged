@@ -214,10 +214,10 @@ enum Preferences {
 
         /// Saves the collection, surfacing a failure (a corrupt file, a full
         /// disk, an unsafe path) to the caller rather than losing the edit.
-        static func save(_ snapshot: PersonaSnapshot) throws {
+        static func save(_ snapshot: PersonaSnapshot, replacing expected: PersonaSnapshot? = nil) throws {
             migrateLegacyIfNeeded()
             try store.createRootIfNeeded(folder: DataFolder.app)
-            try store.save(snapshot)
+            try store.save(snapshot, replacing: expected)
         }
 
         /// The body for the persona in force at the given model, or "", with
@@ -248,6 +248,12 @@ enum Preferences {
                 return
             }
             UserDefaults.standard.set(clipped, forKey: projectKey(project))
+        }
+
+        /// 编辑器从旧值保存时拒绝覆盖别的窗口；主线程内比较并写入，不引入新的存储。
+        @MainActor static func setProjectText(_ text: String, for project: String, replacing previous: String) throws {
+            guard projectText(project) == previous else { throw PersonaStoreError.changed }
+            setProjectText(text, for: project)
         }
 
         /// Drops a project's instructions, as deleting the project does.

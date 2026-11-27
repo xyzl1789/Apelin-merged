@@ -24,6 +24,20 @@ final class FeedbackRulesTests: XCTestCase {
         XCTAssertNotNil(problem("a\u{0}b"), "a NUL")
     }
 
+    /// 发布说明不带标题，命中行号从正文第一行计算，且按原文顺序返回。
+    func testReleaseNotesMatchesAreOrderedAndCredentialsStayRedacted() {
+        let token = "ghp_" + String(repeating: "A1b2", count: 9)
+        let text = "修复说明\r\n设备 IPHONEOS16\n令牌 \(token)"
+        let matches = FeedbackRules.privateDataMatches(in: text)
+        XCTAssertEqual(matches.map(\.kind), [.deviceIdentifier, .tokenOrKey])
+        XCTAssertEqual(matches.map(\.place), [.body(line: 2), .body(line: 3)])
+        XCTAssertEqual(matches.map(\.shown), ["IPHONEOS16", "ghp_…"])
+        let refusal = FeedbackRules.Refusal("隐私检查未通过", matches: matches)
+        XCTAssertFalse(refusal.explanation.contains(token))
+        XCTAssertFalse(refusal.explanation.contains(String(token.prefix(5))))
+        XCTAssertTrue(FeedbackRules.privateDataMatches(in: "修复导入问题").isEmpty)
+    }
+
     func testPrivateDataIsRefusedByKindAndNeverQuoted() throws {
         let refused: [(text: String, kind: String)] = [
             ("token ghp_" + String(repeating: "A1b2", count: 9), "token"),

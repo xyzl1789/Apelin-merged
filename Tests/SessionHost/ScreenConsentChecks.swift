@@ -25,6 +25,13 @@ func screenConsentChecks(scratch: URL, scratchPath: String) async {
     check(ScreenConsent.asks(oldOpen?.asksBeforeScreen), "and asks")
     let oldPrompt = try? JSONCoding.decode(AgentPromptRequest.self, from: Data(#"{"sessionID":"s","text":"hi"}"#.utf8))
     check(oldPrompt != nil && oldPrompt?.asksBeforeScreen == nil, "a prompt without it leaves the session's as it is")
+    check(oldOpen?.allowsUnlock == nil && oldPrompt?.allowsUnlock == nil, "旧请求可在缺少独立解锁字段时解码")
+    check(!ScreenConsent.allowsUnlock(nil) && !ScreenConsent.allowsUnlock(false) && ScreenConsent.allowsUnlock(true), "独立解锁只有显式 true 才开启")
+    for asks in [false, true] {
+        for allows in [false, true] {
+            check(ScreenConsent.mayUnlock(asksBeforeScreen: asks, allowsUnlock: allows) == (asks || allows), "两开关组合不放宽逐次审批")
+        }
+    }
 
     let screenSpecs: [RunCodeSpec] = [
         .argv(["icli", "url", "open", "https://github.com/Lakr233/Irisin/issues/new"]),
@@ -53,13 +60,14 @@ func screenConsentChecks(scratch: URL, scratchPath: String) async {
 
     // MARK: Sessions, cards and approvals as the worker and the app make them
 
-    func session(_ id: String, mode: ApprovalMode, asks: Bool = true) async -> AgentSessionTable.Entry {
+    func session(_ id: String, mode: ApprovalMode, asks: Bool = true, allows: Bool = false) async -> AgentSessionTable.Entry {
         let entry = await AgentSessionTable.Entry(
             sessionID: id,
             task: registry.create(kind: .agent, owner: .agent, ownerKey: id),
             project: project,
             mode: mode,
             asksBeforeScreen: asks,
+            allowsUnlock: allows,
             createdAt: Date(),
         )
         await sessions.add(entry)
@@ -215,6 +223,34 @@ func screenConsentChecks(scratch: URL, scratchPath: String) async {
     let backOff = await passes(tree, from: unasking)
     check(backOff, "and turned off, it does not")
 
+    // 独立解锁关闭时，即使工作进程绕过自身策略，宿主在所有模式也拒绝。
+    let unlock = UIActionRequest(action: .press(button: DevicePasscode.unlockButton))
+    let unlockDetail = json(#"{"screenControl":{"operation":"uiAction","request":{"action":{"press":{"button":"unlock"}}}}}"#)
+    for mode in [ApprovalMode.confirm, .relaxed, .full] {
+        let entry = await session("unlock-\(mode.rawValue)", mode: mode, asks: false)
+        let denied = await passes(unlock, from: entry)
+        let otherAction = await passes(tap, from: entry)
+        check(!denied, "\(mode)：关闭独立解锁时拒绝 unlock")
+        check(otherAction, "\(mode)：不影响其他屏幕操作")
+        await sessions.setAllowsUnlock(true, session: entry.sessionID)
+        let allowed = await passes(unlock, from: entry)
+        check(allowed, "\(mode)：开启后宿主允许 unlock")
+        await sessions.setAllowsUnlock(false, session: entry.sessionID)
+        let disabled = await passes(unlock, from: entry)
+        check(!disabled, "\(mode)：关闭后下一次调用立即拒绝")
+        await sessions.setAsksBeforeScreen(true, session: entry.sessionID)
+        let unapproved = await passes(unlock, from: entry)
+        check(!unapproved, "\(mode)：逐次询问仍需要审批")
+        await ask(entry, "unlock", tool: .screenInteract, detail: unlockDetail)
+        await approve(entry, "unlock")
+        let approved = await passes(unlock, from: entry)
+        let spent = await passes(unlock, from: entry)
+        check(approved, "\(mode)：逐次询问可审批一次解锁")
+        check(!spent, "\(mode)：解锁审批只使用一次")
+    }
+    let appUnlock = await passes(unlock, from: mixed, caller: .app)
+    check(appUnlock, "App 自身的解锁调用不受智能体开关影响")
+
     // MARK: shell_run that runs icli, in every mode
 
     let open: RunCodeSpec = .argv(openURL)
@@ -319,4 +355,27 @@ func screenConsentChecks(scratch: URL, scratchPath: String) async {
     check(sent != nil && sent?.asksBeforeScreen == nil, "an agent's message changes no conversation's setting")
     let fromApp = AgentConversationRules.appPrompt(AgentPromptRequest(sessionID: target.sessionID, text: "go", asksBeforeScreen: false))
     check(fromApp.asksBeforeScreen == false, "the app's prompt carries its setting")
+
+    let deniedChild = try? AgentConversationRules.childOpen(
+        AgentOpenRequest(approvalMode: .relaxed, asksBeforeScreen: false, allowsUnlock: true, prompt: "go", delegationBrief: screenBrief),
+        opener: lax,
+        target: project,
+    )
+    check(deniedChild?.allowsUnlock == false, "子会话不能通过自带 true 提升解锁权限")
+    let unlockOpener = await session("unlock-opener", mode: .relaxed, asks: false, allows: true)
+    let allowedChild = try? AgentConversationRules.childOpen(
+        AgentOpenRequest(approvalMode: .relaxed, allowsUnlock: false, prompt: "go", delegationBrief: screenBrief),
+        opener: unlockOpener,
+        target: project,
+    )
+    check(allowedChild?.allowsUnlock == true, "子会话继承发起会话的独立解锁授权")
+    let sentUnlock = try? AgentConversationRules.childPrompt(
+        AgentPromptRequest(sessionID: target.sessionID, text: "go", allowsUnlock: true),
+        sender: opener,
+        target: target,
+        descriptorCount: 0,
+    )
+    check(sentUnlock != nil && sentUnlock?.allowsUnlock == nil, "其他智能体的消息不能更改接收会话的解锁许可")
+    let appUnlockPrompt = AgentConversationRules.appPrompt(AgentPromptRequest(sessionID: target.sessionID, text: "go", allowsUnlock: false))
+    check(appUnlockPrompt.allowsUnlock == false, "App 消息保留显式关闭的独立解锁设置")
 }

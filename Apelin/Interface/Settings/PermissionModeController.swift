@@ -1,24 +1,27 @@
 import ApelinProtocol
 import UIKit
 
-/// The approval mode, and below it Ask Before Using the Screen, which holds
-/// in every mode.
+/// 权限模式、逐次屏幕询问和独立解锁授权；保存密码本身不授予解锁权限。
 final class PermissionModeController: TableController {
     private let modes: [ApprovalMode] = [.confirm, .relaxed, .full]
 
     private enum Section: Hashable {
         case modes
         case screen
+        case unlock
     }
 
     private enum RowID: Hashable {
         case mode(ApprovalMode)
         case asksBeforeScreen
+        case allowsUnlock
+        case passcode
     }
 
     private struct Row: Equatable {
         let id: RowID
-        let selected: Bool
+        var selected = false
+        var enabled = true
     }
 
     private lazy var dataSource = TableDataSource<Section, RowID, Row>(
@@ -28,17 +31,29 @@ final class PermissionModeController: TableController {
         self?.cell(in: table, row: row)
     }
 
+    private var passcodeState: DevicePasscodeState?
+    @objc private dynamic var isResolvingUnlock = false
+
     @objc private dynamic func updateRows() {
         dataSource.footerTitle = { section in
             switch section {
             case .modes: AgentPermissions.explanation
             case .screen: String(localized: "While this is on, the agent asks you before it opens an app or a link, reads what is on the screen or acts on it, through Apelin’s screen tools or icli, in every permission mode. Before a screenshot it always asks in the conversation. Each chat follows a change when you send its next message.")
+            case .unlock: "开启后，智能体可使用在此保存并测试过的密码自行解锁设备，让需要屏幕的任务继续进行。无密码设备无需保存密码。密码只保存在本机钥匙串，智能体无法看到。每个会话在你发送下一条消息时采用新设置。"
             }
         }
-        dataSource.update([
+        var sections: [(Section, [Row])] = [
             (.modes, modes.map { Row(id: .mode($0), selected: $0 == AgentPermissions.mode) }),
             (.screen, [Row(id: .asksBeforeScreen, selected: AgentPermissions.asksBeforeScreen)]),
-        ], reconfigure: true)
+        ]
+        if !AgentPermissions.asksBeforeScreen {
+            var rows = [Row(id: .allowsUnlock, selected: AgentPermissions.allowsUnlock, enabled: !isResolvingUnlock)]
+            if AgentPermissions.allowsUnlock, passcodeState?.saved == true {
+                rows.append(Row(id: .passcode))
+            }
+            sections.append((.unlock, rows))
+        }
+        dataSource.update(sections, reconfigure: true)
     }
 
     init() {
@@ -56,6 +71,61 @@ final class PermissionModeController: TableController {
         updateRows()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        reloadPasscodeState()
+    }
+
+    /// 这里只读取保存状态，不读取密码；从密码页返回后刷新管理入口。
+    @objc private dynamic func reloadPasscodeState() {
+        Task { [weak self] in
+            let answer = try? await ApelinService.app.devicePasscodeState()
+            guard let self else { return }
+            passcodeState = answer
+            updateRows()
+        }
+    }
+
+    /// 每次开启都重新查询，不能把页面打开时的旧缓存当作密码仍有效。
+    @objc private dynamic func resolvePasscode() {
+        isResolvingUnlock = true
+        updateRows()
+        Task { [weak self] in
+            do {
+                let answer = try await ApelinService.app.devicePasscodeState()
+                guard let self else { return }
+                isResolvingUnlock = false
+                passcodeState = answer
+                guard !AgentPermissions.asksBeforeScreen else {
+                    updateRows()
+                    return
+                }
+                if answer.saved || answer.device == .noPasscode {
+                    AgentPermissions.allowsUnlock = true
+                    updateRows()
+                } else {
+                    updateRows()
+                    presentPasscodePage()
+                }
+            } catch {
+                guard let self else { return }
+                isResolvingUnlock = false
+                updateRows()
+                presentNotice(title: "无法确认解锁条件", message: error.readableMessage)
+            }
+        }
+    }
+
+    @objc private dynamic func presentPasscodePage() {
+        let page = DevicePasscodeController()
+        page.onSaved = { [weak self] in
+            guard let self, !AgentPermissions.asksBeforeScreen else { return }
+            AgentPermissions.allowsUnlock = true
+            reloadPasscodeState()
+        }
+        navigationController?.pushViewController(page, animated: true)
+    }
+
     private func cell(in tableView: UITableView, row: Row) -> UITableViewCell {
         switch row.id {
         case let .mode(mode):
@@ -64,42 +134,78 @@ final class PermissionModeController: TableController {
             var content = cell.defaultContentConfiguration()
             content.text = AgentPermissions.title(for: mode)
             cell.contentConfiguration = content
-            let selected = row.selected
-            cell.accessoryType = selected ? .checkmark : .none
-            cell.accessibilityTraits = selected ? [.button, .selected] : [.button]
+            cell.accessoryType = row.selected ? .checkmark : .none
+            cell.accessibilityTraits = row.selected ? [.button, .selected] : [.button]
             return cell
-        case .asksBeforeScreen:
-            // The switch says on or off itself; the row's text names it.
-            let cell = tableView.dequeueReusableCell(withIdentifier: "screen")
-                ?? UITableViewCell(style: .default, reuseIdentifier: "screen")
+        case .asksBeforeScreen, .allowsUnlock:
+            let asks = row.id == .asksBeforeScreen
+            let identifier = asks ? "screen" : "unlock"
+            let cell = tableView.dequeueReusableCell(withIdentifier: identifier)
+                ?? UITableViewCell(style: .default, reuseIdentifier: identifier)
             var content = cell.defaultContentConfiguration()
-            content.text = String(localized: "Ask Before Using the Screen")
+            content.text = asks ? String(localized: "Ask Before Using the Screen") : "让智能体自行解锁设备"
             cell.contentConfiguration = content
             cell.selectionStyle = .none
             let toggle = (cell.accessoryView as? UISwitch) ?? UISwitch()
             toggle.isOn = row.selected
+            toggle.isEnabled = row.enabled
+            toggle.accessibilityLabel = content.text
             toggle.removeTarget(nil, action: nil, for: .valueChanged)
-            toggle.addTarget(self, action: #selector(asksBeforeScreenChanged(_:)), for: .valueChanged)
+            toggle.addTarget(
+                self,
+                action: asks ? #selector(asksBeforeScreenChanged(_:)) : #selector(allowsUnlockChanged(_:)),
+                for: .valueChanged,
+            )
             cell.accessoryView = toggle
+            return cell
+        case .passcode:
+            let cell = tableView.dequeueReusableCell(withIdentifier: "passcode")
+                ?? UITableViewCell(style: .value1, reuseIdentifier: "passcode")
+            var content = UIListContentConfiguration.valueCell()
+            content.text = String(localized: "Device Passcode")
+            content.secondaryText = String(localized: "Saved")
+            cell.contentConfiguration = content
+            cell.accessoryType = .disclosureIndicator
             return cell
         }
     }
 
     override func tableView(_: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
-        if case .mode = dataSource.value(at: indexPath)?.id {
-            return true
+        switch dataSource.value(at: indexPath)?.id {
+        case .mode, .passcode: true
+        default: false
         }
-        return false
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard case let .mode(mode) = dataSource.value(at: indexPath)?.id else { return }
+        switch dataSource.value(at: indexPath)?.id {
+        case .passcode: presentPasscodePage()
+        case let .mode(mode): select(mode)
+        default: break
+        }
+    }
+
+    @objc private dynamic func asksBeforeScreenChanged(_ toggle: UISwitch) {
+        AgentPermissions.asksBeforeScreen = toggle.isOn
+        updateRows()
+    }
+
+    @objc private dynamic func allowsUnlockChanged(_ toggle: UISwitch) {
+        guard toggle.isOn else {
+            AgentPermissions.allowsUnlock = false
+            updateRows()
+            return
+        }
+        // 只有确认无密码或已有实测通过的密码，开关才真正变为开启。
+        toggle.isOn = false
+        resolvePasscode()
+    }
+
+    private func select(_ mode: ApprovalMode) {
         let current = AgentPermissions.mode
         guard mode != current else { return }
         switch mode {
-        // Root without asking: confirmed in words, then by the device owner.
-        // Leaving Full never asks.
         case .full:
             presentConfirmation(
                 title: "Enable Full Mode?",
@@ -127,11 +233,6 @@ final class PermissionModeController: TableController {
 
     private func save(_ mode: ApprovalMode) {
         AgentPermissions.mode = mode
-        updateRows()
-    }
-
-    @objc private dynamic func asksBeforeScreenChanged(_ toggle: UISwitch) {
-        AgentPermissions.asksBeforeScreen = toggle.isOn
         updateRows()
     }
 }

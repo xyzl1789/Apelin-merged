@@ -231,4 +231,11 @@ public extension FeedbackRules {
     static func privateData(in text: String, paths: [String] = [], names: [String] = []) -> String? {
         privateMatches(in: text, titleLength: nil, paths: paths, names: names).first?.kind.reason
     }
+
+    /// 按原文顺序返回隐私命中位置；密钥和令牌复用既有脱敏摘要，不返回完整凭据。
+    static func privateDataMatches(in text: String, paths: [String] = [], names: [String] = []) -> [Match] {
+        privateMatches(in: text, titleLength: nil, paths: paths, names: names)
+            .sorted { $0.offset < $1.offset }
+            .map(\.match)
+    }
 }

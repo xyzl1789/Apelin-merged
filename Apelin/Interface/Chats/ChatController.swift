@@ -2209,8 +2209,8 @@ extension ChatController: ComposerView.Delegate {
         importer()?.camera()
     }
 
-    func onComposerPhotoTapped() {
-        importer()?.photos()
+    func onComposerMediaTapped() {
+        importer()?.media()
     }
 
     func onComposerFileTapped() {

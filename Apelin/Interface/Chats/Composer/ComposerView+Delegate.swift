@@ -22,7 +22,7 @@ extension ComposerView {
         /// apply, and a running request is stopped.
         func onComposerRewriteCancelled()
         func onComposerCameraTapped()
-        func onComposerPhotoTapped()
+        func onComposerMediaTapped()
         func onComposerFileTapped()
         func onComposerWebTapped()
         func onComposerPreviewAttachment(_ attachment: ComposerAttachment)

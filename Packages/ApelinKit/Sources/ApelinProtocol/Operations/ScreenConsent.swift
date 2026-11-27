@@ -35,6 +35,16 @@ public enum ScreenConsent {
         setting != false
     }
 
+    /// 独立解锁授权未传或为 false 时一律关闭，兼容旧客户端时也不放宽。
+    public static func allowsUnlock(_ setting: Bool?) -> Bool {
+        setting == true
+    }
+
+    /// 开启逐次屏幕询问时，解锁仍需该次专属审批；否则由独立解锁开关决定。
+    public static func mayUnlock(asksBeforeScreen: Bool, allowsUnlock: Bool) -> Bool {
+        asksBeforeScreen || allowsUnlock
+    }
+
     /// Whether `spec` runs one of `programs`: one of its words, or its
     /// script's interpreter or source, names one as a word.
     public static func usesScreen(_ spec: RunCodeSpec) -> Bool {

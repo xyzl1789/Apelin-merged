@@ -64,6 +64,7 @@ enum AgentConversationRules {
             model: open.model,
             approvalMode: opener.mode,
             asksBeforeScreen: opener.asksBeforeScreen,
+            allowsUnlock: opener.allowsUnlock,
             reasoningEffort: open.reasoningEffort,
             serviceTier: open.serviceTier,
             promptInjection: opener.promptInjection,

@@ -441,6 +441,8 @@ enum AgentHandler: DomainHandler {
         // Spelled out, so the worker and the host read it the same way.
         let asksBeforeScreen = ScreenConsent.asks(open.asksBeforeScreen)
         resolved.asksBeforeScreen = asksBeforeScreen
+        let allowsUnlock = ScreenConsent.allowsUnlock(open.allowsUnlock)
+        resolved.allowsUnlock = allowsUnlock
         let title = open.title ?? open.prompt.map { String($0.prefix(AgentConversationRules.maximumTitleLength)) }
         // Who opened this conversation is on disk before its worker starts:
         // its first turn is read from its first event, and the report that
@@ -480,6 +482,7 @@ enum AgentHandler: DomainHandler {
                 project: project,
                 mode: open.approvalMode,
                 asksBeforeScreen: asksBeforeScreen,
+                allowsUnlock: allowsUnlock,
                 promptInjection: resolved.promptInjection,
                 mcpServers: resolved.mcpServers,
                 title: title ?? existing?.title,
@@ -599,6 +602,9 @@ enum AgentHandler: DomainHandler {
             // Applied before forwarding: the worker can start tools before its reply arrives.
             if let asks = prompt.asksBeforeScreen {
                 await AgentSessionTable.shared.setAsksBeforeScreen(asks, session: prompt.sessionID)
+            }
+            if let unlock = prompt.allowsUnlock {
+                await AgentSessionTable.shared.setAllowsUnlock(unlock, session: prompt.sessionID)
             }
             // The reader's instructions as the app has them now: a
             // conversation an agent opens from here inherits these, not the

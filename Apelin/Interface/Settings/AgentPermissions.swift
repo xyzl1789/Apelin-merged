@@ -21,6 +21,12 @@ enum AgentPermissions {
         set { UserDefaults.standard.set(newValue, forKey: "agent.asksBeforeScreen") }
     }
 
+    /// 关闭逐次屏幕询问时，只有显式开启此项才允许智能体解锁；旧设置默认关闭。
+    static var allowsUnlock: Bool {
+        get { UserDefaults.standard.object(forKey: "agent.allowsUnlock") as? Bool ?? false }
+        set { UserDefaults.standard.set(newValue, forKey: "agent.allowsUnlock") }
+    }
+
     static func title(for mode: ApprovalMode) -> String {
         switch mode {
         case .confirm: String(localized: "Strict")

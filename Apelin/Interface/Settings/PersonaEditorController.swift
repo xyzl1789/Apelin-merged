@@ -10,6 +10,8 @@ import UIKit
 final class PersonaEditorController: UIViewController, UITextViewDelegate, UIAdaptivePresentationControllerDelegate {
     private var persona: Persona
     private var snapshot: PersonaSnapshot
+    // 与编辑中的开关、选中项分开，始终保留上一次成功保存的版本供比较。
+    private var savedSnapshot: PersonaSnapshot
     private let isNew: Bool
 
     private let nameField = UITextField()
@@ -31,6 +33,7 @@ final class PersonaEditorController: UIViewController, UITextViewDelegate, UIAda
     init(persona: Persona, snapshot: PersonaSnapshot, isNew: Bool = false) {
         self.persona = persona
         self.snapshot = snapshot
+        savedSnapshot = snapshot
         self.isNew = isNew
         original = persona
         originalEnabled = snapshot.enabled
@@ -230,7 +233,7 @@ final class PersonaEditorController: UIViewController, UITextViewDelegate, UIAda
     }
 
     @discardableResult
-    private func commit() -> Bool {
+    @objc private dynamic func commit() -> Bool {
         var next = snapshot
         if let index = next.personas.firstIndex(where: { $0.id == persona.id }) {
             next.personas[index] = persona
@@ -238,7 +241,8 @@ final class PersonaEditorController: UIViewController, UITextViewDelegate, UIAda
             next.personas.append(persona)
         }
         do {
-            try Preferences.PromptInjection.save(next)
+            try Preferences.PromptInjection.save(next, replacing: savedSnapshot)
+            savedSnapshot = next
             snapshot = next
             original = persona
             originalEnabled = next.enabled

@@ -162,7 +162,7 @@ final class PromptInjectionController: TableController, UISearchResultsUpdating 
 
     private func save(_ next: PersonaSnapshot) {
         do {
-            try Preferences.PromptInjection.save(next)
+            try Preferences.PromptInjection.save(next, replacing: snapshot)
             snapshot = next
         } catch {
             presentNotice(title: "Error", message: error.readableMessage)

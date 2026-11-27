@@ -4,10 +4,12 @@ import UIKit
 /// plain selectable text in a sheet.
 final class ChatCompactionController: UIViewController {
     private let summary: String
+    private let pageTitle: String
     private let textView = UITextView()
 
-    init(summary: String) {
+    init(summary: String, title: String? = nil) {
         self.summary = summary
+        pageTitle = title ?? String(localized: "Summary")
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -18,7 +20,7 @@ final class ChatCompactionController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = String(localized: "Summary")
+        title = pageTitle
         view.backgroundColor = .pageBackground
         textView.backgroundColor = .clear
         textView.isEditable = false

@@ -141,7 +141,7 @@ class ComposerView: ComposerSectionView {
 
         inputEditor.delegate = self
         controlPanel.cameraButton.actionBlock = { [weak self] in self?.delegate?.onComposerCameraTapped() }
-        controlPanel.photoButton.actionBlock = { [weak self] in self?.delegate?.onComposerPhotoTapped() }
+        controlPanel.mediaButton.actionBlock = { [weak self] in self?.delegate?.onComposerMediaTapped() }
         controlPanel.fileButton.actionBlock = { [weak self] in self?.delegate?.onComposerFileTapped() }
         controlPanel.webButton.actionBlock = { [weak self] in self?.delegate?.onComposerWebTapped() }
         controlPanel.isPanelOpen.removeDuplicates().sink { [weak self] open in

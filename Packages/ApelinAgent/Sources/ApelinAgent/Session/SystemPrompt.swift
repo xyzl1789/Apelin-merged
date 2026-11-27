@@ -1,11 +1,12 @@
+import ApelinCore
 import Foundation
 import KWWKAgent
 
 enum SystemPrompt {
     /// Project instructions are read from the first of these at the
     /// project's root, as pi and kwwk read them from the working directory.
-    static let instructionFiles = ["AGENTS.md", "CLAUDE.md"]
-    static let maxInstructionBytes = 16 * 1024
+    static let instructionFiles = ProjectInstructionsFile.names
+    static let maxInstructionBytes = ProjectInstructionsFile.maximumBytes
 
     static func make(
         project: ProjectIdentity,
@@ -94,22 +95,8 @@ enum SystemPrompt {
     /// edit applies to the next one. Only a regular file inside the project
     /// counts; a link out of it is not followed.
     static func projectInstructions(in root: ScopedRoot) -> ProjectInstructions? {
-        for file in instructionFiles {
-            guard let path = try? root.resolveExisting(file),
-                  let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-                  attributes[.type] as? FileAttributeType == .typeRegular,
-                  let handle = FileHandle(forReadingAtPath: path) else { continue }
-            defer { try? handle.close() }
-            let data = (try? handle.read(upToCount: maxInstructionBytes + 1)) ?? Data()
-            var text = String(decoding: data.prefix(maxInstructionBytes), as: UTF8.self)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { continue }
-            if data.count > maxInstructionBytes {
-                text += "\n… (truncated)"
-            }
-            return ProjectInstructions(file: file, text: text)
-        }
-        return nil
+        guard let reading = ProjectInstructionsFile.read(projectRoot: root.path) else { return nil }
+        return ProjectInstructions(file: reading.file, text: reading.text)
     }
 }
 

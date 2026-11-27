@@ -1221,6 +1221,8 @@ actor WeChatChannel {
             origin: origin
         )
         request.asksBeforeScreen = false
+        // 外部聊天渠道不能替用户开启自动解锁。
+        request.allowsUnlock = false
         guard let wire = try? WireRequest(request) else { return false }
         let reply = await route(wire, [])
         if case let .failure(error) = reply.result {

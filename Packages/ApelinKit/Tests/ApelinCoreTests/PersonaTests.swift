@@ -49,4 +49,60 @@ final class PersonaTests: XCTestCase {
         }
         XCTAssertEqual(try store.read(), snapshot)
     }
+
+    func testStoreRejectsStaleEditAndStaleClear() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = PersonaStore(root: root)
+        let persona = Persona(id: "manual", name: "配置", body: "旧正文")
+        let original = PersonaSnapshot(enabled: true, activeID: persona.id, personas: [persona])
+        try store.save(original, replacing: PersonaSnapshot())
+        var latest = original
+        latest.personas[0].body = "其他窗口保存的新正文"
+        try PersonaStore(root: root).save(latest, replacing: original)
+
+        var staleEdit = original
+        staleEdit.personas[0].name = "旧窗口草稿"
+        XCTAssertThrowsError(try store.save(staleEdit, replacing: original)) {
+            XCTAssertEqual($0 as? PersonaStoreError, .changed)
+        }
+        XCTAssertThrowsError(try store.save(PersonaSnapshot(), replacing: original)) {
+            XCTAssertEqual($0 as? PersonaStoreError, .changed)
+        }
+        XCTAssertEqual(try store.read(), latest)
+        XCTAssertEqual(staleEdit.personas[0].name, "旧窗口草稿")
+    }
+
+    func testStoreDoesNotResurrectDeletedPersona() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = PersonaStore(root: root)
+        let persona = Persona(id: "deleted", name: "待删除配置", body: "正文")
+        let original = PersonaSnapshot(enabled: true, activeID: persona.id, personas: [persona])
+        try store.save(original)
+        try PersonaStore(root: root).save(PersonaSnapshot(), replacing: original)
+        XCTAssertThrowsError(try store.save(original, replacing: original)) {
+            XCTAssertEqual($0 as? PersonaStoreError, .changed)
+        }
+        XCTAssertEqual(try store.read(), PersonaSnapshot())
+    }
+
+    func testStoreAcceptsUpdatedBaselineAndKeepsLongPrompts() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = PersonaStore(root: root)
+        XCTAssertEqual(PersonaStore.maximumBodyCharacters, 16 * 1024)
+        let persona = Persona(id: "long", name: "长提示词", body: String(repeating: "中", count: 16 * 1024))
+        let original = PersonaSnapshot(personas: [persona])
+        try store.save(original, replacing: PersonaSnapshot())
+        var next = original
+        next.enabled = true
+        next.activeID = persona.id
+        try store.save(next, replacing: original)
+        next.personas[0].pinned = true
+        let baseline = try store.read()
+        try store.save(next, replacing: baseline)
+        XCTAssertEqual(try store.read(), next)
+        XCTAssertEqual(try store.read().personas[0].body, persona.body)
+    }
 }

@@ -407,6 +407,7 @@ final class SessionHost: @unchecked Sendable {
         wire.attachments = nil
         wire.approvalMode = nil
         wire.asksBeforeScreen = nil
+        wire.allowsUnlock = nil
         wire.runMode = nil
         wire.promptInjection = nil
         wire.provider = nil
