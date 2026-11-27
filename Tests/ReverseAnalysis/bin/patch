@@ -1,0 +1,5 @@
+#!/bin/sh
+# 使用固定版本的真实统一补丁实现；依赖仅保留在项目缓存。
+set -eu
+: "${APELIN_REVERSE_PATCH:?必须指定已校验的补丁工具}"
+exec python3 "${APELIN_REVERSE_PATCH:?}" "$@"

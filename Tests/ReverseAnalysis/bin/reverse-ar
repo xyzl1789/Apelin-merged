@@ -1,0 +1,12 @@
+#!/bin/bash
+# 为原生归档器转换 bootstrap shell 生成的绝对路径。
+set -eu
+: "${APELIN_REVERSE_AR:?必须设置原生归档器}"
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        /rootfs/*) args+=("${arg#/rootfs}") ;;
+        *) args+=("$arg") ;;
+    esac
+done
+exec "${APELIN_REVERSE_AR:?}" "${args[@]}"

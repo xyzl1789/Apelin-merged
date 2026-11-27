@@ -1,0 +1,4 @@
+#!/bin/sh
+# 使用同一套编译和链接后签名策略。
+set -eu
+exec reverse-cc --driver-mode=g++ "$@"

@@ -6033,3 +6033,19 @@ colour or a bug.
 - The page's segment control sets no title fonts: the platform draws them, and
   scales them with the reader's text size, which a font set here would freeze.
 
+## 原生逆向分析隔离试验（2026-11-27）
+
+`Tests/ReverseAnalysis/README.md` 记录固定源码版本、依赖校验、原生构建和验收流程。
+执行 `fetch_sources.py`、`build_native.py all --jobs 2`、`verify_native.py` 和
+`verify_service.py`，结果在 `build/reverse-analysis/results/`。所有链接输出运行前签名，
+不安装包，不修改主应用依赖。
+本机动态 Ghidra 插件被系统拒绝映射；可行路径是静态链接到独立原生试验驱动。
+arm64/arm64e 自有样本的函数列表、CFG、双向调用、Ghidra C 反编译、伪代码回编译、
+超时取消、进程组回收和输入 SHA-256 不变已实测。此结论不覆盖大型、去符号或胖二进制，
+也不表示已有正式 AI 扩展或界面。`session_driver.c` 的固定原生操作与
+`analysis_service.py` 的隔离 JSON 宿主已验收内容指纹缓存、同进程复用、分页、内容变化
+失效、LRU/请求次数/显式空闲清理、死亡进程重建、排队及初始化取消和响应超限回收。
+`expire()` 需由请求入口或未来宿主定时器驱动，目前没有后台空闲定时器和内存硬限额。
+原始命令入口仅供受控验收，不向代理开放；正式宿主的取消令牌尚未接入。
+上游 GPL/LGPL 家族许可须在正式分发前另审，不能混入主应用。完整 `make check`
+仍因本机没有 xcodebuild 而未通过；未降低门槛，也未勾选新条目。

@@ -1,0 +1,31 @@
+#!/bin/bash
+# 独立实验编译器包装：转换 shell 路径视角，链接后立即签名。
+set -eu
+: "${APELIN_REVERSE_ENTITLEMENTS:?必须设置实验签名文件}"
+output=a.out
+link=1
+next=0
+args=()
+for arg in "$@"; do
+    # bootstrap 工具看到的 /rootfs 是真实根；原生 Clang 应直接使用其后的路径。
+    case "$arg" in
+        /rootfs/*) args+=("${arg#/rootfs}") ;;
+        -I/rootfs/*) args+=("-I${arg#-I/rootfs}") ;;
+        -L/rootfs/*) args+=("-L${arg#-L/rootfs}") ;;
+        *) args+=("$arg") ;;
+    esac
+    if [ "$next" = 1 ]; then
+        output="$arg"
+        next=0
+        continue
+    fi
+    case "$arg" in
+        -o) next=1 ;;
+        -c|-E|-S|-r|-fsyntax-only|-###|--version|-v) link=0 ;;
+        -o?*) output="${arg#-o}" ;;
+    esac
+done
+clang -DAPPLE_SDK_IPHONEOS=1 -DUSE_DLSYSTEM=1 "${args[@]}"
+if [ "$link" = 1 ] && [ -f "${output:?}" ]; then
+    ldid -S"${APELIN_REVERSE_ENTITLEMENTS:?}" "${output:?}"
+fi
