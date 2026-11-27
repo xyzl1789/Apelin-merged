@@ -581,7 +581,10 @@ actor WorkerState {
         }
         if let prompt = open.prompt, !prompt.isEmpty {
             runActive = true
-            try await session.prompt(prompt)
+            if let runMode = open.runMode {
+                await session.setRunMode(runMode)
+            }
+            try await session.prompt(prompt, messageID: open.messageID)
             // A conversation another agent opened is named by its opener,
             // or like one the user started; a headless run is not named.
             if let title = open.title {

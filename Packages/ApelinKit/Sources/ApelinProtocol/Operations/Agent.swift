@@ -534,6 +534,11 @@ public struct AgentOpenRequest: OperationRequest {
     public var modelLimits: AgentModelLimits?
     /// A first prompt, submitted as soon as the session is open.
     public var prompt: String?
+    /// 会话打开时携带的首条消息，其运行模式应用于本轮。
+    public var runMode: AgentRunMode?
+    /// App 为首条消息生成的本地消息 ID。代理子会话留空；有值时，
+    /// worker 会回传此 ID，使 App 用真实事件替换乐观显示的消息，避免重复。
+    public var messageID: UUID?
     /// End the session (its task) when the first run finishes: `succeeded`
     /// when it completed, `failed` or `cancelled` otherwise. For headless
     /// runs that follow the session task until it ends.
@@ -585,6 +590,8 @@ public struct AgentOpenRequest: OperationRequest {
         mcpServers: [MCPConnection]? = nil,
         modelLimits: AgentModelLimits? = nil,
         prompt: String? = nil,
+        runMode: AgentRunMode? = nil,
+        messageID: UUID? = nil,
         closeWhenFinished: Bool? = nil,
         title: String? = nil,
         hostRestarted: Bool? = nil,
@@ -608,6 +615,8 @@ public struct AgentOpenRequest: OperationRequest {
         self.mcpServers = mcpServers
         self.modelLimits = modelLimits
         self.prompt = prompt
+        self.runMode = runMode
+        self.messageID = messageID
         self.closeWhenFinished = closeWhenFinished
         self.title = title
         self.hostRestarted = hostRestarted

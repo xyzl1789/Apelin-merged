@@ -49,6 +49,9 @@ final class ChatRuntime {
     /// in front (`watchHostRuns`).
     private var runReconcile: Task<Void, Never>?
     private var opening: [UUID: Task<AgentOpenResponse, Error>] = [:]
+    /// 由草稿触发、仍在进行的会话预热。它不创建第二个打开请求，
+    /// 用户点击发送时会等待同一次打开完成。
+    private var prewarming: Set<UUID> = []
     /// A newer Stop or Rewind supersedes an earlier Stop's queue continuation.
     @objc dynamic private var stopContinuations: [UUID: UUID] = [:]
     /// 本轮消息已经自动恢复过的会话。一次 submit 到下一次 submit 之间，
@@ -1229,7 +1232,18 @@ final class ChatRuntime {
 
     private func send(_ draft: ComposerDraft, to id: UUID, selection: ComposerModelSelection?) async throws {
         guard records[id] != nil else { return }
-        let opened = try await open(id, selection: selection)
+        // 新会话的首条纯文本可以随打开请求直接送入 worker，避免先等会话初始化
+        // 再额外发起第二个请求。若草稿触发的预热已到达 host，则必须在打开完成后
+        // 再单独发送；若预热尚未开始，首条文本就随本次打开请求发送。
+        let canInlinePrompt = records[id]?.sessionID == nil && opening[id] == nil
+            && draft.attachments.isEmpty && !draft.text.isEmpty
+        let inlinePrompt = canInlinePrompt ? draft.text : nil
+        let opened = try await open(
+            id,
+            selection: selection,
+            initialPrompt: inlinePrompt,
+            messageID: inlinePrompt == nil ? nil : draft.id,
+        )
         guard records[id] != nil else { return }
         var descriptors: [OwnedDescriptor] = []
         var inputs: [AgentInputAttachment] = []
@@ -1258,29 +1272,31 @@ final class ChatRuntime {
             descriptors.append(OwnedDescriptor(adopting: fd))
         }
         let selected = selection ?? ComposerModelSelection.selection(for: id)
-        _ = try await ApelinService.app.send(
-            AgentPromptRequest(
-                sessionID: opened.sessionID,
-                text: draft.text,
-                messageID: draft.id,
-                attachments: inputs,
-                provider: selected?.provider,
-                model: selected?.model,
-                modelDefaults: Preferences.DefaultModels.wire,
-                reasoningEffort: selected?.effort,
-                serviceTier: selected?.tier,
-                modelLimits: selected?.limits,
-                approvalMode: AgentPermissions.mode,
-                asksBeforeScreen: AgentPermissions.asksBeforeScreen,
-                runMode: ComposerModeStore.mode(for: id).runMode,
-                promptInjection: Preferences.PromptInjection.forPrompt(
+        if inlinePrompt == nil {
+            _ = try await ApelinService.app.send(
+                AgentPromptRequest(
+                    sessionID: opened.sessionID,
+                    text: draft.text,
+                    messageID: draft.id,
+                    attachments: inputs,
+                    provider: selected?.provider,
                     model: selected?.model,
-                    project: records[id]?.summary.projectName,
+                    modelDefaults: Preferences.DefaultModels.wire,
+                    reasoningEffort: selected?.effort,
+                    serviceTier: selected?.tier,
+                    modelLimits: selected?.limits,
+                    approvalMode: AgentPermissions.mode,
+                    asksBeforeScreen: AgentPermissions.asksBeforeScreen,
+                    runMode: ComposerModeStore.mode(for: id).runMode,
+                    promptInjection: Preferences.PromptInjection.forPrompt(
+                        model: selected?.model,
+                        project: records[id]?.summary.projectName,
+                    ),
+                    modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,
                 ),
-                modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,
-            ),
-            descriptors: descriptors,
-        )
+                descriptors: descriptors,
+            )
+        }
         records[id]?.summary.nameAfterFirstMessage(text: draft.text, attachmentName: draft.attachments.first?.name)
         changed(id)
     }
@@ -1579,7 +1595,12 @@ final class ChatRuntime {
         _ = try await open(id)
     }
 
-    private func open(_ id: UUID, selection: ComposerModelSelection? = nil) async throws -> AgentOpenResponse {
+    private func open(
+        _ id: UUID,
+        selection: ComposerModelSelection? = nil,
+        initialPrompt: String? = nil,
+        messageID: UUID? = nil,
+    ) async throws -> AgentOpenResponse {
         if let pending = opening[id] {
             return try await pending.value
         }
@@ -1588,6 +1609,7 @@ final class ChatRuntime {
             return AgentOpenResponse(sessionID: sessionID, task: task)
         }
         let selected = selection ?? ComposerModelSelection.selection(for: id)
+        let isFreshSession = record.sessionID == nil
         let mode = AgentPermissions.mode
         let request = AgentOpenRequest(
             projectName: record.summary.projectName,
@@ -1604,6 +1626,9 @@ final class ChatRuntime {
             promptInjection: Preferences.PromptInjection.wire(for: selected?.model, project: record.summary.projectName),
             mcpServers: Preferences.MCPServers.wire,
             modelLimits: selected?.limits,
+            prompt: initialPrompt,
+            runMode: initialPrompt == nil ? nil : ComposerModeStore.mode(for: id).runMode,
+            messageID: messageID,
         )
         if request.temporaryID != nil {
             try DataFolder.app.makeLevels(to: DataFolder.app.root.appendingPathComponent("Temporary/" + id.uuidString))
@@ -1626,6 +1651,16 @@ final class ChatRuntime {
         }
         records[id]?.sessionID = result.sessionID
         records[id]?.reopen(as: result.task)
+        if isFreshSession {
+            if initialPrompt?.isEmpty == false {
+                // worker 已在打开流程中接收首条消息；事件流随后会校准最终状态。
+                records[id]?.summary.isWorking = true
+            }
+            changed(id)
+            follow(id, task: result.task)
+            // 这是新任务，打开响应已足够确定状态；无需再等一次全局会话列表请求。
+            return result
+        }
         changed(id)
         follow(id, task: result.task)
         // The open answer names a task, not its state: a stored session's
@@ -1633,6 +1668,22 @@ final class ChatRuntime {
         // leaves its row lit — send turned into Stop — with nothing to stop.
         await reconcileRuns()
         return result
+    }
+
+    /// 读者有了真实草稿后就开始准备供应商和会话，但不提交消息，也不显示运行中。
+    /// 发送若在准备期间到达，会等待并复用这次打开，然后正常提交提示。
+    func prewarm(_ id: UUID) {
+        guard records[id] != nil,
+              records[id]?.sessionID == nil,
+              opening[id] == nil,
+              !prewarming.contains(id)
+        else { return }
+        prewarming.insert(id)
+        Task { [weak self] in
+            defer { self?.prewarming.remove(id) }
+            guard let self else { return }
+            _ = try? await self.open(id)
+        }
     }
 
     private func follow(_ id: UUID, task: TaskHandle) {

@@ -48,6 +48,8 @@ final class AgentModelLimitsTests: XCTestCase {
     func testAnOpenOrAPromptWithoutLimitsIsAutomaticAndOneWithThemCarriesThem() throws {
         let open = try JSONDecoder().decode(AgentOpenRequest.self, from: Data(#"{"approvalMode":"relaxed"}"#.utf8))
         XCTAssertNil(open.modelLimits)
+        XCTAssertNil(open.runMode)
+        XCTAssertNil(open.messageID)
         let prompt = try JSONDecoder().decode(AgentPromptRequest.self, from: Data(#"{"sessionID":"s","text":"hi"}"#.utf8))
         XCTAssertNil(prompt.modelLimits)
         let limited = AgentPromptRequest(

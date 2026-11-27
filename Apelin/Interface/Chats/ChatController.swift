@@ -2193,7 +2193,16 @@ extension ChatController: ComposerView.Delegate {
 
     func onComposerUpdateDraft(_ draft: ComposerDraft) {
         guard let chat else { return }
+        let previous = runtime.records[chat.id]?.draft ?? ComposerDraft()
+        let wasEmpty = previous.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && previous.attachments.isEmpty
+        let hasContent = !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !draft.attachments.isEmpty
         runtime.saveDraft(draft, for: chat.id)
+        // 输入出现第一个有效内容时就准备供应商和会话，后续每次按键不重复请求。
+        if wasEmpty && hasContent {
+            runtime.prewarm(chat.id)
+        }
     }
 
     func onComposerCameraTapped() {
