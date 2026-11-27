@@ -6046,8 +6046,9 @@ colour or a bug.
 提供四项固定工具。引擎、SLEIGH 数据及完整对应源码仅属于独立扩展包，不链接到主应用、
 守护进程，也不加入它们的许可集合。离线完整重建见扩展 README 的 `rebuild.py`；
 本机联调可运行 `Scripts/build_local.py` 复用隔离试验对象，随后执行
-`Tests/ReverseAnalysis/verify_extension.py`。软件包仅由构建宿主调用
-`Scripts/build_package.py` 生成，不从 shell 手工打包；不自动安装或发布。
+`Tests/ReverseAnalysis/verify_extension.py`。本机软件包仅由构建宿主调用
+`Scripts/build_package.py` 生成，不从 shell 手工打包，不自动安装。用户要求的 GitHub
+独立构建由同一打包器封装已核验切片，发布规则见下文，不与本机产物混淆。
 
 0.1.2 双 bootstrap 软件包已经构建，并从包内实际执行：roothide 的 arm64e，rootless
 的 arm64／arm64e。`verify_package.py` 按构建 ID、bootstrap、摘要读取现有包，核对
@@ -6070,17 +6071,26 @@ arm64／arm64e 自有样本的函数列表、6 块 7 边 CFG、双向调用、Gh
 删除变量守卫、schema fixtures 和差异空白检查已通过；附加的 `check-templates.py --no-build`
 因本机缺少 `/private/tmp` 无法建立临时目录而未通过，不修改系统目录绕过它。
 
-续接的独立编译检查为 `.github/workflows/reverse-analysis.yml`。先运行
-`python3 Tests/ReverseAnalysis/test_build.py` 的假编译器契约，再由 `xcode-27` 专用 runner
-的 Xcode 27.1 分别运行 `Scripts/ci_build.py --arch arm64`／`--arch arm64e`。CI 设置
-`RA_CROSS_COMPILE=1`：`reverse-host-cc` 单独使用 macOS SDK 编译 sdb 生成器，
-`reverse-cc` 显式指定 iOS target 和 iPhoneOS SDK，不能再将 HOST_CC 硬编码为目标编译器。
-最终 iOS 程序只做架构、平台、系统依赖、权限、路径和数据摘要静态核验，不在 Mac 执行。
-检查产物同时保存完整对应源码和许可，明确不是 deb、未安装、未做设备验收；没有专用
-runner 时仍为排队，不把契约测试通过写成 macOS 编译通过。现有主应用发行链保持原样。
-构建配方改变后更换 RA_BUILD_TAG，不复用 v1 发行缓存；旧包和旧验收报告不得冒充新构建。
-本轮在本机复用 v1 的上游对象重新编译／链接双架构协议服务与工作进程，先剥离对象来源
-调试符号，再重新签名，静态核验与各架构完整协议回归通过；报告为
+独立构建与发行为 `.github/workflows/reverse-analysis.yml`。先运行
+`python3 -m unittest discover -s Tests/ReverseAnalysis -p 'test_*.py' -v` 的编译隔离与交付契约，
+再由 `xcode-27` 专用 runner 的 Xcode 27.1 分别运行 `Scripts/ci_build.py --arch arm64`／
+`--arch arm64e`。CI 设置 `RA_CROSS_COMPILE=1`：`reverse-host-cc` 单独使用 macOS SDK 编译
+sdb 生成器，`reverse-cc` 显式指定 iOS target 和 iPhoneOS SDK，不能再将 HOST_CC 硬编码
+为目标编译器。最终 iOS 程序只做架构、平台、系统依赖、权限、路径和数据摘要静态核验，
+不在 Mac 执行。没有专用 runner 时仍为排队，不把契约测试通过写成 macOS 编译通过。
+
+用户明确要求 CI 生成安装包后，编译、清单与包版本统一为基础版本加 `+ci.<运行序号>`。
+`Scripts/ci_package.py` 拒绝不同提交、运行批次、摘要或声明的产物，逐项核对完整对应
+源码与固定上游归档，调用原有打包器，不重新编译。roothide 只含 arm64e，rootless 合并
+arm64／arm64e；包内回读核对后，再汇总两份 deb、源码与核验报告，生成 SHA256SUMS。
+只有主分支成功构建才发布独立 `reverse-analysis-v…` 预发行版；不替换主应用 latest，
+不改主应用发行链，不自动安装，不把 CI 静态核验冒充设备验收。发行说明放在扩展的
+`Releases/<基础版本>.md`。检查产物 `reverse-analysis-ios-…` 本身仍不是 deb。
+
+构建配方改变后更换 RA_BUILD_TAG，不复用 v1 发行缓存；旧包和旧验收报告不得冒充
+新构建。正式原生打包改用 `native-v2`，CI 仍在 `ci-v1` 的干净工作区；保留旧缓存。
+上一轮本机复用 v1 的上游对象重新编译／链接双架构协议服务与工作进程，剥离对象来源
+调试符号后重新签名，静态核验与各架构完整协议回归通过；报告为
 `results/native-ci-build-regression.json` 和 `results/native-ci-<arch>-protocol.json`。
-这没有重新构建上游引擎，也没有生成新发行包；19 项构建契约通过不代表 macOS 交叉编译
-已经通过，真实 CI 状态仍须推送后核实。
+该回归没有重建上游或生成新包。随后已核实提交 1096f371 的 GitHub 运行 45967106795
+中，两架构真实交叉编译及静态核验均通过；新的打包和发行仍须核对对应运行结果。

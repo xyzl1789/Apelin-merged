@@ -108,18 +108,40 @@ def verify_package(package, install_prefix, manifest, expected_files):
             'source_embedded': True}
 
 
-def main():
+def prepare_ci_version(run_number):
+    """同一轮编译与打包使用同一版本；不修改提交中的基础版本。"""
+    if not isinstance(run_number, str) or not run_number.isascii() or not run_number.isdigit() or int(run_number) < 1:
+        raise RuntimeError('CI 运行序号必须为正整数')
+    path = EXT / 'Descriptors.json'
+    descriptor = json.loads(path.read_text())
+    base, marker, previous = descriptor['version'].partition('+ci.')
+    if marker and previous != run_number:
+        raise RuntimeError('当前目录已经属于另一轮 CI，不能覆盖')
+    if not base or any(c not in '0123456789.' for c in base):
+        raise RuntimeError('CI 基础版本必须是点分数字版本')
+    descriptor['version'] = base + '+ci.' + run_number
+    path.write_text(json.dumps(descriptor, ensure_ascii=False, indent=2) + '\n')
+    return descriptor
+
+
+def main(prepared=None):
     target, output = required_environment()
-    archives()
     configurations = ['arm64e'] if target == 'roothide' else ['arm64', 'arm64e']
     built = []
     roots = None
-    for arch in configurations:
-        base, r2, ghidra, sleigh, env = build_engine(arch)
-        runtime = base / 'runtime'
-        compile_runtime(arch, runtime, r2, ghidra, sleigh, env)
-        built.append(runtime)
-        roots = (r2, ghidra, base / 'deps' / LOCK[3]['directory'] / LOCK[3]['root'])
+    if prepared is None:
+        # 宿主/目标编译器分离后的配方使用新目录，保留 v1 的旧对象与证据。
+        os.environ.setdefault('RA_BUILD_TAG', 'native-v2')
+        archives()
+        for arch in configurations:
+            base, r2, ghidra, sleigh, env = build_engine(arch)
+            runtime = base / 'runtime'
+            compile_runtime(arch, runtime, r2, ghidra, sleigh, env)
+            built.append(runtime)
+            roots = (r2, ghidra, base / 'deps' / LOCK[3]['directory'] / LOCK[3]['root'])
+    else:
+        # CI 只封装同一轮已校验的切片；这里不重新编译或下载依赖。
+        built = [prepared['runtimes'][arch] for arch in configurations]
     descriptor = json.loads((EXT / 'Descriptors.json').read_text())
     manifest = {**json.loads((EXT / 'Packaging/metadata.json').read_text()), **descriptor}
     if manifest['id'] != 'com.xyzl.agent-tools.reverse-analysis':
@@ -161,8 +183,12 @@ def main():
         shutil.copytree(built[0] / 'sleigh', runtime / 'sleigh')
         shutil.copyfile(built[0] / 'data-sha256.json', runtime / 'data-sha256.json')
         source = data / (manifest['id'] + '_' + version + '_source.tar.gz')
-        source_archive(source)
-        notices(*roots, data / 'licenses')
+        if prepared is None:
+            source_archive(source)
+            notices(*roots, data / 'licenses')
+        else:
+            shutil.copyfile(prepared['source'], source)
+            shutil.copytree(prepared['licenses'], data / 'licenses')
         (data / 'licenses/source.json').write_text(json.dumps({
             'archive': source.name, 'sha256': sha(source), 'network_required': False,
             'worker_aggregate_license': 'GPL-3.0-only',

@@ -1,5 +1,5 @@
-# 只检查独立扩展；不执行 iOS 程序，不重建或发布发行包。
-name: 原生逆向扩展编译检查
+# 独立扩展：只编译一次，校验后分别打包，再发布同一批安装包；不改主应用。
+name: 原生逆向扩展构建与发行
 
 on:
   push:
@@ -36,10 +36,10 @@ jobs:
           persist-credentials: false
       - name: 检查清单门禁
         run: bash Scripts/check-checklist.sh
-      - name: 验证宿主与目标编译参数、签名和失败路径
+      - name: 验证编译隔离、版本、源码完整性与双包发行门禁
         env:
           APELIN_PROJECT_ROOT: ${{ github.workspace }}
-        run: python3 Tests/ReverseAnalysis/test_build.py
+        run: python3 -m unittest discover -s Tests/ReverseAnalysis -p 'test_*.py' -v
       - name: 检查 Python 语法
         run: python3 -m compileall -q Extensions/AgentTools/ReverseAnalysis/Scripts Tests/ReverseAnalysis
 
@@ -106,3 +106,117 @@ jobs:
           path: build/reverse-analysis/distribution/logs/
           if-no-files-found: ignore
           retention-days: 14
+
+  package:
+    name: ${{ matrix.bootstrap }} 安装包及包内回读核验
+    needs: cross-compile
+    runs-on: xcode-27
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - bootstrap: roothide
+            architecture: iphoneos-arm64e
+            prefix: ''
+          - bootstrap: rootless
+            architecture: iphoneos-arm64
+            prefix: /var/jb
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_ANALYTICS: '1'
+      APELIN_PROJECT_ROOT: ${{ github.workspace }}
+      APELIN_BOOTSTRAP: ${{ matrix.bootstrap }}
+      APELIN_ARCHITECTURE: ${{ matrix.architecture }}
+      APELIN_PREFIX: ${{ matrix.prefix }}
+      APELIN_BUILD_ID: reverse-analysis-${{ github.run_id }}-${{ matrix.bootstrap }}
+      APELIN_CONFIGURATION: release
+      APELIN_PACKAGE_DIR: ${{ runner.temp }}/reverse-analysis-packages-${{ matrix.bootstrap }}
+      TMPDIR: ${{ runner.temp }}
+    steps:
+      - name: 读取同一提交源码
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 准备静态打包工具
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "${DEVELOPER_DIR:?}"
+          dirname "$(xcrun --find clang)" >> "$GITHUB_PATH"
+          formulae=()
+          command -v dpkg-deb >/dev/null 2>&1 || formulae+=(dpkg)
+          command -v ldid >/dev/null 2>&1 || formulae+=(ldid)
+          if (( ${#formulae[@]} > 0 )); then
+            brew install "${formulae[@]}"
+          fi
+          mkdir -p "${APELIN_PACKAGE_DIR:?}"
+      - name: 下载同轮 arm64 切片
+        uses: actions/download-artifact@v4
+        with:
+          name: reverse-analysis-ios-arm64-${{ github.sha }}
+          path: build/reverse-analysis/ci-input/arm64
+      - name: 下载同轮 arm64e 切片
+        uses: actions/download-artifact@v4
+        with:
+          name: reverse-analysis-ios-arm64e-${{ github.sha }}
+          path: build/reverse-analysis/ci-input/arm64e
+      - name: 核验批次及完整源码并生成独立安装包
+        run: python3 Extensions/AgentTools/ReverseAnalysis/Scripts/ci_package.py --input-root build/reverse-analysis/ci-input
+      - name: 保存已回读核验的安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: reverse-analysis-debs-${{ matrix.bootstrap }}-${{ github.sha }}
+          path: ${{ env.APELIN_PACKAGE_DIR }}/
+          if-no-files-found: error
+          retention-days: 30
+      - name: 保留打包报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reverse-analysis-package-logs-${{ matrix.bootstrap }}-${{ github.sha }}
+          path: build/reverse-analysis/distribution/reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  release:
+    name: 发布独立插件安装包
+    needs: package
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: 读取同一提交的发行说明
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 下载本轮已核验安装包
+        uses: actions/download-artifact@v4
+        with:
+          pattern: reverse-analysis-debs-*-${{ github.sha }}
+          path: build/reverse-analysis/release
+          merge-multiple: true
+      - name: 复核双引导包并生成校验和
+        id: release
+        run: python3 Extensions/AgentTools/ReverseAnalysis/Scripts/ci_package.py --collect-release --input-root build/reverse-analysis/release
+      - name: 创建独立插件预发行版
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: 原生逆向分析 ${{ steps.release.outputs.version }}（CI 构建）
+          body_path: ${{ steps.release.outputs.notes }}
+          target_commitish: ${{ github.sha }}
+          make_latest: 'false'
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: |
+            build/reverse-analysis/release/*.deb
+            build/reverse-analysis/release/*_source.tar.gz
+            build/reverse-analysis/release/*-verification.json
+            build/reverse-analysis/release/SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

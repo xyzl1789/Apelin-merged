@@ -10,7 +10,7 @@ import sys
 
 from build_support import (ROOT, EXT, CACHE, LOCK, archives, build_engine,
                            compile_runtime, check_binary, is_ios_header, sha, tool_path)
-from build_package import notices, source_archive
+from build_package import notices, source_archive, prepare_ci_version
 
 NAMES = ('xyzl-reverse-analysis', 'xyzl-reverse-worker')
 
@@ -64,6 +64,8 @@ def main():
         ['xcrun', '--sdk', 'macosx', '--show-sdk-path']).decode().strip()
     # CI 与本机发行对象分开，构建配方改变时仍由内容摘要拒绝混用。
     os.environ.setdefault('RA_BUILD_TAG', 'ci-v1')
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        prepare_ci_version(os.environ.get('GITHUB_RUN_NUMBER'))
     archives()
     base, r2, ghidra, sleigh, env = build_engine(args.arch, args.jobs)
     host_report = verify_host_generator(r2)
@@ -71,7 +73,10 @@ def main():
     compile_runtime(args.arch, runtime, r2, ghidra, sleigh, env)
     finalize_runtime(runtime)
     report = {**verify_runtime(runtime, args.arch), 'host_generator': host_report,
-              'packaged': False, 'installed': False}
+              'packaged': False, 'installed': False,
+              'commit': os.environ.get('GITHUB_SHA'),
+              'run_id': os.environ.get('GITHUB_RUN_ID'),
+              'version': json.loads((EXT / 'Descriptors.json').read_text())['version']}
     output = CACHE / 'ci-artifacts' / args.arch
     if output.exists():
         raise RuntimeError('CI 产物目录已经存在，保留现场而不是覆盖')

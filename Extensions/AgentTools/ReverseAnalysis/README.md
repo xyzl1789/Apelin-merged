@@ -46,16 +46,22 @@ RA_OFFLINE=1 python3 Extensions/AgentTools/ReverseAnalysis/Scripts/rebuild.py --
 
 环境需提供原生编译器可识别的项目根目录、`SDKROOT` 和工具链 `PATH`。构建脚本使用现有项目环境的 `APELIN_PROJECT_ROOT`，不将设备随机安装根路径写入源码或产物。输入归档固定版本与 SHA-256；离线模式拒绝缺失依赖，不安装任何系统软件。编译器包装器处理路径视角并在每次链接后使用随附权限签名。
 
-产物在 `build/reverse-analysis/distribution/v1/<架构>/runtime/`：协议程序、独立工作进程、SLEIGH 数据与数据摘要。只修改协议程序或 `Worker.c` 会复用摘要核验后的上游对象；修改引擎构建配方时指定新的非空 `RA_BUILD_TAG`，不会悄悄混用旧对象。可重新编译、链接、签名和替换工作进程；无额外禁止调试、为修改而逆向或替换的限制。
+正式原生打包默认在 `build/reverse-analysis/distribution/native-v2/<架构>/runtime/` 保存协议程序、独立工作进程、SLEIGH 数据与数据摘要；直接离线重建默认使用 `distribution/v1/`，CI 使用独立的 `distribution/ci-v1/`，三者不混用对象。只修改协议程序或 `Worker.c` 会复用摘要核验后的上游对象；修改引擎构建配方时指定新的非空 `RA_BUILD_TAG`，不会悄悄混用旧对象。可重新编译、链接、签名和替换工作进程；无额外禁止调试、为修改而逆向或替换的限制。
 
-## 交叉编译检查
+## 交叉编译与安装包
 
-GitHub 的独立工作流分别编译 arm64 和 arm64e，使用独立的 macOS 宿主生成器和明确指定 iOS target 的编译器。它静态核验架构、平台、系统动态依赖、签名权限、私有路径与语言数据摘要，保存完整对应源码和许可；不在 Mac 上执行 iOS 程序，不生成或安装软件包，也不替代设备验收。专用 `xcode-27` runner 不在线时仍待检查。
+GitHub 的独立工作流分别编译 arm64 和 arm64e，使用独立的 macOS 宿主生成器和明确指定 iOS target 的编译器。它静态核验架构、平台、系统动态依赖、签名权限、私有路径与语言数据摘要，保存完整对应源码和许可；不在 Mac 上执行 iOS 程序。专用 `xcode-27` runner 不在线时仍待检查。
+
+编译通过后，打包任务只封装同一轮已核验的切片，不重新编译引擎：roothide 包含 arm64e，rootless 同时包含 arm64 与 arm64e。每个 `.deb` 内含完整对应源码及上游许可，生成后重新读取软件包逐文件核对内容与权限。
+
+主分支成功构建会在仓库的 Releases 页面生成独立的 `reverse-analysis-v…` 预发行版，不替换主应用的最新版。版本形如 `0.1.3+ci.<运行序号>`；附件包括两份 `.deb`、完整对应源码、包内核验报告与 `SHA256SUMS`。Actions 的 `reverse-analysis-ios-…` 仍是单架构编译产物，不是安装包；需要安装时下载发行版中的 `.deb`，用你选择的软件包管理器安装，不要把两个引导类型混用。
+
+这些检查不安装软件包，也不替代主应用工具发现、真实会话调用及设备功能验收。
 
 构建隔离契约可以在已有 Python 3 与 bash 的项目环境中独立运行，不下载依赖：
 
 ```sh
-python3 Tests/ReverseAnalysis/test_build.py
+python3 -m unittest discover -s Tests/ReverseAnalysis -p 'test_*.py' -v
 ```
 
 ## 许可边界与真实限制
