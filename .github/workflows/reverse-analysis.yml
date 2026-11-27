@@ -133,14 +133,14 @@ jobs:
       APELIN_PREFIX: ${{ matrix.prefix }}
       APELIN_BUILD_ID: reverse-analysis-${{ github.run_id }}-${{ matrix.bootstrap }}
       APELIN_CONFIGURATION: release
-      APELIN_PACKAGE_DIR: ${{ runner.temp }}/reverse-analysis-packages-${{ matrix.bootstrap }}
-      TMPDIR: ${{ runner.temp }}
     steps:
       - name: 读取同一提交源码
         uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: 准备静态打包工具
+        env:
+          APELIN_PACKAGE_DIR: ${{ runner.temp }}/reverse-analysis-packages-${{ matrix.bootstrap }}
         shell: bash
         run: |
           set -euo pipefail
@@ -164,12 +164,15 @@ jobs:
           name: reverse-analysis-ios-arm64e-${{ github.sha }}
           path: build/reverse-analysis/ci-input/arm64e
       - name: 核验批次及完整源码并生成独立安装包
+        env:
+          APELIN_PACKAGE_DIR: ${{ runner.temp }}/reverse-analysis-packages-${{ matrix.bootstrap }}
+          TMPDIR: ${{ runner.temp }}
         run: python3 Extensions/AgentTools/ReverseAnalysis/Scripts/ci_package.py --input-root build/reverse-analysis/ci-input
       - name: 保存已回读核验的安装包
         uses: actions/upload-artifact@v4
         with:
           name: reverse-analysis-debs-${{ matrix.bootstrap }}-${{ github.sha }}
-          path: ${{ env.APELIN_PACKAGE_DIR }}/
+          path: ${{ runner.temp }}/reverse-analysis-packages-${{ matrix.bootstrap }}/
           if-no-files-found: error
           retention-days: 30
       - name: 保留打包报告

@@ -221,6 +221,15 @@ class PackageContractTests(unittest.TestCase):
         self.assertEqual(len((root / 'SHA256SUMS').read_text().splitlines()), 5)
         self.assertIn('version=0.1.3+ci.77', Path(self.env['GITHUB_OUTPUT']).read_text())
 
+    def test_workflow_scopes_runner_context_to_steps(self):
+        workflow = (ROOT / '.github/workflows/reverse-analysis.yml').read_text()
+        for line in workflow.splitlines():
+            if line.startswith('      ') and not line.startswith('        '):
+                self.assertNotIn('${{ runner.', line, '作业级环境不能使用 runner 上下文')
+        self.assertIn('          TMPDIR: ${{ runner.temp }}', workflow)
+        self.assertIn('    needs: package', workflow)
+        self.assertIn("          make_latest: 'false'", workflow)
+
     def test_collect_release_rejects_changed_package(self):
         root = self.release()
         next(root.glob('*.deb')).write_bytes(b'changed')
