@@ -76,7 +76,8 @@ final class CheckInStore {
     private func appendLog(results: [CheckInResult]) {
         guard var log = loadLog() else { return }
         for result in results {
-            if log.contains(where: { $0.platform == result.platform && $0.updatedAt == result.updatedAt }) {
+            if let index = log.firstIndex(where: { $0.platform == result.platform && $0.updatedAt == result.updatedAt }) {
+                log[index] = result
                 continue
             }
             log.append(result)
@@ -113,6 +114,7 @@ final class CheckInStore {
         }
         do {
             let fresh = try await ApelinService.app.agentCheckIn(platforms: platforms, force: force).results
+            await ProviderBalanceStore.shared.refreshAfterCheckIn(fresh)
             for result in fresh {
                 if let index = storedResults.firstIndex(where: { $0.platform == result.platform }) {
                     storedResults[index] = result

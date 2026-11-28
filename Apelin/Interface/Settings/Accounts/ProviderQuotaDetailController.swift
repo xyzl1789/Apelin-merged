@@ -6,10 +6,10 @@ import UIKit
 
 /// 账号自己的额度页；设置与模型选择器共用，不替换输入框原有余额详情。
 final class ProviderQuotaDetailController: TableController {
-    private enum Section: Hashable { case overview, balances, windows, actions, management }
+    private enum Section: Hashable { case overview, balances, packages, windows, actions, management }
     private enum Row: Hashable {
-        case status, plan, source, updated, nextCheck, error
-        case balance(AgentQuotaBalance), window(AgentQuotaWindow)
+        case status, plan, source, updated, nextCheck, error, earliestExpiry
+        case balance(AgentQuotaBalance), creditPackage(AgentQuotaBalance), window(AgentQuotaWindow)
         case refresh, billing, edit, models, parameters, signOut
     }
 
@@ -64,6 +64,7 @@ final class ProviderQuotaDetailController: TableController {
             switch section {
             case .overview: String(localized: "账号", table: "Quota")
             case .balances: String(localized: "余额", table: "Quota")
+            case .packages: String(localized: "积分包", table: "Quota")
             case .windows: String(localized: "用量窗口", table: "Quota")
             case .actions: String(localized: "额度", table: "Quota")
             case .management: String(localized: "账号管理", table: "Quota")
@@ -71,7 +72,7 @@ final class ProviderQuotaDetailController: TableController {
         }
         dataSource.footerTitle = { [weak self] section in
             switch section {
-            case .overview: self?.account.account ?? self?.account.provider.displayName
+            case .overview: self.map { AccountNames.groupTitle(for: $0.account) }
             case .actions: String(localized: "手动刷新每30秒最多一次。", table: "Quota")
             default: nil
             }
@@ -146,7 +147,12 @@ final class ProviderQuotaDetailController: TableController {
         if lastError != nil || snapshot?.errorSummary?.isEmpty == false { overview.append(.error) }
         var sections: [(Section, [Row])] = [(.overview, overview)]
         if let balances = snapshot?.balances, !balances.isEmpty { sections.append((.balances, balances.map(Row.balance))) }
-        if let windows = snapshot?.windows, !windows.isEmpty { sections.append((.windows, windows.map(Row.window))) }
+        if let packages = snapshot?.creditPackages {
+            sections.append((.packages, [.earliestExpiry] + packages.map(Row.creditPackage)))
+        }
+        if let snapshot, !snapshot.usesCreditBalance, !snapshot.windows.isEmpty {
+            sections.append((.windows, snapshot.windows.map(Row.window)))
+        }
         var actions: [Row] = [.refresh]
         if billingURL != nil { actions.append(.billing) }
         sections.append((.actions, actions))
@@ -193,14 +199,23 @@ final class ProviderQuotaDetailController: TableController {
         case .nextCheck:
             return valueCell(String(localized: "下次自动查询", table: "Quota"), value: (snapshot?.circuitBrokenUntil ?? snapshot?.cooldownUntil)?.formatted(date: .abbreviated, time: .shortened))
         case .error: return valueCell(String(localized: "无法查询用量", table: "Quota"), value: nil, detail: lastError ?? snapshot?.errorSummary)
-        case let .balance(balance):
+        case .earliestExpiry:
+            let value = snapshot?.earliestCreditExpiry?.formatted(date: .abbreviated, time: .shortened)
+                ?? String(localized: "暂无数据", table: "Quota")
+            return valueCell(String(localized: "最早到期时间", table: "Quota"), value: value)
+        case let .balance(balance), let .creditPackage(balance):
             var parts: [String] = []
             if let total = balance.total, !balance.isUnlimited { parts.append(String(localized: "总额：\(QuotaFormatting.balanceAmountText(balance, amount: total))", table: "Quota")) }
             if let granted = balance.granted { parts.append(String(localized: "赠送：\(QuotaFormatting.balanceAmountText(balance, amount: granted))", table: "Quota")) }
             if let toppedUp = balance.toppedUp { parts.append(String(localized: "充值：\(QuotaFormatting.balanceAmountText(balance, amount: toppedUp))", table: "Quota")) }
             if let used = balance.used { parts.append(String(localized: "已用：\(QuotaFormatting.balanceAmountText(balance, amount: used))", table: "Quota")) }
+            if case .creditPackage = row {
+                let expiry = balance.expiresAt?.formatted(date: .abbreviated, time: .shortened)
+                    ?? String(localized: "暂无数据", table: "Quota")
+                parts.append(String(localized: "到期时间：\(expiry)", table: "Quota"))
+            }
             if !balance.isAvailable { parts.append(String(localized: "不可用", table: "Quota")) }
-            return valueCell(balance.currency ?? balance.unitLabel ?? String(localized: "余额", table: "Quota"), value: QuotaFormatting.balanceAmountText(balance, amount: balance.remaining ?? balance.total), detail: parts.joined(separator: " · "))
+            return valueCell(balance.label ?? balance.currency ?? balance.unitLabel ?? String(localized: "余额", table: "Quota"), value: QuotaFormatting.balanceAmountText(balance, amount: balance.remaining ?? balance.total), detail: parts.joined(separator: " · "))
         case let .window(window): return QuotaWindowCell(window: window)
         case .refresh: return actionCell(refreshing ? String(localized: "正在刷新额度", table: "Quota") : String(localized: "刷新额度", table: "Quota"), image: "arrow.clockwise")
         case .billing: return actionCell(String(localized: "打开官方账单页", table: "Quota"), image: "arrow.up.right.square")
@@ -281,10 +296,11 @@ final class ProviderQuotaDetailController: TableController {
                 generation = UUID()
                 loader?.cancel()
                 ProviderBalanceStore.shared.invalidate(provider: account.provider, accountID: account.storeID)
+                EnabledModels.remove(for: account.provider, storeID: account.storeID)
+                AccountNames.remove(for: account.provider, storeID: account.storeID)
                 if let accounts = try? await ApelinService.app.agentAccountList().accounts,
                    !accounts.contains(where: { $0.provider == account.provider && $0.signedIn })
                 {
-                    EnabledModels.remove(for: account.provider)
                     Preferences.ProviderNotes.save("", for: account.provider)
                 }
                 onAccountsChanged()

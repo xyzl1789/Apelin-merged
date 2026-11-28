@@ -71,6 +71,9 @@ public struct AgentQuotaBalance: Codable, Sendable, Equatable, Hashable {
     public var used: Decimal?
     public var remaining: Decimal?
     public var isUnlimited: Bool
+    /// 积分包自己的名称与到期时间；nil 表示服务端没有提供，不推算。
+    public var label: String?
+    public var expiresAt: Date?
 
     public init(
         id: String,
@@ -83,6 +86,8 @@ public struct AgentQuotaBalance: Codable, Sendable, Equatable, Hashable {
         used: Decimal? = nil,
         remaining: Decimal? = nil,
         isUnlimited: Bool = false,
+        label: String? = nil,
+        expiresAt: Date? = nil,
     ) {
         self.id = id
         self.currency = currency
@@ -94,10 +99,12 @@ public struct AgentQuotaBalance: Codable, Sendable, Equatable, Hashable {
         self.used = used
         self.remaining = remaining
         self.isUnlimited = isUnlimited
+        self.label = label
+        self.expiresAt = expiresAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, currency, unitLabel, isAvailable, total, granted, toppedUp, used, remaining, isUnlimited
+        case id, currency, unitLabel, isAvailable, total, granted, toppedUp, used, remaining, isUnlimited, label, expiresAt
     }
 
     public init(from decoder: any Decoder) throws {
@@ -112,6 +119,8 @@ public struct AgentQuotaBalance: Codable, Sendable, Equatable, Hashable {
         used = try Self.decodeOptionalDecimal(c, forKey: .used)
         remaining = try Self.decodeOptionalDecimal(c, forKey: .remaining)
         isUnlimited = try c.decodeIfPresent(Bool.self, forKey: .isUnlimited) ?? false
+        label = try c.decodeIfPresent(String.self, forKey: .label)
+        expiresAt = try c.decodeIfPresent(Date.self, forKey: .expiresAt)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -126,6 +135,8 @@ public struct AgentQuotaBalance: Codable, Sendable, Equatable, Hashable {
         try c.encodeIfPresent(used.map(QuotaDecimalCoding.encode), forKey: .used)
         try c.encodeIfPresent(remaining.map(QuotaDecimalCoding.encode), forKey: .remaining)
         try c.encode(isUnlimited, forKey: .isUnlimited)
+        try c.encodeIfPresent(label, forKey: .label)
+        try c.encodeIfPresent(expiresAt, forKey: .expiresAt)
     }
 
     private static func decodeOptionalDecimal(_ c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> Decimal? {
@@ -188,6 +199,8 @@ public struct AgentQuotaSnapshot: Codable, Sendable, Equatable {
     public var source: AgentQuotaSource
     public var status: AgentQuotaStatus
     public var balances: [AgentQuotaBalance]
+    /// 明细不重复投影到余额胶囊；balances 只放一次合计。
+    public var creditPackages: [AgentQuotaBalance]?
     public var windows: [AgentQuotaWindow]
     public var planName: String?
     public var relayKind: String?
@@ -199,10 +212,17 @@ public struct AgentQuotaSnapshot: Codable, Sendable, Equatable {
     public var circuitBrokenUntil: Date?
     public var errorSummary: String?
 
+    /// 这些账号必须显示实际积分，旧缓存中的百分比窗口不是余额。
+    public var usesCreditBalance: Bool { provider == .workBuddy || provider == .workBuddyAI || provider == .trae }
+
+    public var earliestCreditExpiry: Date? {
+        creditPackages?.filter { ($0.remaining ?? 0) > 0 }.compactMap(\.expiresAt).min()
+    }
+
     public init(
         poolID: String, provider: AgentProvider, accountLabel: String? = nil,
         kind: AgentQuotaPoolKind, source: AgentQuotaSource, status: AgentQuotaStatus,
-        balances: [AgentQuotaBalance] = [], windows: [AgentQuotaWindow] = [],
+        balances: [AgentQuotaBalance] = [], creditPackages: [AgentQuotaBalance]? = nil, windows: [AgentQuotaWindow] = [],
         planName: String? = nil, relayKind: String? = nil, billingURL: URL? = nil,
         updatedAt: Date? = nil, nextAllowedAt: Date? = nil, manualDebounceUntil: Date? = nil,
         cooldownUntil: Date? = nil, circuitBrokenUntil: Date? = nil, errorSummary: String? = nil,
@@ -214,6 +234,7 @@ public struct AgentQuotaSnapshot: Codable, Sendable, Equatable {
         self.source = source
         self.status = status
         self.balances = balances
+        self.creditPackages = creditPackages
         self.windows = windows
         self.planName = planName
         self.relayKind = relayKind
@@ -257,6 +278,7 @@ public struct AgentQuotaDisplayRecord: Codable, Sendable, Equatable {
             merged.kind = snapshot.kind
             merged.source = snapshot.source
             merged.balances = snapshot.balances
+            merged.creditPackages = snapshot.creditPackages
             merged.windows = snapshot.windows
             merged.updatedAt = snapshot.updatedAt
             merged.relayKind = snapshot.relayKind
@@ -269,7 +291,7 @@ public struct AgentQuotaDisplayRecord: Codable, Sendable, Equatable {
     public static func hasFigures(_ snapshot: AgentQuotaSnapshot) -> Bool {
         snapshot.updatedAt != nil && (snapshot.balances.contains {
             $0.isUnlimited || ($0.remaining ?? $0.total).map { !$0.isNaN } == true
-        } || !snapshot.windows.isEmpty)
+        } || (!snapshot.usesCreditBalance && !snapshot.windows.isEmpty))
     }
 
     /// 原卡片和胶囊的轻量投影。货币、原始额度与窗口百分比各保留自己的单位。
@@ -295,6 +317,7 @@ public struct AgentQuotaDisplayRecord: Codable, Sendable, Equatable {
             )
         }
         if !figures.isEmpty { return figures }
+        guard !snapshot.usesCreditBalance else { return [] }
         return snapshot.windows.map { window in
             ProviderBalance(
                 accountID: accountID, provider: provider, label: label + " · " + window.label,

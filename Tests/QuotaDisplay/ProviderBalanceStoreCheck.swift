@@ -16,6 +16,7 @@ private actor QuotaDisplayTransport: ApelinTransport {
     var failing = false
     var paused = false
     var quotaCalls = 0
+    var quotaTargets: [AgentProviderQuotaRequest] = []
     var pending: [CheckedContinuation<Void, Never>] = []
 
     func configure(accounts: [AgentAccount], quotas: [AgentQuotaSnapshot], failing: Bool = false, paused: Bool = false) {
@@ -37,6 +38,7 @@ private actor QuotaDisplayTransport: ApelinTransport {
             return (.success(request.requestID, AgentAccountListResponse(accounts: accounts)), [])
         case .agentProviderQuota:
             quotaCalls += 1
+            quotaTargets.append(try request.decode(AgentProviderQuotaRequest.self))
             let captured = quotas
             let fail = failing
             if paused { await withCheckedContinuation { pending.append($0) } }
@@ -115,6 +117,35 @@ struct ProviderBalanceStoreCheck {
         precondition(store.current(for: .deepSeek, accountID: "deepseek#2")?.amount == "42")
         store.invalidate(provider: .deepSeek, accountID: "deepseek#2")
         precondition(store.current(for: .deepSeek)?.amount == "42", "退出共享池中的一个账号不删除其他绑定")
+
+        // 签到后的定向刷新采用真实store ID，取消旧回包，附加账号与其它平台保留。
+        let workBuddy = AgentAccount(provider: .workBuddy, method: .browser, signedIn: true, poolID: "oauth:workbuddy", storeID: "workbuddy")
+        let workBuddySecond = AgentAccount(provider: .workBuddy, method: .browser, signedIn: true, poolID: "oauth:workbuddy#2", storeID: "workbuddy#2")
+        func credits(_ pool: String, _ amount: Decimal, at: Date) -> AgentQuotaSnapshot {
+            AgentQuotaSnapshot(poolID: pool, provider: .workBuddy, kind: .balance, source: .activeAPI, status: .available,
+                balances: [AgentQuotaBalance(id: "credits", unitLabel: "积分", remaining: amount)], updatedAt: at)
+        }
+        await transport.configure(accounts: [workBuddy, workBuddySecond], quotas: [credits("oauth:workbuddy", 10, at: date), credits("oauth:workbuddy#2", 50, at: date)])
+        _ = try await store.loadQuotas()
+        let beforeReward = await transport.quotaCalls
+        await transport.configure(accounts: [workBuddy, workBuddySecond], quotas: [credits("oauth:workbuddy", 11, at: date)], paused: true)
+        let oldRewardRead = Task { try await store.loadQuotas(provider: .workBuddy, accountID: "workbuddy") }
+        await waitForCall(after: beforeReward, transport: transport)
+        await transport.configure(accounts: [workBuddy, workBuddySecond], quotas: [credits("oauth:workbuddy", 110, at: date.addingTimeInterval(60))])
+        await store.refreshAfterCheckIn([CheckInResult(platform: .workBuddy, outcome: .claimed)])
+        precondition(store.current(for: .workBuddy, accountID: "workbuddy")?.amount == "110")
+        precondition(store.current(for: .workBuddy, accountID: "workbuddy#2")?.amount == "50")
+        let rewardTarget = await transport.quotaTargets.last
+        precondition(rewardTarget?.provider == .workBuddy && rewardTarget?.accountID == "workbuddy")
+        precondition(rewardTarget?.mode == .attentionGated, "奖励刷新应复用后台刚查询的缓存，不再占用手动防抖")
+        await transport.resume()
+        do { _ = try await oldRewardRead.value; preconditionFailure("奖励前旧回包必须作废") }
+        catch is CancellationError {}
+        precondition(store.current(for: .workBuddy, accountID: "workbuddy")?.amount == "110")
+        let beforeFailure = await transport.quotaCalls
+        await store.refreshAfterCheckIn([CheckInResult(platform: .traeCN, outcome: .failed)])
+        let afterFailure = await transport.quotaCalls
+        precondition(afterFailure == beforeFailure, "失败签到不作废其它账号额度")
 
         // 单条损坏保留原始槽位，其余账号仍恢复、写回；整文件损坏另存不覆盖。
         let file = root.appendingPathComponent("QuotaDisplay.json")

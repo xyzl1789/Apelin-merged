@@ -5,36 +5,6 @@ import Foundation
 import KWWKAI
 import os
 
-/// The reasoning levels each WorkBuddy model was last seen offering, per
-/// store id, for ten minutes.
-///
-/// `fetch` reads the account's config, which names the models and their
-/// levels together, while the account list needs the same levels without a
-/// request of its own: what a fetch kept answers the list, and a model no
-/// fetch has covered yet falls back to the bundled rows. Ten minutes is
-/// what kwwk keeps a gate's own listing for: the config does not change
-/// often, and an account list is drawn every time Settings opens.
-final class WorkBuddyEffortCache: @unchecked Sendable {
-    static let shared = WorkBuddyEffortCache()
-
-    private let lock = NSLock()
-    private var entries: [String: (efforts: [String: [AgentReasoningEffort]], at: Date)] = [:]
-    private let lifetime: TimeInterval = 10 * 60
-
-    /// Objective-C cannot carry these dictionaries, so the accessors stay
-    /// plain (AGENTS.md ▸ Hard rules).
-    func efforts(for storeID: String) -> [String: [AgentReasoningEffort]]? {
-        lock.withLock {
-            guard let entry = entries[storeID], Date().timeIntervalSince(entry.at) < lifetime else { return nil }
-            return entry.efforts
-        }
-    }
-
-    func store(_ efforts: [String: [AgentReasoningEffort]], for storeID: String) {
-        lock.withLock { entries[storeID] = (efforts, Date()) }
-    }
-}
-
 /// The endpoint's model family is distinct from its wire format. DeepSeek's
 /// Anthropic endpoint accepts Claude aliases but still runs DeepSeek models.
 enum ProviderModels {
@@ -90,6 +60,7 @@ enum ProviderModels {
         _ provider: AgentProvider,
         credentials: OAuthCredentials,
         models: [String],
+        storeID: String? = nil,
     ) -> CatalogFacts {
         let started = DispatchTime.now().uptimeNanoseconds
         let catalog = catalogKey(provider, credentials: credentials)
@@ -113,9 +84,17 @@ enum ProviderModels {
             guard let entry = found[id] else { continue }
             capabilities[id] = entry.capabilities
         }
-        // A model the live config named keeps its own levels; one it did not
-        // is what the catalogs above say.
-        let levels = efforts.merging(WorkBuddyEffortCache.shared.efforts(for: provider.storeID) ?? [:]) { _, live in live }
+        // 在线配置同时供选择器与会话使用，空档位也是明确的“不支持”。
+        if let site = WorkBuddySite.site(id: provider.storeID),
+           let live = WorkBuddyModelCache.shared.models(site: site, credentials: credentials, storeID: storeID) {
+            for model in live where models.contains(model.id) {
+                efforts[model.id] = supportedThinkingLevels(model).compactMap { AgentReasoningEffort(rawValue: $0.rawValue) }
+                var facts = capabilities[model.id] ?? AgentModelCapabilities()
+                facts.reasoning = model.reasoning
+                capabilities[model.id] = facts
+            }
+        }
+        let levels = efforts
         // Says in the device log how the catalogs read this account's models: a
         // model with no entry and a page that has not reloaded look the same on
         // screen, and this tells the two apart. The timing is the whole read:
@@ -158,20 +137,22 @@ enum ProviderModels {
         })
     }
 
-    /// The limits each of `models` has when the user sets none, as a session
-    /// resolves it: what the settings show beside a field left empty. The
-    /// registration is kwwk's, from the stored key, and asks the network
-    /// nothing. A model that does not resolve is left out.
+    /// 未显式设置时的默认限制沿用会话解析；凭据和刷新器绑定实际账号。
+    /// 在线能力可命中共享缓存，无法解析的模型不填入返回值。
     static func automaticLimits(
         _ provider: AgentProvider,
         credentials: OAuthCredentials,
         models: [String],
+        storeID: String? = nil,
     ) async -> [String: AgentModelLimits] {
-        let manager = OAuthManager(source: DeliveredCredentialSource([provider.storeID: credentials]))
+        let accountID = AccountIDs.resolved(storeID, for: provider)
+        guard AccountIDs.belongs(accountID, to: provider) else { return [:] }
+        let refreshers = AccountDesk.scoped(KimiIdentity.refreshers(for: provider.storeID), accountID: accountID, provider: provider)
+        let manager = OAuthManager(source: DeliveredCredentialSource([accountID: credentials]), providers: refreshers)
         var limits: [String: AgentModelLimits] = [:]
         for model in models where limits[model] == nil && !model.isEmpty && model.count <= 256 {
             guard let resolved = try? await ProviderRegistration.resolve(
-                storeID: provider.storeID,
+                storeID: accountID,
                 manager: manager,
                 modelOverride: model,
             ) else { continue }
@@ -180,7 +161,7 @@ enum ProviderModels {
         return limits
     }
 
-    static func fetch(_ provider: AgentProvider, credentials: OAuthCredentials) async throws -> [String] {
+    static func fetch(_ provider: AgentProvider, credentials: OAuthCredentials, storeID: String? = nil) async throws -> [String] {
         // Trae's roster and Raccoon's catalogue are the account's own, read
         // from its gate; kwwk's bundled rows are a seed for when the gate
         // does not answer. The token goes as it is stored; a session renews
@@ -200,21 +181,8 @@ enum ProviderModels {
         // that cannot be read leaves the bundled rows in place rather than
         // emptying the picker.
         if let site = WorkBuddySite.site(id: provider.storeID) {
-            if let live = try? await WorkBuddyModels.fetch(site: site, credentials: credentials),
-               !live.isEmpty
-            {
-                // The levels are the same answer as the list: keeping them
-                // here saves `reasoningEfforts` a request of its own, and
-                // keeps the two from disagreeing.
-                // Keyed by id: a config that names one twice keeps the
-                // first, where `uniqueKeysWithValues` would trap.
-                var levels: [String: [AgentReasoningEffort]] = [:]
-                for listing in live where levels[listing.model.id] == nil {
-                    levels[listing.model.id] = supportedThinkingLevels(listing.model)
-                        .compactMap { AgentReasoningEffort(rawValue: $0.rawValue) }
-                }
-                WorkBuddyEffortCache.shared.store(levels, for: provider.storeID)
-                return live.map(\.model.id)
+            if let live = await WorkBuddyModelCache.shared.load(site: site, credentials: credentials, storeID: storeID, force: true) {
+                return live.map(\.id)
             }
             return list(provider, credentials: credentials)
         }

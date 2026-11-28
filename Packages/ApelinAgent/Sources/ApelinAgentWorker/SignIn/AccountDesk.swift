@@ -148,7 +148,6 @@ public actor AccountDesk {
         accounts.reserveCapacity(AgentProvider.signInOrder.count)
         for listed in AgentProvider.signInOrder {
             for provider in Self.listed(listed, stored: stored) {
-                let requested = extraModels[provider.rawValue] ?? []
                 let others = Array(provider.signInMethods.dropFirst())
                 let ids = Self.accountIDs(of: provider, stored: stored)
                 guard !ids.isEmpty else {
@@ -163,6 +162,7 @@ public actor AccountDesk {
                 }
                 // 每份凭据各占一行，无法解码的条目仍可在设置中退出。
                 for id in ids {
+                    let requested = extraModels[id] ?? (id == provider.storeID ? extraModels[provider.rawValue] : nil) ?? []
                     let accountStarted = DispatchTime.now().uptimeNanoseconds
                     var account = AgentAccount(
                         provider: provider,
@@ -180,7 +180,10 @@ public actor AccountDesk {
                         account.models = models
                         // 窄列表未指定模型时不读目录，指定时也只携带这些模型的字段。
                         if !models.isEmpty || !onlyExtraModels {
-                            let facts = ProviderModels.catalogFacts(provider, credentials: credentials, models: models)
+                            if let site = WorkBuddySite.site(id: provider.storeID) {
+                                _ = await WorkBuddyModelCache.shared.load(site: site, credentials: credentials, storeID: id)
+                            }
+                            let facts = ProviderModels.catalogFacts(provider, credentials: credentials, models: models, storeID: id)
                             let tiers = ProviderModels.serviceTiers(provider, credentials: credentials)
                             if onlyExtraModels {
                                 let asked = Set(models)
@@ -304,23 +307,17 @@ public actor AccountDesk {
     /// the app: the amount as decimal text, a unit and a failure class. A
     /// provider with no balance adapter is absent, never a zero.
     public func providerBalances(force: Bool, home: URL) async throws -> AgentProviderBalancesResponse {
-        if let running = balanceInFlight {
-            return try await running.value
-        }
-        // 先把密钥读进 actor 内的数组：查询服务只拿到值，不捕获 actor 状态。
-        var accounts: [(String, OAuthCredentials)] = []
-        for id in await store.providerIds() {
-            guard let saved = try await store.credentials(for: id) else { continue }
-            accounts.append((id, saved))
-        }
-        os.Logger(subsystem: "wiki.qaq.apelin", category: "Balance")
-            .info("worker 收到余额查询：force=\(force, privacy: .public)，凭据 \(accounts.map(\.0).joined(separator: ","), privacy: .public)")
+        if let running = balanceInFlight { return try await running.value }
         let task = Task<AgentProviderBalancesResponse, Error> {
-            try await ProviderBalanceService.lookup(
-                force: force,
-                accounts: accounts,
-                dataRoot: ApelinDataRoot(home: home).url,
-            )
+            // 旧协议入口也只走统一额度，不再维护一份独立的五分钟金额缓存。
+            let response = try await self.quotas(AgentProviderQuotaRequest(mode: force ? .manualRefresh : .attentionGated, force: force), dataRoot: ApelinDataRoot(home: home))
+            let accounts = await self.list(onlyExtraModels: true).accounts
+            let balances = accounts.flatMap { account -> [ProviderBalance] in
+                guard account.signedIn, let pool = account.poolID,
+                      let snapshot = response.quotas.first(where: { $0.provider == account.provider && $0.poolID == pool }) else { return [] }
+                return AgentQuotaDisplayRecord(accountID: account.storeID ?? account.provider.rawValue, snapshot: snapshot).balances
+            }
+            return AgentProviderBalancesResponse(balances: balances)
         }
         balanceInFlight = task
         defer { balanceInFlight = nil }
@@ -342,12 +339,40 @@ public actor AccountDesk {
         }
         os.Logger(subsystem: "wiki.qaq.apelin", category: "CheckIn")
             .info("worker 收到签到：force=\(force, privacy: .public)，平台 \(platforms.map(\.rawValue).joined(separator: ","), privacy: .public)，凭据 \(accounts.map(\.0).joined(separator: ","), privacy: .public)")
+        let generations = accountGenerations
         let task = Task<AgentCheckInResponse, Error> {
-            await CheckInService.run(platforms: platforms, force: force, accounts: accounts, home: home)
+            let response = await CheckInService.run(platforms: platforms, force: force, accounts: accounts, home: home)
+            return await self.refreshQuotasAfterCheckIn(response, accounts: accounts, generations: generations, home: home)
         }
         checkInInFlight = task
         defer { checkInInFlight = nil }
         return try await task.value
+    }
+
+    /// 成功领取或服务端确认已领取后，只更新本次签到使用的首账号；附加账号不受影响。
+    private func refreshQuotasAfterCheckIn(_ response: AgentCheckInResponse, accounts: [(String, OAuthCredentials)], generations: [String: UInt64], home: URL) async -> AgentCheckInResponse {
+        var response = response
+        let dataRoot = ApelinDataRoot(home: home)
+        for index in response.results.indices where response.results[index].isDone {
+            let platform = response.results[index].platform
+            let id = CheckInService.storeID(platform)
+            let generation = generations[id, default: 0]
+            guard let credentials = accounts.first(where: { $0.0 == id })?.1,
+                  isCurrent(id, generation: generation) else { continue }
+            let provider = platform.provider
+            let pool = QuotaPoolIdentity.poolID(provider: provider, storeID: id, credentials: credentials,
+                usesAPIKey: ProviderModels.usesAPIKey(provider, credentials: credentials))
+            await quotaCoordinator(for: dataRoot).invalidate(poolID: pool)
+            guard isCurrent(id, generation: generation),
+                  let fresh = try? await quotas(AgentProviderQuotaRequest(provider: provider, accountID: id), dataRoot: dataRoot),
+                  isCurrent(id, generation: generation),
+                  let snapshot = fresh.quotas.first(where: { $0.poolID == pool }),
+                  [AgentQuotaStatus.available, .exhausted].contains(snapshot.status),
+                  let balance = snapshot.balances.first(where: { $0.unitLabel == "积分" }) else { continue }
+            response.results[index].available = balance.remaining.map(QuotaDecimalCoding.encode)
+            response.results[index].used = balance.used.map(QuotaDecimalCoding.encode)
+        }
+        return response
     }
 
     /// 退出指定账号；未指定时退出服务商的全部账号。损坏凭据也必须能删除。
@@ -673,7 +698,7 @@ public actor AccountDesk {
         guard let credentials = try await store.credentials(for: accountID) else {
             throw ApelinError(.notFound, "请先登录该供应商。")
         }
-        let models = try await ProviderModels.fetch(provider, credentials: credentials)
+        let models = try await ProviderModels.fetch(provider, credentials: credentials, storeID: accountID)
         guard ProviderModels.usesAPIKey(provider, credentials: credentials) else {
             return AgentModelListResponse(models: models)
         }
@@ -681,6 +706,7 @@ public actor AccountDesk {
             provider,
             credentials: credentials,
             models: models + asked.prefix(AgentModelListRequest.maximumLimitsAsked),
+            storeID: accountID,
         )
         return AgentModelListResponse(models: models, limits: limits)
     }

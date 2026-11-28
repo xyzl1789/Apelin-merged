@@ -487,6 +487,33 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   token 与响应正文既不写缓存、也不进日志或回给 App。设置 ▸ Agent ▸ 自动签到在
   打开开关时立刻补签一次，并每天第一次进入前台时安静地跑一次；失败可手动点平台行
   或「全部签到」重试；「登录已过期」表示要去「模型服务商」重新登录这个账号。
+- **积分只显示服务端真实计数，不从订阅窗口的百分比换算。** WorkBuddy 两站的
+  积分包由 `QuotaCreditAdapters` 查询网页计费域，账号自带的 `billingBase`、
+  `baseUrl` / `domain` 优先于默认站点；只接受 HTTPS。资源接口每页 100 包，
+  最多 20 页，未收齐就拒绝合计；首批尚无可用包且接口不支持或不可解码时，才回退
+  摘要接口。优先精确计数，空精确字段可读普通字段，缺失已用不能假定为零；周期
+  剩余还受整包剩余限制。Trae CN 的 `credits_limit` / `credits_amount` 同样进入
+  统一额度。`AgentQuotaSnapshot.creditPackages` 保留名称和真实到期时间，只有
+  仍有剩余的包参与最早到期时间；未知时间不按周期推算。旧 WorkBuddy 窗口缓存
+  不再当积分展示。现有余额卡片、模型选择器、聊天余额和额度详情都读取同一快照，
+  不新增查询入口、不把包明细重复累加到余额。旧中转计费同时探测两种 dashboard
+  前缀，消费量优先跟随订阅的前缀，缺失消费量不能把总限额显示为剩余余额。
+  签到成功或确认已领后，`AccountDesk` 仅使该平台首账号的额度池失效并查询，保留
+  旧金额和成功时间，旋转主动/被动查询代次，迟到响应不能覆盖新奖励；App 的
+  `CheckInStore` 再从同一缓存发布刷新，不占用手动刷新防抖。附加账号不受影响，
+  `CheckInResult.total` 仍是活动累计值，不能冒充当前积分总额。
+  回归用例为 `QuotaCreditAdapterTests`、`CheckInQuotaRefreshTests`、
+  `WorkBuddyModelResolutionTests`、`AccountModelIsolationTests`、
+  `AgentQuotaDisplayTests` 和 `Tests/QuotaDisplay/ProviderBalanceStoreCheck.swift`。
+  在支持本仓库 Swift 的 Xcode 环境先跑 `make check`，再对对应包执行
+  `swift test --package-path Packages/ApelinAgent --filter
+  'QuotaCreditAdapterTests|CheckInQuotaRefreshTests|WorkBuddyModelResolutionTests|AccountModelIsolationTests'`
+  与 ApelinKit 的 `AgentQuotaDisplayTests`，并运行既有
+  `Scripts/test-chat-transcript.sh` 的额度显示检查。测试使用合成凭据、模拟传输和
+  独立临时目录，不领取真实奖励。此设备的旧 Swift 前端只完成部分直接解析及
+  去尾逗号/宏前缀的内存副本语法检查；`make check` 因无 Xcode 阻塞，`swift test`
+  缺少 `swift-test`，Swift 6 类型检查、回归执行、完整构建、构建后 catalog-key
+  检查和新包实机界面验收均未完成，不能把静态检查当作行为验证。
 - **A chat channel belongs to the session host, not to a worker**
   (`Apelind/Session/Channel/WeChatChannel.swift`; the wire in
   `Operations/Channel.swift`, the page in `Interface/Settings/ChannelController.swift`).
@@ -3051,10 +3078,13 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   `RaccoonModels.fetch`) with the token as it is stored, and kwwk's
   bundled rows stand in when the gate does not answer; no reasoning level
   is offered for either, since no request made of their gates has carried
-  one. WorkBuddy's list is read the same way (`WorkBuddyModels.fetch`, its
-  `/v3/config`), and the levels it names for each model are kept for ten
-  minutes (`WorkBuddyEffortCache`) for the account list, which makes no
-  request of its own.
+  one. WorkBuddy 的 `/v3/config` 由 `WorkBuddyModelCache` 缓存十分钟，保存完整
+  在线模型而不只保存档位；账号列表冷启动也预载，模型选择器与真实会话共用。
+  缓存键包含站点、实际 store ID、凭据与账号头摘要，并发读取合并；不按
+  provider 的首账号借用能力。目录补全后恢复在线 `reasoning`、档位映射和
+  请求兼容字段，明确禁用同样有效，用户显式设置的推理开关仍优先。模型列表的
+  `extraModels` 先读实际账号 ID，只有首账号兼容旧 wire 键；附加账号不继承。
+  默认限制解析也以实际账号供给凭据与 `AccountRefresher`，不退回首账号。
   Display order is Apelin's `AgentProvider.signInOrder`, independent of
   kwwk's registration order;
   `AccountDeskTests` fails when kwwk gains a subscription or a stored

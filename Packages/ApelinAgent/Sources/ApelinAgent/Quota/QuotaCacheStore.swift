@@ -164,6 +164,35 @@ public final class QuotaCacheStore: @unchecked Sendable {
         }
     }
 
+    /// 签到后的定向失效：旋转被动观察代次，清除刷新门禁与退避，保留旧数字供失败回退。
+    public func invalidatePool(poolID: String) {
+        try? withCacheLock {
+            var generations: PreservedList<PoolGeneration> = try readPreservedList(at: generationsFile)
+            let replacement = PoolGeneration(poolID: poolID, token: UUID())
+            if let index = generations.items.firstIndex(where: { $0.poolID == poolID }) { generations.items[index] = replacement }
+            else { generations.items.append(replacement) }
+            try writePreservedList(generations, to: generationsFile)
+            var pools: PreservedList<PersistedQuotaPool> = try readPreservedList(at: poolsFile)
+            if let index = pools.items.firstIndex(where: { $0.poolID == poolID }) {
+                var pool = pools.items[index]
+                pool.lastForegroundFetchAt = .distantPast
+                pool.lastBackgroundFetchAt = .distantPast
+                pool.lastManualRefreshAt = nil
+                pool.consecutiveFailures = 0
+                pool.cooldownUntil = nil
+                pool.circuitBrokenUntil = nil
+                pool.snapshot.status = .error
+                pool.snapshot.nextAllowedAt = nil
+                pool.snapshot.manualDebounceUntil = nil
+                pool.snapshot.cooldownUntil = nil
+                pool.snapshot.circuitBrokenUntil = nil
+                pool.snapshot.errorSummary = nil
+                pools.items[index] = pool
+                try writePreservedList(pools, to: poolsFile)
+            }
+        }
+    }
+
     public func clearPool(poolID: String) {
         try? withCacheLock {
             var generations: PreservedList<PoolGeneration> = try readPreservedList(at: generationsFile)
@@ -223,13 +252,16 @@ public final class QuotaCacheStore: @unchecked Sendable {
             cleaned.status = window.status.map { scrub($0, secret: secretToScrub, limit: 120) }
             return cleaned
         }
-        copy.balances = snapshot.balances.map { balance in
+        func sanitizedBalance(_ balance: AgentQuotaBalance) -> AgentQuotaBalance {
             var cleaned = balance
             cleaned.id = scrub(balance.id, secret: secretToScrub, limit: 160)
             cleaned.currency = balance.currency.map { scrub($0, secret: secretToScrub, limit: 32) }
             cleaned.unitLabel = balance.unitLabel.map { scrub($0, secret: secretToScrub, limit: 120) }
+            cleaned.label = balance.label.map { scrub($0, secret: secretToScrub, limit: 160) }
             return cleaned
         }
+        copy.balances = snapshot.balances.map(sanitizedBalance)
+        copy.creditPackages = snapshot.creditPackages?.map(sanitizedBalance)
         return copy
     }
 

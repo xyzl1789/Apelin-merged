@@ -116,7 +116,13 @@ public enum QuotaAdapters {
             case .githubCopilot:
                 let snap = try await queryGitHubCopilot(poolID: poolID, provider: provider, accountLabel: accountLabel, credentials: credentials, transport: transport, now: now)
                 return QuotaQueryResult(snapshot: snap, endpointKey: "https://api.github.com/copilot_internal/user")
-            case .cursor, .kiro, .qoder, .qoderCN, .workBuddy, .workBuddyAI, .xai:
+            case .workBuddy, .workBuddyAI:
+                let snap = try await queryWorkBuddy(poolID: poolID, provider: provider, accountLabel: accountLabel, credentials: credentials, transport: transport, now: now)
+                return QuotaQueryResult(snapshot: snap, endpointKey: "workbuddy:credits")
+            case .trae:
+                let snap = try await queryTraeCN(poolID: poolID, provider: provider, accountLabel: accountLabel, credentials: credentials, transport: transport, now: now)
+                return QuotaQueryResult(snapshot: snap, endpointKey: "https://api.trae.cn/trae/api/v2/pay/ide_user_ent_usage")
+            case .cursor, .kiro, .qoder, .qoderCN, .xai:
                 let snap = try await queryKWWKSubscription(poolID: poolID, provider: provider, storeID: provider.storeID, accountLabel: accountLabel, credentials: credentials, kwwkUsage: kwwkUsage, now: now)
                 return QuotaQueryResult(snapshot: snap, endpointKey: "kwwk:\(provider.storeID)")
             case .openRouter:
@@ -661,44 +667,54 @@ public enum QuotaAdapters {
     }
 
     static func probeOpenAIBilling(rootURL: URL, poolID: String, provider: AgentProvider, accountLabel: String?, apiKey: String, transport: any QuotaHTTPTransport, now: Date) async throws -> AgentQuotaSnapshot? {
-        var subReq = URLRequest(url: rootURL.appendingPathComponent("v1/dashboard/billing/subscription"))
-        subReq.httpMethod = "GET"
-        subReq.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        subReq.setValue("application/json", forHTTPHeaderField: "Accept")
-        guard let subData = try await sendProbe(subReq, transport: transport), let subRoot = try? JSONSerialization.jsonObject(with: subData) as? [String: Any] else { return nil }
-        let hardLimit = decimalValue(subRoot["hard_limit_usd"] ?? subRoot["system_hard_limit_usd"])
-        let softLimit = decimalValue(subRoot["soft_limit_usd"])
-        guard hardLimit != nil || softLimit != nil else { return nil }
-        let isUnlimited = (hardLimit ?? 0) >= Decimal(100_000_000)
+        func request(_ path: String) -> URLRequest {
+            var request = URLRequest(url: rootURL.appendingPathComponent(path))
+            request.httpMethod = "GET"
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            return request
+        }
         let formatter = DateFormatter()
         formatter.locale = posix
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         let start = Calendar(identifier: .gregorian).date(byAdding: .day, value: -90, to: now) ?? now
         let end = Calendar(identifier: .gregorian).date(byAdding: .day, value: 1, to: now) ?? now
-        var usageComponents = URLComponents(url: rootURL.appendingPathComponent("v1/dashboard/billing/usage"), resolvingAgainstBaseURL: false)!
-        usageComponents.queryItems = [URLQueryItem(name: "start_date", value: formatter.string(from: start)), URLQueryItem(name: "end_date", value: formatter.string(from: end))]
-        var usedUSD: Decimal?
-        if let usageURL = usageComponents.url {
-            var usageReq = URLRequest(url: usageURL)
-            usageReq.httpMethod = "GET"
-            usageReq.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-            usageReq.setValue("application/json", forHTTPHeaderField: "Accept")
-            if let usageData = try await sendProbe(usageReq, transport: transport), let usageRoot = try? JSONSerialization.jsonObject(with: usageData) as? [String: Any], let totalCents = decimalValue(usageRoot["total_usage"]) {
-                // 账单接口返回美分，用 Decimal 转成美元。
-                usedUSD = totalCents / Decimal(100)
+        let prefixes = ["v1/dashboard/billing", "dashboard/billing"]
+        for prefix in prefixes {
+            guard let data = try await sendProbe(request(prefix + "/subscription"), transport: transport),
+                  let subscription = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let limit = decimalValue(subscription["hard_limit_usd"] ?? subscription["system_hard_limit_usd"] ?? subscription["soft_limit_usd"])
+            else { continue }
+            let unlimited = limit >= Decimal(100_000_000)
+            var used: Decimal?
+            // 用量优先访问与订阅相同的前缀；混合部署可再试另一种路径。
+            for usagePrefix in [prefix] + prefixes.filter({ $0 != prefix }) {
+                var components = URLComponents(url: request(usagePrefix + "/usage").url!, resolvingAgainstBaseURL: false)!
+                components.queryItems = [URLQueryItem(name: "start_date", value: formatter.string(from: start)), URLQueryItem(name: "end_date", value: formatter.string(from: end))]
+                var usageRequest = request(usagePrefix + "/usage")
+                usageRequest.url = components.url
+                if let usageData = try await sendProbe(usageRequest, transport: transport),
+                   let usage = try? JSONSerialization.jsonObject(with: usageData) as? [String: Any],
+                   let cents = decimalValue(usage["total_usage"]) {
+                    used = cents / Decimal(100)
+                    break
+                }
             }
+            // 查不到消费量不等于尚未消费，不能把总限额伪装成剩余余额。
+            guard unlimited || used != nil else { throw QuotaAdapterError.undecodable }
+            let remaining = unlimited ? nil : used.map { limit - $0 }
+            let available = unlimited || (remaining ?? 0) > 0
+            return AgentQuotaSnapshot(poolID: poolID, provider: provider, accountLabel: accountLabel, kind: .balance, source: .probedRelay, status: available ? .available : .exhausted,
+                balances: [AgentQuotaBalance(id: "openai-billing", currency: "USD", isAvailable: available, total: unlimited ? nil : limit, used: used, remaining: remaining, isUnlimited: unlimited)],
+                planName: (subscription["plan"] as? [String: Any])?["title"] as? String, relayKind: "openaiBilling", updatedAt: now)
         }
-        let remaining: Decimal? = isUnlimited ? nil : hardLimit.map { $0 - (usedUSD ?? 0) }
-        let isAvailable = isUnlimited || ((remaining ?? 1) > 0)
-        return AgentQuotaSnapshot(poolID: poolID, provider: provider, accountLabel: accountLabel, kind: .balance, source: .probedRelay, status: isAvailable ? .available : .exhausted,
-            balances: [AgentQuotaBalance(id: "openai-billing", currency: "USD", isAvailable: isAvailable, total: isUnlimited ? nil : hardLimit, used: usedUSD, remaining: remaining, isUnlimited: isUnlimited)],
-            planName: (subRoot["plan"] as? [String: Any])?["title"] as? String, relayKind: "openaiBilling", updatedAt: now)
+        return nil
     }
 
     // MARK: - HTTP 与解析辅助方法
 
-    private static func sendChecked(_ request: URLRequest, transport: any QuotaHTTPTransport) async throws -> Data {
+    static func sendChecked(_ request: URLRequest, transport: any QuotaHTTPTransport) async throws -> Data {
         let (response, data) = try await transport.send(request)
         if response.statusCode == 401 || response.statusCode == 403 { throw QuotaAdapterError.unauthorized }
         if response.statusCode == 429 { throw QuotaAdapterError.rateLimited(retryAfterSeconds: response.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)) }

@@ -18,6 +18,7 @@ final class ProviderBalanceStore {
     private var generation = UUID()
     private var bindings: [String: String] = [:]
     private var inFlight: Task<[ProviderBalance], Never>?
+    private var inFlightID: UUID?
     /// 尝试时间只用于自动查询限频，绝不用于显示「更新时间」。
     private var lastAttempt: Date?
     private let folder: DataFolder
@@ -165,17 +166,36 @@ final class ProviderBalanceStore {
         records.items[index].snapshot.errorSummary = "刷新失败，保留上次数据"
     }
 
+    /// 后台已作废并刷新这些首账号的额度；取消旧回包后，发布同一份快照给所有现有入口。
+    func refreshAfterCheckIn(_ results: [CheckInResult]) async {
+        let targets = Set(results.filter(\.isDone).map(\.platform))
+        guard !targets.isEmpty else { return }
+        generation = UUID()
+        inFlight?.cancel()
+        inFlight = nil
+        inFlightID = nil
+        lastAttempt = nil
+        for platform in targets {
+            let provider = platform.provider
+            markStale(provider: provider, accountID: platform.accountID)
+            do { _ = try await loadQuotas(provider: provider, accountID: platform.accountID) }
+            catch { /* 保留上次数字，失效账号或失败请求不借用其它账号余额。 */ }
+        }
+    }
+
     @discardableResult
     func refresh(force: Bool = false) async -> [ProviderBalance] {
         if let inFlight { return await inFlight.value }
+        let id = UUID()
         let task = Task<[ProviderBalance], Never> {
             do { _ = try await self.loadQuotas(manual: force) }
             catch { /* 失败不清数字，成功时间保持不变。 */ }
             return self.balances
         }
+        inFlightID = id
         inFlight = task
         let next = await task.value
-        inFlight = nil
+        if inFlightID == id { inFlight = nil; inFlightID = nil }
         return next
     }
 

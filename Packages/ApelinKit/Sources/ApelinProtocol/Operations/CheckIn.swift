@@ -9,6 +9,19 @@ public enum CheckInPlatform: String, Codable, Sendable, CaseIterable {
     case qoderCN = "qoder-cn"
     case qoder = "qoder"
 
+    /// 签到仅操作此平台的首账号；Trae CN 的平台名与凭据存储名不同。
+    public var accountID: String { self == .traeCN ? "trae" : rawValue }
+
+    public var provider: AgentProvider {
+        switch self {
+        case .workBuddy: .workBuddy
+        case .workBuddyAI: .workBuddyAI
+        case .traeCN: .trae
+        case .qoderCN: .qoderCN
+        case .qoder: .qoder
+        }
+    }
+
     /// 平台自己的名字，品牌名不翻译。
     public var brand: String {
         switch self {

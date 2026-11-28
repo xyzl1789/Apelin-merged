@@ -1473,7 +1473,7 @@ struct AccountDeskTests {
         #expect(rows.map(\.storeID) == [base, second, broken])
         #expect(rows.allSatisfy({ $0.signedIn }))
         #expect(rows[0].models == ["custom"])
-        #expect(rows[1].models == ["custom"])
+        #expect(rows[1].models == [])
         #expect(rows[0].poolID != rows[1].poolID)
         #expect(rows[2].models == nil && rows[2].poolID == nil)
         let encoded = try JSONCoding.encode(rows)

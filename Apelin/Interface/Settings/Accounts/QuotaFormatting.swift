@@ -43,6 +43,7 @@ enum QuotaFormatting {
     static func summaryText(for snapshot: AgentQuotaSnapshot) -> String? {
         let unavailable = ![AgentQuotaStatus.available, .exhausted].contains(snapshot.status)
         let suffix = unavailable ? " · 上次数据" : ""
+        if snapshot.usesCreditBalance, snapshot.balances.isEmpty { return String(localized: "无法查询用量", table: "Quota") }
         if snapshot.kind == .balance, let balance = snapshot.balances.first(where: \.isAvailable) ?? snapshot.balances.first {
             return balanceAmountText(balance, amount: balance.remaining ?? balance.total) + suffix
         }

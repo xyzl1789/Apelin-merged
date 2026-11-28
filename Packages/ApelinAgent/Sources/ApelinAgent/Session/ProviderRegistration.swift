@@ -52,15 +52,24 @@ public enum ProviderRegistration {
             try await registerStored(storeId: storeID, manager: manager, modelOverride: modelOverride)
         }
         guard let resolved = registered else { return nil }
+        let liveModel: Model?
+        if let site = WorkBuddySite.site(id: baseStoreID) {
+            let current = (try? await manager.credentials(for: storeID)) ?? credentials
+            liveModel = await WorkBuddyModelCache.shared.load(site: site, credentials: current, storeID: storeID)?
+                .first { $0.id == resolved.model.id }
+        } else { liveModel = nil }
         // A model the endpoint's own record does not describe is read against
         // the catalogs: a relay's `cn:deepseek-v4.1-flash` is DeepSeek's model,
         // with its window, its ceiling and its images. An endpoint whose
         // figures are already the catalog's changes nothing here.
         var model = ModelResolver.resolving(
-            DeepSeekProvider.isOfficial(credentials) ? DeepSeekProvider.applyingCatalog(to: resolved.model) : resolved.model,
+            liveModel ?? (DeepSeekProvider.isOfficial(credentials) ? DeepSeekProvider.applyingCatalog(to: resolved.model) : resolved.model),
             catalogKey: catalogKey(storeID: baseStoreID),
             parameters: parameters,
         )
+        if let liveModel {
+            model = WorkBuddyModelCache.applyingReasoning(from: liveModel, to: model, parameters: parameters)
+        }
         if let quotaStore {
             model = await observingQuota(model, storeID: storeID, baseStoreID: baseStoreID, store: quotaStore)
         }

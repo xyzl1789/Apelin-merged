@@ -106,6 +106,45 @@ final class AgentQuotaDisplayTests: XCTestCase {
         XCTAssertEqual(record.balances.first?.isMonetary, false)
     }
 
+    func testCreditPackagesRoundTripAndFailureKeepsExpiry() throws {
+        var quota = snapshot("98.75", currency: nil, unit: "积分")
+        quota.provider = .workBuddy
+        quota.creditPackages = [AgentQuotaBalance(id: "pack", unitLabel: "积分", total: 100, used: QuotaDecimalCoding.parse("1.25"), remaining: QuotaDecimalCoding.parse("98.75"), label: "奖励包", expiresAt: date.addingTimeInterval(86400))]
+        var record = AgentQuotaDisplayRecord(accountID: "workbuddy", snapshot: quota)
+        let restored = try JSONDecoder().decode(AgentQuotaDisplayRecord.self, from: JSONEncoder().encode(record))
+        XCTAssertEqual(restored, record)
+        XCTAssertEqual(record.balances.count, 1)
+        XCTAssertEqual(record.balances.first?.currency, "积分")
+        var failed = quota
+        failed.status = .error
+        failed.creditPackages = nil
+        failed.balances = []
+        failed.updatedAt = date.addingTimeInterval(30)
+        record.merge(failed)
+        XCTAssertEqual(record.snapshot.earliestCreditExpiry, quota.earliestCreditExpiry)
+        XCTAssertEqual(record.snapshot.updatedAt, date)
+    }
+
+    func testOldCreditPercentWindowsAreNotBalances() {
+        for provider in [AgentProvider.workBuddy, .workBuddyAI, .trae] {
+            var quota = snapshot()
+            quota.provider = provider
+            quota.kind = .window
+            quota.balances = []
+            quota.windows = [AgentQuotaWindow(id: "primary", label: "主要窗口", usedPercent: 33)]
+            XCTAssertFalse(AgentQuotaDisplayRecord.hasFigures(quota))
+            XCTAssertTrue(AgentQuotaDisplayRecord(accountID: "test", snapshot: quota).balances.isEmpty)
+        }
+    }
+
+    func testOldCacheWithoutCreditMetadataStillDecodes() throws {
+        let text = #"{"id":"credits","unitLabel":"积分","remaining":"1.25"}"#
+        let balance = try JSONDecoder().decode(AgentQuotaBalance.self, from: Data(text.utf8))
+        XCTAssertEqual(balance.remaining, QuotaDecimalCoding.parse("1.25"))
+        XCTAssertNil(balance.label)
+        XCTAssertNil(balance.expiresAt)
+    }
+
     func testPersistenceRoundTripKeepsDecimalAndTimestamp() throws {
         let record = AgentQuotaDisplayRecord(accountID: "deepseek#2", snapshot: snapshot("1234567890123456.123456789"))
         let restored = try JSONDecoder().decode(AgentQuotaDisplayRecord.self, from: JSONEncoder().encode(record))

@@ -21,15 +21,7 @@ public enum CheckInService {
     private static let rateLimitWaits = [0, 5, 15]
 
     /// 一个平台在这个 keychain 里的 store id，和「模型服务商」用的同一个。
-    static func storeID(_ platform: CheckInPlatform) -> String {
-        switch platform {
-        case .workBuddy: "workbuddy"
-        case .workBuddyAI: "workbuddy-ai"
-        case .traeCN: "trae"
-        case .qoderCN: "qoder-cn"
-        case .qoder: "qoder"
-        }
-    }
+    static func storeID(_ platform: CheckInPlatform) -> String { platform.accountID }
 
     /// 跑一遍：今天问过的平台直接用缓存（`force` 为真时全部重新问）。
     public static func run(
@@ -127,27 +119,15 @@ public enum CheckInService {
     private static func workBuddy(_ credentials: OAuthCredentials, platform: CheckInPlatform) async throws -> CheckInResult {
         let token = credentials.access
         guard token.count >= 8 else { throw CheckInProblem(.signedOut, "凭据不完整") }
-        var headers = [
-            "Authorization": "Bearer \(token)",
-            "Content-Type": "application/json",
-        ]
-        if let uid = extra(credentials, "uid") { headers["X-User-Id"] = uid }
-        if let domain = extra(credentials, "domain") { headers["X-Domain"] = domain }
-        // 国内版优先用凭据里的 baseUrl（没有则是默认域名）；国际版用凭据里的
-        // domain 拼 https:// ，例如 www.workbuddy.ai。
-        let base: String
-        if platform == .workBuddyAI {
-            if let domain = extra(credentials, "domain"), !domain.isEmpty {
-                base = "https://\(domain)"
-            } else {
-                base = "https://www.workbuddy.ai"
-            }
-        } else {
-            base = extra(credentials, "billingBase")
-                ?? extra(credentials, "baseUrl")
-                ?? "https://www.codebuddy.cn"
-        }
-        guard let baseURL = URL(string: base) else { throw CheckInProblem(.server, "base 地址无效") }
+        let provider = platform.provider
+        let site: WorkBuddySite = platform == .workBuddyAI ? .international : .china
+        var headers = WorkBuddyOAuth.accountHeaders(credentials, site: site)
+        headers["Authorization"] = "Bearer \(token)"
+        headers["Content-Type"] = "application/json"
+        headers["User-Agent"] = WorkBuddyOAuth.userAgent
+        headers["X-Product"] = "SaaS"
+        headers["X-IDE-Type"] = "WorkBuddy"
+        guard let baseURL = QuotaAdapters.workBuddyBillingBase(provider: provider, credentials: credentials) else { throw CheckInProblem(.server, "base 地址无效") }
         let emptyObject = Data("{}".utf8)
 
         let status = try await reply(
@@ -169,7 +149,7 @@ public enum CheckInService {
         let data = statusJSON["data"] as? [String: Any] ?? [:]
         let streak = number(data["streak_days"])
         let total = numberText(data["total_credits"])
-        let balance = await workBuddyBalance(baseURL: baseURL, headers: headers)
+        let balance = await creditUsage(provider: platform.provider, credentials: credentials)
         let todayCredit = numberText(data["today_credit"]) ?? numberText(data["daily_credit"])
         var available = balance?.available
         var used = balance?.used
@@ -206,7 +186,7 @@ public enum CheckInService {
 
         // 签到之后再跑一遍成长中心：能自动领的都领，做不了的写清原因进明细。
         let details = await runGrowthIfNeeded(platform: platform, baseURL: baseURL, headers: headers)
-        let refreshed = await workBuddyBalance(baseURL: baseURL, headers: headers)
+        let refreshed = await creditUsage(provider: platform.provider, credentials: credentials)
         available = refreshed?.available ?? available
         used = refreshed?.used ?? used
         return CheckInResult(platform: platform, outcome: .claimed,
@@ -254,7 +234,7 @@ public enum CheckInService {
             throw CheckInProblem(.server, "地址无效")
         }
         let body = Data("{\"req_source\":1}".utf8)
-        var usage = await traeUsage(token: token, headers: headers)
+        var usage = await creditUsage(provider: .trae, credentials: credentials)
 
         let status = try await reply(
             method: "POST",
@@ -303,7 +283,7 @@ public enum CheckInService {
                 let credits = number(claimJSON["credits"]) ?? 0
                 let extraCredits = number(claimJSON["extra_credits"]) ?? 0
                 let gained = credits + extraCredits
-                usage = await traeUsage(token: token, headers: headers)
+                usage = await creditUsage(provider: .trae, credentials: credentials)
                 logger.info("trae-cn：签到成功")
                 return CheckInResult(platform: .traeCN, outcome: .claimed,
                                      credit: gained > 0 ? String(gained) : nil,
@@ -322,45 +302,11 @@ public enum CheckInService {
         var used: String?
     }
 
-    private static func workBuddyBalance(baseURL: URL, headers: [String: String]) async -> Usage? {
-        guard let reply = try? await reply(method: "POST", url: baseURL.appendingPathComponent("v2/billing/meter/get-user-resource"), headers: headers, body: Data("{}".utf8)),
-              reply.status == 200, let root = reply.json else { return nil }
-        let accounts = (((root["data"] as? [String: Any])?["Response"] as? [String: Any])?["Data"] as? [String: Any])?["Accounts"] as? [[String: Any]]
-            ?? (root["data"] as? [String: Any])?["Accounts"] as? [[String: Any]] ?? []
-        guard !accounts.isEmpty else { return nil }
-        let values = accounts.reduce(into: (remaining: 0.0, used: 0.0)) { result, account in
-            let remain = Double(numberText(account["CapacityRemainPrecise"]) ?? "0") ?? 0
-            let cycle = Double(numberText(account["CycleCapacityRemainPrecise"]) ?? "0") ?? 0
-            let cycleSize = Double(numberText(account["CycleCapacitySizePrecise"]) ?? "0") ?? 0
-            result.remaining += cycleSize > 0 ? min(remain, cycle) : remain
-            result.used += Double(numberText(account["CapacityUsedPrecise"]) ?? "0") ?? 0
-        }
-        return Usage(available: String(Int(values.remaining)), used: String(Int(values.used)))
-    }
-
-    private static func traeUsage(token: String, headers: [String: String]) async -> Usage? {
-        var requestHeaders = headers
-        requestHeaders["User-Agent"] = "Mozilla/5.0"
-        requestHeaders["Origin"] = "https://work.trae.cn"
-        requestHeaders["Referer"] = "https://work.trae.cn/"
-        let body = Data("{\"require_usage\":true,\"req_source\":2}".utf8)
-        guard let reply = try? await reply(method: "POST", url: URL(string: "https://api.trae.cn/trae/api/v2/pay/ide_user_ent_usage")!, headers: requestHeaders, body: body),
-              reply.status == 200, let root = reply.json,
-              let packs = root["user_entitlement_pack_list"] as? [[String: Any]] else { return nil }
-        var remaining = 0.0
-        var used = 0.0
-        var found = false
-        for pack in packs {
-            let base = pack["entitlement_base_info"] as? [String: Any] ?? [:]
-            let quota = base["quota"] as? [String: Any] ?? [:]
-            let limit = Double(numberText(quota["credits_limit"]) ?? "0") ?? 0
-            guard limit > 0 else { continue }
-            let consumed = Double(numberText((pack["usage"] as? [String: Any])?["credits_amount"]) ?? "0") ?? 0
-            remaining += max(limit - consumed, 0)
-            used += consumed
-            found = true
-        }
-        return found ? Usage(available: String(Int(remaining)), used: String(Int(used))) : nil
+    private static func creditUsage(provider: AgentProvider, credentials: OAuthCredentials) async -> Usage? {
+        guard let result = try? await QuotaAdapters.query(provider: provider, poolID: "oauth:\(provider.storeID)", accountLabel: nil,
+            credentials: credentials, usesAPIKey: false, cachedRelayProbe: nil, transport: URLSessionQuotaTransport.shared),
+              let balance = result.snapshot.balances.first(where: { $0.unitLabel == "积分" }) else { return nil }
+        return Usage(available: balance.remaining.map(QuotaDecimalCoding.encode), used: balance.used.map(QuotaDecimalCoding.encode))
     }
 
     // MARK: - Qoder（国内版与国际版同一套接口）

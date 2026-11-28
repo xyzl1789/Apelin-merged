@@ -43,6 +43,13 @@ public actor QuotaCoordinator {
         store.clearPool(poolID: poolID)
     }
 
+    /// 领取奖励后只作废查询时效，保留最近数字；旧在途请求不能覆盖新余额。
+    public func invalidate(poolID: String) {
+        generations.removeValue(forKey: poolID)?.invalidate()
+        inFlight.removeValue(forKey: poolID)?.cancel()
+        store.invalidatePool(poolID: poolID)
+    }
+
     public init(store: QuotaCacheStore, transport: any QuotaHTTPTransport = URLSessionQuotaTransport.shared, kwwkUsage: any KWWKQuotaUsageProvider = DefaultKWWKQuotaUsageProvider(), clock: @escaping @Sendable () -> Date = Date.init) {
         self.store = store
         self.transport = transport
@@ -69,7 +76,11 @@ public actor QuotaCoordinator {
         let poolID = QuotaPoolIdentity.poolID(provider: account.provider, storeID: account.storeID, credentials: account.credentials, usesAPIKey: account.usesAPIKey)
         let baseURL = QuotaAdapters.resolvedBaseURL(for: account.provider, credentials: account.credentials)
         let endpointKey = baseURL.flatMap(QuotaPoolIdentity.normalizedEndpointKey(baseURL:))
-        let existing = store.pool(for: poolID)
+        let cached = store.pool(for: poolID)
+        // 升级前的 WorkBuddy 窗口和 Trae 账单链接不得继续命中成功缓存或熔断。
+        let needsCreditMigration = [AgentProvider.workBuddy, .workBuddyAI, .trae].contains(account.provider)
+            && cached.map { $0.snapshot.kind != .balance } == true
+        let existing = needsCreditMigration ? nil : cached
         let endpointChanged = existing?.endpointKey != nil && endpointKey != nil && existing?.endpointKey != endpointKey
 
         // 只读缓存模式绝不发起网络请求。
@@ -144,7 +155,7 @@ public actor QuotaCoordinator {
         if !account.usesAPIKey {
             switch account.provider {
             case .anthropicOAuth, .openAICodex, .kimiCoding, .kimiCodingGlobal, .openRouter,
-                 .githubCopilot, .cursor, .kiro, .qoder, .qoderCN, .workBuddy, .workBuddyAI, .xai:
+                 .githubCopilot, .cursor, .kiro, .qoder, .qoderCN, .workBuddy, .workBuddyAI, .trae, .xai:
                 return true
             default: return false
             }
@@ -228,7 +239,8 @@ public actor QuotaCoordinator {
                 cooldownUntil = now.addingTimeInterval(delay)
             }
             let status: AgentQuotaStatus = isPermanent ? .circuitBroken : .cooldown
-            let fallbackKind: AgentQuotaPoolKind = QuotaPoolIdentity.isOAuthSubscription(account.provider) && !account.usesAPIKey ? .window : .balance
+            let fallbackKind: AgentQuotaPoolKind = [AgentProvider.workBuddy, .workBuddyAI, .trae].contains(account.provider)
+                ? .balance : (QuotaPoolIdentity.isOAuthSubscription(account.provider) && !account.usesAPIKey ? .window : .balance)
             let activeManualDebounce = existing?.lastManualRefreshAt.flatMap { last -> Date? in
                 let until = last.addingTimeInterval(Self.manualDebounceInterval)
                 return now < until ? until : nil
@@ -236,7 +248,7 @@ public actor QuotaCoordinator {
             let manualDebounceUntil = mode == .manualRefresh ? now.addingTimeInterval(Self.manualDebounceInterval) : activeManualDebounce
             let snap = AgentQuotaSnapshot(poolID: poolID, provider: account.provider, accountLabel: account.accountLabel,
                 kind: existing?.snapshot.kind ?? fallbackKind, source: existing?.snapshot.source ?? .activeAPI, status: status,
-                balances: existing?.snapshot.balances ?? [], windows: existing?.snapshot.windows ?? [],
+                balances: existing?.snapshot.balances ?? [], creditPackages: existing?.snapshot.creditPackages, windows: existing?.snapshot.windows ?? [],
                 planName: existing?.snapshot.planName, relayKind: existing?.snapshot.relayKind,
                 billingURL: existing?.snapshot.billingURL ?? QuotaPoolIdentity.billingURL(for: account.provider, baseURL: baseURL),
                 updatedAt: existing?.snapshot.updatedAt ?? now, nextAllowedAt: circuitBrokenUntil ?? cooldownUntil,
@@ -255,7 +267,8 @@ public actor QuotaCoordinator {
             let exponent = min(5, max(0, failures - 1))
             let delay = min(Self.maxBackoffSeconds, Self.baseBackoffSeconds * pow(2.0, Double(exponent)))
             let cooldownUntil = now.addingTimeInterval(delay)
-            let fallbackKind: AgentQuotaPoolKind = QuotaPoolIdentity.isOAuthSubscription(account.provider) && !account.usesAPIKey ? .window : .balance
+            let fallbackKind: AgentQuotaPoolKind = [AgentProvider.workBuddy, .workBuddyAI, .trae].contains(account.provider)
+                ? .balance : (QuotaPoolIdentity.isOAuthSubscription(account.provider) && !account.usesAPIKey ? .window : .balance)
             let activeManualDebounce = existing?.lastManualRefreshAt.flatMap { last -> Date? in
                 let until = last.addingTimeInterval(Self.manualDebounceInterval)
                 return now < until ? until : nil
@@ -263,7 +276,7 @@ public actor QuotaCoordinator {
             let manualDebounceUntil = mode == .manualRefresh ? now.addingTimeInterval(Self.manualDebounceInterval) : activeManualDebounce
             let snap = AgentQuotaSnapshot(poolID: poolID, provider: account.provider, accountLabel: account.accountLabel,
                 kind: existing?.snapshot.kind ?? fallbackKind, source: existing?.snapshot.source ?? .activeAPI, status: .error,
-                balances: existing?.snapshot.balances ?? [], windows: existing?.snapshot.windows ?? [],
+                balances: existing?.snapshot.balances ?? [], creditPackages: existing?.snapshot.creditPackages, windows: existing?.snapshot.windows ?? [],
                 planName: existing?.snapshot.planName, relayKind: existing?.snapshot.relayKind,
                 billingURL: existing?.snapshot.billingURL ?? QuotaPoolIdentity.billingURL(for: account.provider, baseURL: baseURL),
                 updatedAt: existing?.snapshot.updatedAt ?? now, nextAllowedAt: cooldownUntil,
