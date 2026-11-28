@@ -322,7 +322,10 @@ public actor SessionEventLog {
 
     private func write(_ event: AgentSessionEvent, date: Date) throws {
         guard let handle else { return }
-        let record = SessionEventRecord(seq: nextSeq, date: date, event: event)
+        // ISO 8601 日志只保存整秒。缓存和实时订阅必须使用同一精度，
+        // 否则同一条记录在重开或分叉落盘后会变成另一个值。
+        let savedDate = Date(timeIntervalSince1970: date.timeIntervalSince1970.rounded(.down))
+        let record = SessionEventRecord(seq: nextSeq, date: savedDate, event: event)
         var line = try encoder.encode(record)
         line.append(0x0A)
         do {

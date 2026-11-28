@@ -108,13 +108,14 @@ struct ForkContextTests {
         try await log.append(.conversationMessageTaken(id: id, text: "Review this", from: "reviewer-session"))
         try await log.append(.messageFinished(text: "Reviewed."))
         try await log.append(.finished(reason: .completed))
+        let messages: [Message] = [.user(user), .assistant(fauxAssistantMessage("Reviewed."))]
         try await log.writeHistorySnapshot(
-            [.user(user), .assistant(fauxAssistantMessage("Reviewed."))],
+            messages,
             anchors: [id.uuidString.lowercased(): anchor(user)],
             seal: true,
         )
         let context = try #require(try await log.readForkContext(id))
-        #expect(context.messages == [.user(user), .assistant(fauxAssistantMessage("Reviewed."))])
+        #expect(context.messages == messages)
         #expect(context.records.contains { $0.event == .conversationMessageTaken(id: id, text: "Review this", from: "reviewer-session") })
         #expect(context.anchors[id.uuidString.lowercased()]?.digest == ConversationHistory.digest(ConversationHistory.text(of: user)))
         await log.close()
@@ -315,6 +316,115 @@ struct ForkContextTests {
         let stoppedRecords = try await session.log.records(afterSeq: 0)
         #expect(!stoppedRecords.contains { if case .error = $0.event { return true }; return false })
         await session.close()
+    }
+
+    @Test
+    func `追加历史在编辑回退和重开后仍保留原始完整回复且不创建对象快照`() async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let sessionID = UUID().uuidString
+        let log = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: sessionID)
+        let id = UUID()
+        let user = UserMessage(text: "原始问题")
+        let reply = Message.assistant(fauxAssistantMessage("原始回复"))
+        let anchors = [id.uuidString.lowercased(): anchor(user)]
+        try await log.snapshotConversation([], anchors: [:])
+        try await log.append(.userMessage(id: id, text: "原始问题", attachments: []))
+        try await log.appendConversation([.user(user)], anchors: anchors)
+        try await log.append(.messageFinished(text: "原始回复"))
+        try await log.append(.finished(reason: .completed))
+        try await log.appendConversation([reply], anchors: [:])
+        let records = try await log.records(afterSeq: 0)
+        try await log.append(.replyEdited(id: id, text: "修改后的回复"))
+        try await log.snapshotConversation([.user(user), .assistant(fauxAssistantMessage("修改后的回复"))], anchors: anchors)
+        try await log.append(.historyRewound(id: id))
+        try await log.snapshotConversation([], anchors: [:])
+        try await log.writeAnchors([:])
+        let context = try #require(try await log.readForkContext(id))
+        #expect(context.messages == [.user(user), reply])
+        #expect(context.records == records)
+        #expect(context.anchors == anchors)
+        let directory = await log.directory
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("forks").path))
+        await log.close()
+
+        let reopened = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: sessionID)
+        let restored = try #require(try await reopened.readForkContext(id))
+        #expect(restored.messages == context.messages)
+        #expect(restored.records == context.records)
+        #expect(restored.anchors == context.anchors)
+        await reopened.close()
+    }
+
+    @Test
+    func `追加历史只推进完整批次对应的模型与UI边界`() async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let log = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: UUID().uuidString)
+        let id = UUID()
+        let user = UserMessage(text: "读取两个文件")
+        let anchors = [id.uuidString.lowercased(): anchor(user)]
+        try await log.append(.userMessage(id: id, text: "读取两个文件", attachments: []))
+        try await log.appendConversation([.user(user)], anchors: anchors)
+        let before = try #require(try await log.readForkContext(id))
+        try await log.append(.toolCallStarted(ToolCallRecord(id: "two", name: "file_read", arguments: "{}")))
+        let batch = pendingBatch()
+        try await log.appendConversation(batch, anchors: [:], completeBoundary: false)
+        let partial = try #require(try await log.readForkContext(id))
+        #expect(partial.messages == before.messages)
+        #expect(partial.records == before.records)
+        let result = Message.toolResult(ToolResultMessage(
+            toolCallId: "two", toolName: "file_read", content: [.text(TextContent(text: "第二个真实结果"))],
+        ))
+        try await log.append(.finished(reason: .completed))
+        try await log.appendConversation([result], anchors: [:])
+        let complete = try #require(try await log.readForkContext(id))
+        #expect(complete.messages == [.user(user)] + batch + [result])
+        #expect(complete.records == (try await log.records(afterSeq: 0)))
+        await log.close()
+    }
+
+    @Test
+    func `中断后的历史快照沿用最后完整模型边界且不包含后续审批工具事件`() async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let sessionID = UUID().uuidString
+        let log = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: sessionID)
+        let id = UUID()
+        let user = UserMessage(text: "继续读取")
+        let reply = Message.assistant(fauxAssistantMessage("上一个完整回复"))
+        let stable: [Message] = [.user(user), reply]
+        let anchors = [id.uuidString.lowercased(): anchor(user)]
+        try await log.append(.userMessage(id: id, text: "继续读取", attachments: []))
+        try await log.appendConversation([.user(user)], anchors: anchors)
+        try await log.append(.messageFinished(text: "上一个完整回复"))
+        try await log.appendConversation([reply], anchors: [:])
+        let stableBoundary = try await log.replayBoundary()
+        let before = try #require(try await log.readForkContext(id))
+        try await log.append(.approvalRequested(ApprovalRequest(
+            id: "approval-1", toolCallID: "call-1", tool: "file_read", arguments: "{}",
+            workingDirectory: ".", projectID: "project", fingerprint: "fingerprint",
+            reason: "需要审批", detail: .none, allowsSessionScope: false,
+        )))
+        try await log.append(.toolCallStarted(ToolCallRecord(id: "call-1", name: "file_read", arguments: "{}")))
+        let incomplete = pendingBatch()
+        try await log.appendConversation(incomplete, anchors: [:], completeBoundary: false)
+
+        // runEnded repairs the model prefix and then starts a fresh segment.
+        try await log.snapshotConversation(stable, anchors: anchors)
+        let conversationURL = await log.conversationURL
+        let rows = try Data(contentsOf: conversationURL).split(separator: 0x0A)
+        let repaired = try #require(rows.last)
+        let json = try #require(try JSONSerialization.jsonObject(with: Data(repaired)) as? [String: Any])
+        #expect(json["eventBoundary"] as? UInt64 == stableBoundary)
+
+        await log.close()
+        let reopened = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: sessionID)
+        let after = try #require(try await reopened.readForkContext(id))
+        #expect(after.messages == stable)
+        #expect(after.records == before.records)
+        #expect(!after.records.contains { if case .approvalRequested = $0.event { return true }; return false })
+        await reopened.close()
     }
 
     @Test

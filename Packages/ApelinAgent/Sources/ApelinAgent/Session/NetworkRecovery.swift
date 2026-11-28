@@ -96,8 +96,13 @@ enum NetworkRecovery {
     ) -> StreamFn {
         { model, context, options in
             let cancellation = options?.cancellation
-            let first = try await cancellable(cancellation) {
-                try await inner(model, context, options)
+            let first: AssistantMessageStream
+            do {
+                first = try await cancellable(cancellation) {
+                    try await inner(model, context, options)
+                }
+            } catch let failure as ProviderFailure {
+                return failedStream(failure, model: model)
             }
             let (stream, continuation) = AssistantMessageStream.makeStream()
             let out = Output(continuation)
@@ -116,10 +121,23 @@ enum NetworkRecovery {
                         }
                     }
                 } catch {
-                    let stopped = stopped(AssistantMessage(
-                        content: [], api: model.api, provider: model.provider, model: model.id,
-                    ))
-                    finish(out, .error(reason: .aborted, error: stopped), stopped)
+                    // ProviderFailure can be thrown while creating or retrying a
+                    // stream. Keep its HTTP/category fields on the terminal
+                    // assistant message; turning it into an aborted reply makes
+                    // AgentSession record an unclassified error.
+                    if let failure = error as? ProviderFailure {
+                        var failed = AssistantMessage(
+                            content: [], api: model.api, provider: model.provider, model: model.id,
+                            stopReason: .error, errorMessage: failure.message,
+                        )
+                        failed.failure = failure
+                        finish(out, .error(reason: .error, error: failed), failed)
+                    } else {
+                        let stopped = stopped(AssistantMessage(
+                            content: [], api: model.api, provider: model.provider, model: model.id,
+                        ))
+                        finish(out, .error(reason: .aborted, error: stopped), stopped)
+                    }
                 }
             }
             return stream
@@ -288,6 +306,20 @@ enum NetworkRecovery {
                 continuation.end(final)
             }
         }
+    }
+
+    private static func failedStream(_ failure: ProviderFailure, model: Model) -> AssistantMessageStream {
+        let (stream, continuation) = AssistantMessageStream.makeStream()
+        let out = Output(continuation)
+        let partial = AssistantMessage(content: [], api: model.api, provider: model.provider, model: model.id)
+        var failed = AssistantMessage(
+            content: [], api: model.api, provider: model.provider, model: model.id,
+            stopReason: .error, errorMessage: failure.message,
+        )
+        failed.failure = failure
+        out.push(.start(partial: partial))
+        finish(out, .error(reason: .error, error: failed), failed)
+        return stream
     }
 
     private static func finish(

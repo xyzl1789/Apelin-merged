@@ -387,7 +387,7 @@ public actor AgentSession {
         // A session that predates `messages.jsonl` is seeded from its
         // transcript once; from then on the log is what it goes on from.
         if await log.hasConversation == false {
-            try await log.snapshotConversation(transcript)
+            try await log.snapshotConversation(transcript, anchors: savedAnchors)
         }
         for diagnostic in skills.diagnostics {
             _ = try? await log.append(.error(message: "A skill has a problem. \(diagnostic)"))
@@ -2152,7 +2152,7 @@ public actor AgentSession {
     /// what they replace stays in the file, where a fork still reads it.
     func startConversationSegment(_ messages: [Message]) async throws {
         try await log.writeAnchors(anchors)
-        try await log.snapshotConversation(messages)
+        try await log.snapshotConversation(messages, anchors: anchors)
         try await log.writeTranscript(messages)
         savedMessageCount = messages.count
         try acknowledgePending(in: messages)
@@ -2233,7 +2233,16 @@ public actor AgentSession {
         }
         do {
             try await log.writeAnchors(anchors)
-            try await log.appendConversation(Array(messages[savedMessageCount...]))
+            let added = Array(messages[savedMessageCount...])
+            let timestamps = Set(added.compactMap { message -> Int64? in
+                if case let .user(user) = message { return user.timestamp }
+                return nil
+            })
+            try await log.appendConversation(
+                added,
+                anchors: anchors.filter { timestamps.contains($0.value.timestamp) },
+                completeBoundary: ForkContext.hasCompleteToolResults(messages),
+            )
             savedMessageCount = messages.count
             try acknowledgePending(in: messages)
             // a message or a tool's result has entered the conversation: the
@@ -2465,8 +2474,11 @@ public actor AgentSession {
         // the turn's messages are in: what compaction would now go by
         restoreModelAfterRun()
         await recordContextUsage()
-        do { try await log.append(.finished(reason: reason)) }
-        catch { await pausePending(error: error) }
+        do {
+            try await log.append(.finished(reason: reason))
+            // 结束事件也属于已保存模型边界。空追加只写元数据，不复制历史。
+            try await log.appendConversation([], anchors: [:], completeBoundary: ForkContext.hasCompleteToolResults(agent.state.messages))
+        } catch { await pausePending(error: error) }
         // 本轮运行期间读者选定的模式现在生效，供 `next` 启动的排队消息使用；
         // 这一轮已经结束了。
         if let planned = nextRunMode {

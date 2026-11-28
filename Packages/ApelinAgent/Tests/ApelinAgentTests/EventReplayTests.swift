@@ -42,6 +42,39 @@ struct EventReplayTests {
     }
 
     @Test
+    func `实时缓存磁盘重放与重开返回完全相同的事件日期`() async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let id = UUID().uuidString
+        let log = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: id)
+        let live = try await log.attach(afterSeq: 0)
+        try await log.append(.userMessage(id: UUID(), text: "保留时间", attachments: []))
+        try await log.append(.textDelta("合并后的文字"))
+        try await log.append(.finished(reason: .completed))
+        let cached = try await log.historyRecords()
+        let disk = try await log.records(afterSeq: 0)
+        #expect(cached == disk)
+        var received: [SessionEventRecord] = []
+        for await record in live {
+            received.append(record)
+            if received.count == disk.count { break }
+        }
+        #expect(received == disk)
+        await log.close()
+
+        let reopened = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: id)
+        #expect(try await reopened.historyRecords() == disk)
+        let replay = try await reopened.attach(afterSeq: 0)
+        var replayed: [SessionEventRecord] = []
+        for await record in replay {
+            replayed.append(record)
+            if replayed.count == disk.count { break }
+        }
+        #expect(replayed == disk)
+        await reopened.close()
+    }
+
+    @Test
     func `a torn last line is dropped and the next record starts cleanly`() async throws {
         let home = try TemporaryHome()
         defer { home.remove() }

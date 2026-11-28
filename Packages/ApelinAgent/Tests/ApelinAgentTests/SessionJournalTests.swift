@@ -321,6 +321,9 @@ struct SessionJournalTests {
         try await session.compact()
         let failed = try #require(await Self.compaction(from: &events))
         #expect(failed.outcome == .failed, "\(failed)")
+        // The stream can observe compactionFinished before the owning task
+        // clears its reservation; wait for the full lifecycle before retrying.
+        await session.waitForIdle()
         // the replies left over make a summary the second time
         faux.setResponses([.message(fauxAssistantMessage("The user built a tweak; the hook loads."))])
         try await session.compact()

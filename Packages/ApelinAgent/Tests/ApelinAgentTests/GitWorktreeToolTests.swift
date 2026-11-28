@@ -62,6 +62,26 @@ struct GitWorktreeToolTests {
     }
 
     @Test
+    func `stash changes never reuse a session approval`() async throws {
+        let operations: [JSONValue] = [
+            ["action": "save", "message": "wip"],
+            ["action": "apply", "index": 0],
+            ["action": "drop", "index": 0],
+            ["action": "clear"],
+        ]
+        for arguments in operations {
+            let harness = try DigestApprovalTests.Harness()
+            defer { harness.home.remove() }
+            let (_, first) = try await harness.run(.gitStash, arguments, answering: .approve(.session))
+            #expect(first.count == 1)
+            #expect(first.first?.allowsSessionScope == false)
+            let (_, second) = try await harness.run(.gitStash, arguments, answering: .approve(.session))
+            #expect(second.count == 1)
+            #expect(second.first?.allowsSessionScope == false)
+        }
+    }
+
+    @Test
     func `a discarded path asks in every mode`() async throws {
         for mode: ApelinAgent.ApprovalMode in [.relaxed, .full, .confirm] {
             let harness = try DigestApprovalTests.Harness(mode: mode)

@@ -1998,7 +1998,11 @@ What `CHECKLIST.md` asked to be written down, and where the answer lives.
   the appends after it; what a compaction replaces stays in the file, which
   is what a fork of an older turn reads. Appending a tail after the
   conversation shrank is refused — a compaction, a repair and an edit each
-  start a segment of their own. `transcript.json` is still written at each
+  start a segment of their own. Each checkpoint line also records the anchors
+  and the last event sequence it represents, only after a complete tool batch;
+  recovery reuses the newest saved sequence whose exact model messages are a
+  prefix of the repaired conversation, never pairing a partial approval or
+  tool tail with the saved model boundary. `transcript.json` is still written at each
   run's end, for a build that predates the log. A state that lost messages
   is restored from the saved conversation before a prompt, and a history
   that comes back empty while the log took messages is read back from the

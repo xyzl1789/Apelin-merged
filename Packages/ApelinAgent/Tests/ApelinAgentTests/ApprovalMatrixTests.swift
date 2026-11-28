@@ -87,9 +87,14 @@ struct ApprovalMatrixTests {
         for tool in [AgentToolName.fileWrite, .fileEdit, .fileCreate] {
             #expect(verdict(.confirm, InvocationFacts(tool: .local(tool), pathCheck: .inside)) == .allow(.notRequired))
         }
-        // Preset reads run, sensitive reads ask. A question is its own card,
-        // so it runs without one before it.
-        for tool in AgentToolName.allCases where tool.risk == .readOnly && tool != .questionAsk {
+        // These tools are self-contained actions rather than user-editable presets.
+        // A session answer is never a grant for their next invocation.
+        for tool in [AgentToolName.notificationSend, .questionAsk, .runMode, .conversationCompact] {
+            #expect(verdict(.confirm, InvocationFacts(tool: .local(tool))) == .allow(.notRequired), "\(tool.rawValue)")
+        }
+        for tool in AgentToolName.allCases where tool.risk == .readOnly
+            && ![AgentToolName.notificationSend, .questionAsk, .runMode, .conversationCompact].contains(tool)
+        {
             let result = verdict(.confirm, InvocationFacts(tool: .local(tool), pathCheck: .inside))
             if tool.isSensitiveRead {
                 #expect(isAsk(result), "\(tool.rawValue) should ask by default")
@@ -97,7 +102,8 @@ struct ApprovalMatrixTests {
                 #expect(result == .allow(.preset(tool.rawValue)), "\(tool.rawValue)")
             }
         }
-        #expect(verdict(.confirm, InvocationFacts(tool: .local(.questionAsk))) == .allow(.notRequired))
+        // The question is itself a card, so it is included above as a
+        // notRequired action rather than a user preset.
         // respring is preset; apelin_screen_interact and apelin_package_remove ask.
         #expect(verdict(.confirm, InvocationFacts(tool: .local(.deviceRespring))) == .allow(.preset("apelin_device_respring")))
         #expect(isAsk(verdict(.confirm, InvocationFacts(tool: .local(.screenInteract)))))
@@ -112,7 +118,7 @@ struct ApprovalMatrixTests {
         let facts = InvocationFacts(tool: .local(.webFetch))
         #expect(AgentToolName.webFetch.risk == .readOnly && AgentToolName.webFetch.isSensitiveRead)
         #expect(!ApprovalPresets.default.readTools.contains(.webFetch))
-        #expect(verdict(.confirm, facts) == .ask(reason: "This action is not in your approved presets. Review it before running.", detail: .none))
+        #expect(verdict(.confirm, facts) == .ask(reason: "该操作不在你批准的预设中。运行前请先审查。", detail: .none))
         #expect(ToolRunner.allowsSessionScope(.local(.webFetch), detail: .none))
         var presets = ApprovalPresets.default
         presets.readTools.insert(.webFetch)

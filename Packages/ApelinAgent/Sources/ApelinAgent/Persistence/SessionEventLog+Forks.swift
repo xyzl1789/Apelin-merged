@@ -146,6 +146,49 @@ extension SessionEventLog {
         /// Version 1 only: one object per UI record of the turn.
         var records: [String]?
         var anchors: [String: HistoryAnchor]
+        /// 过滤后真实 UI 事件的数量，不包括为未结束边界补的 aborted。
+        /// nil 保留旧 manifest 从完整日志修复可见回复的行为。
+        var recordCount: Int? = nil
+
+        private enum CodingKeys: String, CodingKey {
+            case version, sealed, messages, records, anchors, recordCount
+        }
+
+        init(
+            version: Int = 2,
+            sealed: Bool,
+            messages: [String],
+            records: [String]?,
+            anchors: [String: HistoryAnchor],
+            recordCount: Int? = nil,
+        ) {
+            self.version = version
+            self.sealed = sealed
+            self.messages = messages
+            self.records = records
+            self.anchors = anchors
+            self.recordCount = recordCount
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+            sealed = try container.decode(Bool.self, forKey: .sealed)
+            messages = try container.decode([String].self, forKey: .messages)
+            records = try container.decodeIfPresent([String].self, forKey: .records)
+            anchors = try container.decode([String: HistoryAnchor].self, forKey: .anchors)
+            recordCount = try container.decodeIfPresent(Int.self, forKey: .recordCount)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(version, forKey: .version)
+            try container.encode(sealed, forKey: .sealed)
+            try container.encode(messages, forKey: .messages)
+            try container.encodeIfPresent(records, forKey: .records)
+            try container.encode(anchors, forKey: .anchors)
+            try container.encodeIfPresent(recordCount, forKey: .recordCount)
+        }
     }
 
     private static let readableForkVersions = 1 ... 2
@@ -260,7 +303,7 @@ extension SessionEventLog {
             // The turn's records are read back from the log when the turn is
             // forked (`readForkContext`): the log is append-only, so a copy of
             // them here only made every turn write the whole history again.
-            guard records.forkRecords(through: item.id) != nil else { continue }
+            guard let turnRecords = records.forkRecords(through: item.id, completing: false) else { continue }
             var turnAnchors: [String: HistoryAnchor] = [:]
             for previous in located where previous.index < end {
                 turnAnchors[previous.id.uuidString.lowercased()] = previous.anchor
@@ -280,7 +323,7 @@ extension SessionEventLog {
             let manifest = ForkManifest(
                 sealed: seal || end < messages.count,
                 messages: turnMessages,
-                records: nil, anchors: turnAnchors,
+                records: nil, anchors: turnAnchors, recordCount: turnRecords.count,
             )
             try HistoryObjectStore.write(encoder.encode(manifest), to: url)
         }
@@ -380,7 +423,9 @@ extension SessionEventLog {
     }
 
     func readForkContext(_ id: UUID) throws -> ForkContext? {
-        guard let manifest = try readManifest(id) else { return nil }
+        guard let manifest = try readManifest(id) else {
+            return try conversationForkContext(through: id, anchors: readAnchors())
+        }
         let objects = try HistoryObjectStore(directory: forksDirectory.appendingPathComponent("objects"))
         var messages: [Message] = []
         var saved: [String: Data] = [:]
@@ -397,13 +442,17 @@ extension SessionEventLog {
         // persisted-read: a log that cannot be read falls back to the
         // snapshot's own objects below, never to an empty history
         let history = try? historyRecords()
-        if let history, let derived = history.forkRecords(through: id) {
+        if let history, let derived = history.forkRecords(through: id, limit: manifest.recordCount) {
             records = derived
+        } else if manifest.recordCount != nil, history != nil {
+            throw SessionStoreError.corrupt("fork UI boundary no longer matches the session log")
         } else if let names = manifest.records, !names.isEmpty {
             for (name, data) in zip(names, try objects.get(names)) {
                 records.append(try Self.decoder.decode(SessionEventRecord.self, from: data))
                 saved[name] = data
             }
+        } else {
+            throw SessionStoreError.corrupt("fork UI history is missing from both the log and snapshot")
         }
         return ForkContext(messages: messages, records: records, anchors: manifest.anchors, savedObjects: saved)
     }
@@ -426,7 +475,7 @@ extension SessionEventLog {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         guard attributes[.type] as? FileAttributeType == .typeRegular else { throw HistoryObjectStore.Failure.unsafePath }
         let manifest = try Self.decoder.decode(ForkManifest.self, from: Data(contentsOf: url))
-        guard Self.readableForkVersions.contains(manifest.version) else {
+        guard Self.readableForkVersions.contains(manifest.version), manifest.recordCount.map({ $0 > 0 }) ?? true else {
             throw SessionStoreError.corrupt("unsupported fork history version")
         }
         return manifest
@@ -446,7 +495,10 @@ extension SessionEventLog {
         let encoder = forkEncoder()
         var messages: [String] = []
         for message in context.messages { messages.append(try objects.put(encoder.encode(message))) }
-        let manifest = ForkManifest(sealed: true, messages: messages, records: nil, anchors: context.anchors)
+        let manifest = ForkManifest(
+            sealed: true, messages: messages, records: nil, anchors: context.anchors,
+            recordCount: context.records.count,
+        )
         try HistoryObjectStore.write(encoder.encode(manifest), to: forks.appendingPathComponent(id.uuidString.lowercased() + ".json"))
     }
 
@@ -496,6 +548,7 @@ extension SessionEventLog {
                 messages: manifest.messages,
                 records: nil,
                 anchors: manifest.anchors,
+                recordCount: manifest.recordCount,
             )
             manifests.append((name, try encoder.encode(updated)))
         }
@@ -515,7 +568,7 @@ extension Array where Element == SessionEventRecord {
     /// It lives with the log, not the session, because a fork's history is
     /// rebuilt from the append-only log: that is why no manifest has to keep
     /// its own copy of it.
-    func forkRecords(through id: UUID) -> [SessionEventRecord]? {
+    func forkRecords(through id: UUID, limit: Int? = nil, completing: Bool = true) -> [SessionEventRecord]? {
         guard let start = firstIndex(where: {
             switch $0.event {
             case let .userMessage(messageID, _, _, _), let .conversationMessageTaken(messageID, _, _, _):
@@ -559,12 +612,16 @@ extension Array where Element == SessionEventRecord {
                 return true
             }
         }
+        if let limit {
+            guard limit > 0, limit <= kept.count else { return nil }
+            kept = Array(kept.prefix(limit))
+        }
         let lastTurn = kept.lastIndex(where: startsTurn) ?? 0
         let ended = kept[lastTurn...].contains {
             if case .finished = $0.event { return true }
             return false
         }
-        if !ended {
+        if completing, !ended {
             kept.append(SessionEventRecord(seq: 0, date: kept.last?.date ?? Date(), event: .finished(reason: .aborted)))
         }
         return kept.enumerated().map { offset, record in

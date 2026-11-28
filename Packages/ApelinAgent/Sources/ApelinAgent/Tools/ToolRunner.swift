@@ -537,7 +537,7 @@ actor ToolRunner {
              .local(.skillSave), .local(.skillRemove), .local(.feedbackSend), .local(.gitCreateRepository),
              .local(.projectDelete), .local(.packageRelease), .local(.packagePublish), .local(.feedbackEdit), .local(.gitCreateIssue),
              .local(.gitSquash), .local(.gitResetToRemote), .local(.gitBranchDelete),
-             .local(.gitTag), .local(.gitRestore), .local(.gitClean),
+             .local(.gitTag), .local(.gitStash), .local(.gitRestore), .local(.gitClean),
              .local(.gitBranchCreate), .local(.gitBranchCheckout), .local(.gitBranchRename),
              .local(.gitMerge), .local(.gitMergeAbort):
             return false

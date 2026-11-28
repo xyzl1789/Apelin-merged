@@ -178,13 +178,10 @@ extension AgentSession {
     /// message the log cannot find, falls back to the snapshots a fork used
     /// to be written from, and only that fallback needs them written.
     private func forkedContext(through id: UUID) async throws -> (context: ForkContext, fromLog: Bool)? {
-        if let forked = try await log.conversation(through: id, anchors: anchors) {
-            let messages = try await LegacyToolNames.migrate(forked)
-            // persisted-read: a log that cannot be read falls back to the
-            // snapshots below, never to an empty history
-            if let records = (try? await log.historyRecords())?.forkRecords(through: id) {
-                return (ForkContext(messages: messages, records: records, anchors: anchors), true)
-            }
+        if let context = try await log.conversationForkContext(through: id, anchors: anchors) {
+            var migrated = context
+            migrated.messages = try await LegacyToolNames.migrate(context.messages)
+            return (migrated, true)
         }
         var context = try await log.readForkContext(id)
         if context == nil {
