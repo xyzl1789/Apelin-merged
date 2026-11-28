@@ -129,7 +129,7 @@ extension SessionEventLog {
     func snapshotConversation(_ messages: [Message], anchors: [String: HistoryAnchor]? = nil) throws {
         try trimTornLine()
         let boundary: UInt64?
-        if let anchors, ForkContext.hasCompleteToolResults(messages) {
+        if anchors != nil, ForkContext.hasCompleteToolResults(messages) {
             boundary = try reusableBoundary(for: messages) ?? replayBoundary()
         } else {
             boundary = nil

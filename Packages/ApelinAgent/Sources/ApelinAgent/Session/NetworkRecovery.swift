@@ -96,13 +96,8 @@ enum NetworkRecovery {
     ) -> StreamFn {
         { model, context, options in
             let cancellation = options?.cancellation
-            let first: AssistantMessageStream
-            do {
-                first = try await cancellable(cancellation) {
-                    try await inner(model, context, options)
-                }
-            } catch let failure as ProviderFailure {
-                return failedStream(failure, model: model)
+            let first = try await cancellable(cancellation) {
+                try await inner(model, context, options)
             }
             let (stream, continuation) = AssistantMessageStream.makeStream()
             let out = Output(continuation)
@@ -306,20 +301,6 @@ enum NetworkRecovery {
                 continuation.end(final)
             }
         }
-    }
-
-    private static func failedStream(_ failure: ProviderFailure, model: Model) -> AssistantMessageStream {
-        let (stream, continuation) = AssistantMessageStream.makeStream()
-        let out = Output(continuation)
-        let partial = AssistantMessage(content: [], api: model.api, provider: model.provider, model: model.id)
-        var failed = AssistantMessage(
-            content: [], api: model.api, provider: model.provider, model: model.id,
-            stopReason: .error, errorMessage: failure.message,
-        )
-        failed.failure = failure
-        out.push(.start(partial: partial))
-        finish(out, .error(reason: .error, error: failed), failed)
-        return stream
     }
 
     private static func finish(
