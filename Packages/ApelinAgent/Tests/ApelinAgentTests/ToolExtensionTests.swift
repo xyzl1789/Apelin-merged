@@ -384,7 +384,7 @@ struct ToolExtensionTests {
         defer { faux.unregister() }
         func inspectCall(_ reason: String) -> FauxResponseStep {
             .message(fauxAssistantMessage(blocks: [
-                fauxToolCall(name: "inspect", arguments: ["reason": reason]),
+                fauxToolCall(name: "inspect", arguments: ["reason": .string(reason)]),
             ], stopReason: .toolUse))
         }
         faux.setResponses([
