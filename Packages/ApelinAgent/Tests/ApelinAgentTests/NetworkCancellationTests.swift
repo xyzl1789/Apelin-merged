@@ -25,6 +25,14 @@ struct NetworkCancellationTests {
         return predicate()
     }
 
+    /// 取消测试只统计调用次数，不借用网络等待原因的记录器。
+    private final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var calls = 0
+        var count: Int { lock.withLock { calls } }
+        func add() { lock.withLock { calls += 1 } }
+    }
+
     private final class Box<Value: Sendable>: @unchecked Sendable {
         private let lock = NSLock()
         private var stored: Value?
@@ -58,7 +66,7 @@ struct NetworkCancellationTests {
     }
 
     private static func wrapped(_ inner: @escaping StreamFn) -> StreamFn {
-        NetworkRecovery.stream(path: NetworkPath { true }, inner: inner, onWait: {})
+        NetworkRecovery.stream(path: NetworkPath { true }, inner: inner, onWait: { _ in })
     }
 
     @Test(.timeLimit(.minutes(1)), arguments: [false, true])
@@ -178,7 +186,7 @@ struct NetworkCancellationTests {
     @Test(.timeLimit(.minutes(1)))
     func `stopping during TLS retry creation ends the outer stream`() async throws {
         let creation = Creation()
-        let calls = NetworkRecoveryTests.Counter()
+        let calls = Counter()
         let cancellation = CancellationHandle()
         var failure = Self.message(stopReason: .error)
         failure.failure = ProviderFailure(
@@ -196,7 +204,7 @@ struct NetworkCancellationTests {
                 if calls.count == 1 { return first }
                 return await creation.wait()
             },
-            onWait: {},
+            onWait: { _ in },
         )
         let response = try await stream(Self.model, Context(), StreamOptions(cancellation: cancellation))
         let entered = creation.entered
@@ -251,7 +259,7 @@ struct NetworkCancellationTests {
     private struct HangingProvider: APIProvider {
         let api = "apelin-cancel-test-\(UUID().uuidString)"
         let first = AssistantMessageStream.makeStream()
-        let calls = NetworkRecoveryTests.Counter()
+        let calls = Counter()
 
         func stream(model: Model, context _: Context, options _: StreamOptions?) -> AssistantMessageStream {
             calls.add()

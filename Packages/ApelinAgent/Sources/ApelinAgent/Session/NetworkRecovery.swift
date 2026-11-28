@@ -64,11 +64,15 @@ private final class PathMonitor: @unchecked Sendable {
 /// - is asked again here when its TLS handshake failed, at most
 ///   `Patience.secureConnectionRetries` times, after a pause.
 ///
-/// `onWait` hears of each wait first. An attempt that streamed text,
-/// thinking or a call is kwwk's alone to take back (`streamRewind`) and ask
-/// again, and no tool runs twice: kwwk runs a call only once its message
-/// has settled.
+/// `onWait` 在每次等待前报告原因。已经输出文本、思考或工具调用的
+/// 请求仍由 kwwk 通过 `streamRewind` 撤回和重试；工具只在回复确定后执行一次。
 enum NetworkRecovery {
+    /// 失败请求在下次尝试前等待的条件。
+    enum Wait: Equatable, Sendable {
+        case route
+        case handshake
+    }
+
     struct Patience: Sendable {
         /// The longest one failure waits for a route, in milliseconds.
         var pathWait: UInt64 = 30000
@@ -88,7 +92,7 @@ enum NetworkRecovery {
         inner: @escaping StreamFn = { model, context, options in
             try await KWWKAI.stream(model: model, context: context, options: options)
         },
-        onWait: @escaping @Sendable () async -> Void,
+        onWait: @escaping @Sendable (Wait) async -> Void,
     ) -> StreamFn {
         { model, context, options in
             let cancellation = options?.cancellation
@@ -182,7 +186,7 @@ enum NetworkRecovery {
         path: NetworkPath,
         patience: Patience,
         cancellation: CancellationHandle?,
-        onWait: @Sendable () async -> Void,
+        onWait: @Sendable (Wait) async -> Void,
         ask: @escaping @Sendable () async throws -> AssistantMessageStream,
     ) async throws {
         var attempt = first
@@ -213,11 +217,12 @@ enum NetworkRecovery {
                 return
             }
             let asksAgain = isFailedHandshake(failure) && retries < patience.secureConnectionRetries
-            guard asksAgain || (isLostConnection(failure) && !path.isSatisfied()) else {
+            let lacksRoute = !asksAgain && isLostConnection(failure) && !path.isSatisfied()
+            guard asksAgain || lacksRoute else {
                 finish(out, ending, final)
                 return
             }
-            await onWait()
+            await onWait(lacksRoute ? .route : .handshake)
             try checkCancellation(cancellation)
             try await waitForRoute(path, patience: patience, cancellation: cancellation)
             if asksAgain {

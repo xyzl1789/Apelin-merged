@@ -1,4 +1,4 @@
-# 只运行扩展会话与进程回收回归，不打包、不安装、不发布。
+# 只运行扩展生命周期及相关会话恢复、网络取消回归，不打包、不安装、不发布。
 name: 扩展生命周期回归
 
 on:
@@ -23,7 +23,7 @@ jobs:
           - package: ApelinToolHost
             filter: ToolHostClientTests
           - package: ApelinAgent
-            filter: ToolExtensionSessionTests|ToolExtensionTests|SessionJournalTests|ToolExtensionBackendTests
+            filter: ToolExtensionSessionTests|ToolExtensionTests|SessionJournalTests|ToolExtensionBackendTests|ConversationTurnLimitRecoveryTests|NetworkRecoveryTests|NetworkCancellationTests
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
     steps:

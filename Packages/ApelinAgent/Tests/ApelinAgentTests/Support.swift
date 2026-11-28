@@ -1,4 +1,6 @@
 @testable import ApelinAgent
+import struct ApelinProtocol.AgentDelegationRequest
+import struct ApelinProtocol.AgentDelegationResponse
 import struct ApelinProtocol.ApelinError
 import struct ApelinProtocol.GitBranchComparison
 import struct ApelinProtocol.GitCommitSummary

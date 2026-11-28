@@ -320,9 +320,9 @@ public actor AgentSession {
                 inner: SpentAllowance.stream(journal.observingRequests { model, context, options in
                     try await KWWKAI.stream(model: model, context: context, options: options)
                 }),
-            ) {
+            ) { wait in
                 journal.waitingForNetwork()
-                _ = try? await log.append(.reconnecting)
+                _ = try? await log.append(wait == .route ? .waitingForNetwork : .reconnecting)
             },
             toolExecution: .sequential,
             sessionId: configuration.id,
