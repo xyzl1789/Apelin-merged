@@ -100,7 +100,7 @@ actor ToolRunner {
         self.webFetch = webFetch
         self.journal = journal
         self.delegationBrief = delegationBrief
-        toolExtensions = ToolExtensionSessions(backend: backend)
+        toolExtensions = ToolExtensionSessions(backend: backend, journal: journal)
     }
 
     @discardableResult

@@ -167,6 +167,7 @@ public final class ToolHostClient: @unchecked Sendable {
             writer = LineWriter(descriptor: spawned.stdinWrite)
             self.channel = channel
         }
+        lifecycle("process-started", pid: spawned.pid)
         channel.start()
         startThread(named: "ApelinToolHost.stdout") { [self] in readFrames(spawned.stdoutRead) }
         startThread(named: "ApelinToolHost.stderr") { [self] in readLog(spawned.stderrRead) }
@@ -243,6 +244,7 @@ public final class ToolHostClient: @unchecked Sendable {
             return (alive, concurrency, stopReason)
         }
         guard alive else { throw reason ?? ToolCallFailure(.extensionCrashed, "the extension ended after hello") }
+        lifecycle("handshake-completed", pid: spawned.pid, detail: "protocol=\(reply.protocolVersion) tools=\(tools.count)")
         return ToolExtensionHello(
             protocolVersion: reply.protocolVersion,
             peer: peer,
@@ -660,6 +662,12 @@ public final class ToolHostClient: @unchecked Sendable {
 
     // MARK: - Stopping
 
+    /// 宿主事件不含工具参数；外层附加扩展标识、版本及 tool_session。
+    private func lifecycle(_ event: String, pid: Int32, detail: String = "") {
+        let milliseconds = Int64(Date().timeIntervalSince1970 * 1000)
+        log("扩展生命周期 event=\(event) pid=\(pid) at_ms=\(milliseconds) \(detail)")
+    }
+
     /// Stops the extension: closes its stdin, which a well-behaved one
     /// answers by exiting, and kills it if it is still there a second after
     /// `cancelGrace` (what a server gives calls in flight to end). Calls in
@@ -700,6 +708,9 @@ public final class ToolHostClient: @unchecked Sendable {
         let pid = process?.pid
         let alreadyExited = exit != nil
         lock.unlock()
+        if wasRunning, let pid, !alreadyExited {
+            lifecycle("stop-requested", pid: pid, detail: "reason=\(winner.code.rawValue) gentle=\(gently)")
+        }
         failEverything(with: winner)
         closeStdin()
         guard wasRunning, let pid, !alreadyExited else { return }
@@ -758,12 +769,24 @@ public final class ToolHostClient: @unchecked Sendable {
             }
             usleep(10000)
         }
+        var reapError: Int32 = 0
         if !reaped {
             kill(-process.pid, SIGKILL)
-            while waitpid(process.pid, &status, 0) < 0, errno == EINTR {}
+            var result: pid_t
+            repeat {
+                result = waitpid(process.pid, &status, 0)
+            } while result < 0 && errno == EINTR
+            reaped = result == process.pid
+            if !reaped { reapError = errno }
         }
         let ended = ExtensionExit(waitStatus: status)
         _ = stderrFinished.wait(timeout: .now() + 1)
+        // 必须在 waitpid 确认回收后、发布 exit 或恢复等待者前记录；失败不冒充成功。
+        if reaped {
+            lifecycle("process-reaped", pid: process.pid, detail: "wait_status=\(status)")
+        } else {
+            lifecycle("reap-unconfirmed", pid: process.pid, detail: "errno=\(reapError)")
+        }
 
         lock.lock()
         exit = ended

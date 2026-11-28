@@ -114,9 +114,10 @@ class PackageContractTests(unittest.TestCase):
             (root / (target + '-verification.json')).write_text(json.dumps(report))
         return root
 
-    def test_package_author_credit_changes_without_changing_maintainer(self):
+    def test_package_author_and_maintainer_credit(self):
         control = (ROOT / 'Extensions/AgentTools/ReverseAnalysis/Packaging/control.in').read_text()
-        self.assertIn('Maintainer: xyzl1789\n', control)
+        self.assertIn('Maintainer: xyzl\n', control)
+        self.assertNotIn('Maintainer: xyzl1789', control)
         self.assertIn('Author: xyzl 和上游贡献者\n', control)
         self.assertNotIn('Author: xyzl1789', control)
 

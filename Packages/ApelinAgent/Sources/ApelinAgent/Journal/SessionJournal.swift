@@ -32,6 +32,8 @@ public final class SessionJournal: @unchecked Sendable {
         /// How the session came up: the host's start, this open, and every
         /// step that took long enough for the app to notice.
         case startup = "Startup"
+        /// 扩展发现、会话打开及关闭确认；实际进程回收由宿主日志证明。
+        case toolExtension = "Extension"
     }
 
     /// What started a compaction.
@@ -178,6 +180,28 @@ public final class SessionJournal: @unchecked Sendable {
         perform { journal in
             journal.interruptCalls(reason: "the conversation closed while it ran", at: now)
             journal.write(.session, "Closed session=\(journal.sessionID)", at: now)
+        }
+    }
+
+    // MARK: - 扩展生命周期
+
+    /// 只记录清单元数据，不记录工具参数或分析内容。
+    func toolExtensionOffer(_ offer: ToolExtensionOffer, reason: String) {
+        toolExtensionLifecycle("发现扩展 event=manifest-discovered reason=\(reason) count=\(offer.extensions.count)")
+        for item in offer.extensions {
+            toolExtensionLifecycle("可用扩展 event=manifest-offered extension=\(item.id) version=\(item.version) tools=\(item.tools.count)")
+        }
+        for diagnostic in offer.leftOut {
+            toolExtensionLifecycle("未提供扩展 event=manifest-rejected detail=\(diagnostic)", level: .warning)
+        }
+    }
+
+    /// 保留调用时刻到毫秒，沿用日志队列、单行转义、脱敏及长度限制。
+    func toolExtensionLifecycle(_ message: String, level: DiagnosticLevel = .info) {
+        let now = Date()
+        perform { journal in
+            let detail = journal.redaction.text(message, limit: JournalRedaction.errorBytes)
+            journal.write(.toolExtension, "session=\(journal.sessionID) at=\(journal.clock.string(from: now)) \(detail)", level: level, at: now)
         }
     }
 

@@ -801,12 +801,12 @@ actor MockBackend: AgentHostBackend {
     /// 控制并发测试的打开、调用与关闭时序；默认保持即时返回。
     var toolOpening: (@Sendable (String) async throws -> Void)?
     var toolCalling: (@Sendable (ToolExtensionCallRequest) async throws -> ToolExtensionCallResponse)?
-    var toolClosing: (@Sendable (String) async -> Void)?
+    var toolClosing: (@Sendable (String) async throws -> Void)?
 
     func setToolSessionHooks(
         opening: (@Sendable (String) async throws -> Void)? = nil,
         calling: (@Sendable (ToolExtensionCallRequest) async throws -> ToolExtensionCallResponse)? = nil,
-        closing: (@Sendable (String) async -> Void)? = nil,
+        closing: (@Sendable (String) async throws -> Void)? = nil,
     ) {
         toolOpening = opening
         toolCalling = calling
@@ -829,9 +829,9 @@ actor MockBackend: AgentHostBackend {
         return toolAnswer(request)
     }
 
-    func closeToolExtension(sessionID: String) async {
+    func closeToolExtension(sessionID: String) async throws {
         toolSessionsClosed.append(sessionID)
-        if let toolClosing { await toolClosing(sessionID) }
+        if let toolClosing { try await toolClosing(sessionID) }
     }
 }
 

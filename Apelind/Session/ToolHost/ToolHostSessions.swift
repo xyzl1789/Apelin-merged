@@ -77,12 +77,17 @@ actor ToolHostSessions {
             "DISABLE_TWEAKS": "1",
         ]
         let identity: ToolProcessIdentity? = geteuid() == 0 ? .mobile : nil
+        // 启动前就分配关联标识，使握手失败及真实回收也能与对话日志对应。
+        let id = UUID().uuidString.lowercased()
+        let version = validated.manifest.version
         let client = ToolHostClient(
             validated: validated,
             environment: environment,
             host: ToolPeer(name: "apelin", version: Self.hostVersion),
             runAs: identity,
-            logHandler: { line in NSLog("apelind-session: agent tool %@: %@", request.id, line) },
+            logHandler: { line in
+                NSLog("apelind-session: agent tool %@ version=%@ tool_session=%@: %@", request.id, version, id, line)
+            },
         )
         do {
             try await client.start()
@@ -90,7 +95,6 @@ actor ToolHostSessions {
             _ = await client.terminate()
             throw ApelinError(.unavailable, "the extension did not start: \(error)")
         }
-        let id = UUID().uuidString.lowercased()
         sessions[id] = Session(
             extensionID: request.id,
             owner: caller,

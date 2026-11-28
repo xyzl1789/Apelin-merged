@@ -34,6 +34,18 @@ struct ToolExtensionSessionTests {
                       extensionVersion: version, timeoutSeconds: 30, required: [])
     }
 
+    private static func journal(in home: TemporaryHome) -> (SessionJournal, DiagnosticJournal) {
+        let file = DiagnosticJournal(folder: home.projectURL, name: "extension-lifecycle")
+        return (SessionJournal(sessionID: "log-session", file: file,
+                               redaction: JournalRedaction(home: home.projectURL.path, installRoot: nil)), file)
+    }
+
+    private static func events(in text: String) -> [String] {
+        text.split(separator: "\n").compactMap { line in
+            line.split(separator: " ").first(where: { $0.hasPrefix("event=") }).map { String($0.dropFirst(6)) }
+        }
+    }
+
     @Test
     func `同版本并发调用共享打开任务及会话`() async throws {
         let backend = MockBackend()
@@ -87,6 +99,9 @@ struct ToolExtensionSessionTests {
 
     @Test
     func `关闭期间迟到的打开结果不转发调用且只回收一次`() async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let (journal, file) = Self.journal(in: home)
         let backend = MockBackend()
         let opening = ExtensionSessionGate(), releaseOpen = ExtensionSessionGate()
         let closing = ExtensionSessionGate(), releaseClose = ExtensionSessionGate()
@@ -101,7 +116,7 @@ struct ToolExtensionSessionTests {
                 await releaseClose.wait()
             }
         })
-        let sessions = ToolExtensionSessions(backend: backend)
+        let sessions = ToolExtensionSessions(backend: backend, journal: journal)
         _ = try await sessions.call(Self.tool(id: "a.fixture"), arguments: [:])
         let late = Task { try await sessions.call(Self.tool(id: "b.fixture"), arguments: [:]) }
         await opening.wait()
@@ -118,6 +133,9 @@ struct ToolExtensionSessionTests {
             try await sessions.call(Self.tool(), arguments: [:])
         }
         #expect(await backend.toolSessionsOpened.count == 2)
+        journal.drain()
+        let lateLines = file.contents().split(separator: "\n").filter { $0.contains("extension=b.fixture ") }.joined(separator: "\n")
+        #expect(Self.events(in: lateLines) == ["open-queued", "open-requested", "opened", "retire-requested", "close-requested", "close-acknowledged"])
     }
 
     @Test
@@ -277,6 +295,105 @@ struct ToolExtensionSessionTests {
         #expect(await backend.toolSessionsOpened.count == 2)
         #expect(await backend.toolCalls.map(\.sessionID) == ["tool-session-1", "tool-session-2", "tool-session-2"])
         await sessions.closeAll()
+    }
+
+    @Test
+    func `关闭日志只在实际应答后确认且与打开共用关联标识`() async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let (journal, file) = Self.journal(in: home)
+        let backend = MockBackend()
+        let closing = ExtensionSessionGate(), release = ExtensionSessionGate()
+        await backend.setToolSessionHooks(closing: { _ in
+            await closing.release()
+            await release.wait()
+        })
+        let sessions = ToolExtensionSessions(backend: backend, journal: journal)
+        _ = try await sessions.call(Self.tool(), arguments: [:])
+        let refreshed = Task { await sessions.refresh(keeping: [Self.tool("1.0.1")]) }
+        await closing.wait()
+        journal.drain()
+        let pending = file.contents()
+        #expect(pending.contains("event=close-requested"))
+        #expect(pending.contains("reason=manifest-changed"))
+        #expect(!pending.contains("event=close-acknowledged"), "关闭仍阻塞时不能记录成功")
+        #expect(!pending.contains("process-reaped"), "对话日志不冒充宿主的进程回收证据")
+        await release.release()
+        await refreshed.value
+        await sessions.closeAll()
+        journal.drain()
+        let text = file.contents()
+        #expect(Self.events(in: text) == ["open-queued", "open-requested", "opened", "retire-requested", "close-requested", "close-acknowledged"])
+        let lines = text.split(separator: "\n").filter { $0.contains("event=") }
+        let attempts = lines.compactMap { $0.split(separator: " ").first(where: { $0.hasPrefix("opening=") }).map(String.init) }
+        #expect(attempts.count == 6 && Set(attempts).count == 1)
+        #expect(lines.allSatisfy { $0.contains("session=log-session at=") && $0.contains("version=1.0.0 ") })
+        #expect(await backend.toolSessionsOpened.count == 1, "刷新本身不能打开新版")
+        #expect(await backend.toolCalls.count == 1)
+    }
+
+    @Test
+    func `打开及关闭失败写警告但不伪造成功`() async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let (journal, file) = Self.journal(in: home)
+        let backend = MockBackend()
+        let secret = "ghp_" + String(repeating: "a1", count: 18)
+        await backend.setToolSessionHooks(opening: { id in
+            if id == "tool-session-1" { throw ApelinError(.unavailable, "打开失败 token=\(secret)") }
+        }, closing: { _ in
+            throw ApelinError(.unavailable, "关闭失败 token=\(secret)")
+        })
+        let sessions = ToolExtensionSessions(backend: backend, journal: journal)
+        await #expect(throws: ApelinError.self) { try await sessions.call(Self.tool(), arguments: [:]) }
+        _ = try await sessions.call(Self.tool(), arguments: [:])
+        await sessions.closeAll()
+        journal.drain()
+        let text = file.contents()
+        #expect(text.contains("event=open-failed") && text.contains("event=close-failed"))
+        #expect(text.contains("|warning|"))
+        #expect(!text.contains("event=close-acknowledged"))
+        #expect(!text.contains(secret), "失败信息也要统一脱敏")
+        #expect(Self.events(in: text).filter { $0 == "opened" }.count == 1)
+        #expect(await backend.toolSessionsClosed == ["tool-session-2"])
+    }
+
+    @Test
+    func `清单刷新与重复关闭并发时共用原关闭任务`() async throws {
+        let backend = MockBackend()
+        let oldClosing = ExtensionSessionGate(), releaseOld = ExtensionSessionGate()
+        let stableClosing = ExtensionSessionGate(), releaseStable = ExtensionSessionGate()
+        await backend.setToolSessionHooks(closing: { id in
+            if id == "tool-session-1" {
+                await oldClosing.release()
+                await releaseOld.wait()
+            } else {
+                await stableClosing.release()
+                await releaseStable.wait()
+            }
+        })
+        let sessions = ToolExtensionSessions(backend: backend)
+        let old = Self.tool(id: "b.changed"), stable = Self.tool(id: "a.stable")
+        let upgraded = Self.tool("1.0.1", id: "b.changed")
+        _ = try await sessions.call(old, arguments: [:])
+        _ = try await sessions.call(stable, arguments: [:])
+        let refreshed = Task { await sessions.refresh(keeping: [upgraded, stable]) }
+        await oldClosing.wait()
+        let first = Task { await sessions.closeAll() }
+        // a.stable 的关闭证明 closeAll 已封闭入口，而刷新仍在等旧版关闭。
+        await stableClosing.wait()
+        let second = Task { await sessions.closeAll() }
+        await #expect(throws: ConversationClosingError.self) {
+            try await sessions.call(upgraded, arguments: [:])
+        }
+        await releaseStable.release()
+        await releaseOld.release()
+        await refreshed.value
+        await first.value
+        await second.value
+        #expect(await backend.toolSessionsClosed == ["tool-session-1", "tool-session-2"])
+        #expect(await backend.toolSessionsOpened == ["b.changed", "a.stable"])
+        #expect(await backend.toolCalls.count == 2)
     }
 
     @Test

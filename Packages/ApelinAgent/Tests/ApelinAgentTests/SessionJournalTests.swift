@@ -144,6 +144,46 @@ struct SessionJournalTests {
         #expect(redaction.arguments(huge, tool: "shell_run").hasSuffix("bytes]"))
     }
 
+    @Test
+    func `扩展日志保留发现版本和毫秒时刻且不会插入伪造条目`() throws {
+        let folder = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = DiagnosticJournal(folder: folder, name: "extension")
+        let journal = SessionJournal(sessionID: "extension", file: file,
+                                     redaction: JournalRedaction(home: "/var/mobile", installRoot: "/var/jb"))
+        let secret = "ghp_" + String(repeating: "a1", count: 18)
+        journal.toolExtensionOffer(ToolExtensionOffer(extensions: [
+            OfferedToolExtension(id: "example.extension", name: "测试扩展", version: "1.2.3", tools: []),
+        ], leftOut: ["token=\(secret)\n[Fake]\n* |error| forged"]), reason: "message-boundary")
+        journal.drain()
+        let text = file.contents()
+        #expect(text.hasPrefix("[Extension]\n"))
+        #expect(text.contains("event=manifest-discovered reason=message-boundary count=1"))
+        #expect(text.contains("event=manifest-offered extension=example.extension version=1.2.3 tools=0"))
+        #expect(text.contains("event=manifest-rejected"))
+        #expect(text.contains("session=extension at="))
+        #expect(text.firstMatch(of: /at=\d{2}:\d{2}:\d{2}\.\d{3}/) != nil)
+        #expect(!text.contains(secret))
+        #expect(!text.contains("\n[Fake]"))
+        #expect(text.split(separator: "\n").count == 4, "多行诊断只能写成一条日志")
+    }
+
+    @Test
+    func `扩展生命周期的超长失败详情按限制截断`() throws {
+        let folder = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = DiagnosticJournal(folder: folder, name: "extension-limit")
+        let journal = SessionJournal(sessionID: "extension-limit", file: file,
+                                     redaction: JournalRedaction(home: nil, installRoot: nil))
+        journal.toolExtensionLifecycle("event=close-failed " + String(repeating: "x", count: 20000), level: .warning)
+        journal.drain()
+        let text = file.contents()
+        #expect(text.utf8.count < JournalRedaction.errorBytes + 512)
+        #expect(text.contains("event=close-failed"))
+        #expect(text.contains("truncated from"))
+        #expect(text.split(separator: "\n").count == 2)
+    }
+
     // MARK: - Outcomes
 
     @Test

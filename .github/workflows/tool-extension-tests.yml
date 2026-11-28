@@ -1,0 +1,71 @@
+# 只运行扩展会话与进程回收回归，不打包、不安装、不发布。
+name: 扩展生命周期回归
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tool-extension-tests-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: ${{ matrix.package }} 定向回归
+    runs-on: xcode-27
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: ApelinToolHost
+            filter: ToolHostClientTests
+          - package: ApelinAgent
+            filter: ToolExtensionSessionTests|ToolExtensionTests|SessionJournalTests|ToolExtensionBackendTests
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: 核对 Swift 测试环境
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun --sdk macosx swift --version
+
+      - name: 运行定向 Swift 回归
+        shell: bash
+        env:
+          PACKAGE: ${{ matrix.package }}
+          TEST_FILTER: ${{ matrix.filter }}
+        run: |
+          set -euo pipefail
+          : "${RUNNER_TEMP:?}" "${PACKAGE:?}" "${TEST_FILTER:?}"
+          export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+          unset IPHONEOS_DEPLOYMENT_TARGET
+          set +e
+          xcrun --sdk macosx swift test \
+            --package-path "Packages/${PACKAGE:?}" \
+            --scratch-path "${RUNNER_TEMP:?}/tool-extension-tests-${PACKAGE:?}" \
+            --filter "${TEST_FILTER:?}" 2>&1 | tee "${RUNNER_TEMP:?}/tool-extension-tests-${PACKAGE:?}.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error title=扩展生命周期回归失败::${PACKAGE} 的 Swift 回归失败（退出码 ${status}），详见本步日志及测试日志附件。"
+            exit "$status"
+          fi
+
+      - name: 保留测试日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tool-extension-tests-${{ matrix.package }}-${{ github.sha }}
+          path: ${{ runner.temp }}/tool-extension-tests-${{ matrix.package }}.log
+          retention-days: 14
+          if-no-files-found: warn

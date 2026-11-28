@@ -5,7 +5,7 @@ Architecture: @ARCHITECTURE@
 Description: 独立原生 Mach-O 分析与 Ghidra C 伪代码工具
  提供函数列表、控制流图、双向静态引用及函数反编译，运行于独立进程。
  包含完整对应源码、固定依赖、构建脚本和许可文本；不向主应用链接分析引擎。
-Maintainer: xyzl1789
+Maintainer: xyzl
 Author: xyzl 和上游贡献者
 Section: Development
 Priority: optional

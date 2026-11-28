@@ -292,6 +292,7 @@ public actor AgentSession {
             installRoot: configuration.installRoot,
             policy: configuration.toolExtensionPolicy,
         )
+        journal.toolExtensionOffer(toolExtensions, reason: "session-open")
         toolExtensions.logLeftOut()
         journal.startup("tool extensions and MCP: \(Self.milliseconds(since: connecting))")
         let skills = SkillCatalog.load(userDirectory: configuration.dataRoot.skills)
@@ -575,6 +576,7 @@ public actor AgentSession {
             policy: configuration.toolExtensionPolicy,
         )
         guard installed != toolExtensions else { return }
+        journal.toolExtensionOffer(installed, reason: "message-boundary")
         installed.logLeftOut()
         if installed.extensions != toolExtensions.extensions {
             await runner.refreshToolExtensions(keeping: installed.tools)

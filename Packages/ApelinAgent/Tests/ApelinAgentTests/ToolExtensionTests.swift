@@ -365,7 +365,7 @@ struct ToolExtensionTests {
     }
 
     @Test(.timeLimit(.minutes(1)))
-    func `打开中的 AgentSession 在扩展清单升级后先回收旧服务再调用新版`() async throws {
+    func `打开中的 AgentSession 不调用新版也在消息边界回收旧服务`() async throws {
         let home = try TemporaryHome()
         defer { home.remove() }
         let installed = try InstalledToolExtensions(in: home)
@@ -390,13 +390,16 @@ struct ToolExtensionTests {
         faux.setResponses([
             inspectCall("before upgrade"),
             .message(fauxAssistantMessage("First version completed.")),
+            .message(fauxAssistantMessage("本轮只解释，不调用扩展。")),
             inspectCall("after upgrade"),
             .message(fauxAssistantMessage("Second version completed.")),
         ])
 
         let backend = MockBackend()
+        let sessionID = UUID().uuidString.lowercased()
         let session = try await AgentSession(
             configuration: AgentSessionConfiguration(
+                id: sessionID,
                 project: home.project,
                 provider: .registered(faux.getModel()),
                 approval: ApprovalPolicy(mode: .relaxed),
@@ -415,14 +418,27 @@ struct ToolExtensionTests {
         #expect(await backend.toolCalls.map(\.sessionID) == ["tool-session-1"])
 
         try installed.install(id, manifest: try manifest("1.0.1"))
-        try await session.prompt("升级扩展后再次调用。")
+        try await session.prompt("扩展已升级，本轮只解释，不调用工具。")
+        await session.waitForIdle()
+        #expect(await backend.toolSessionsClosed == ["tool-session-1"], "没有新版工具调用也必须先回收旧服务")
+        #expect(await backend.toolSessionsOpened == [id], "发现新版不能提前打开它")
+        #expect(await backend.toolCalls.map(\.sessionID) == ["tool-session-1"])
+
+        try await session.prompt("现在调用新版扩展。")
         await session.waitForIdle()
 
-        #expect(await backend.toolSessionsClosed == ["tool-session-1"], "新一轮工具调用前先退出旧服务")
+        #expect(await backend.toolSessionsClosed == ["tool-session-1"], "旧服务不重复关闭")
         #expect(await backend.toolSessionsOpened == [id, id])
         #expect(await backend.toolCalls.map(\.sessionID) == ["tool-session-1", "tool-session-2"])
         await session.close()
         #expect(await backend.toolSessionsClosed == ["tool-session-1", "tool-session-2"])
+        let logURL = home.dataRoot.agentJournals.appendingPathComponent(sessionID + ".log")
+        let lines = try String(contentsOf: logURL, encoding: .utf8).split(separator: "\n")
+        let offered = try #require(lines.firstIndex { $0.contains("event=manifest-offered") && $0.contains("version=1.0.1 ") })
+        let retired = try #require(lines.firstIndex { $0.contains("event=retire-requested") && $0.contains("version=1.0.0 ") })
+        let acknowledged = try #require(lines.firstIndex { $0.contains("event=close-acknowledged") && $0.contains("tool_session=tool-session-1") })
+        let reopened = try #require(lines.firstIndex { $0.contains("event=open-requested") && $0.contains("version=1.0.1 ") })
+        #expect(offered < retired && retired < acknowledged && acknowledged < reopened)
     }
 
     @Test

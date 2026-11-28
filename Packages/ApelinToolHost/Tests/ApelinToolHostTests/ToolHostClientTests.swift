@@ -35,6 +35,33 @@ final class ToolHostClientTests: XCTestCase {
         XCTAssertEqual(exit, .exited(0), "closing stdin lets the extension exit cleanly")
     }
 
+    func testLifecycleLogsReapingBeforeTerminateReturns() async throws {
+        let log = LogCollector()
+        let client = makeClient(log: log)
+        try await client.start()
+        let exit = await client.terminate()
+        XCTAssertEqual(exit, .exited(0))
+        let lines = log.lines.filter { $0.hasPrefix("[host] 扩展生命周期 ") }
+        func field(_ name: String, in line: String) -> String? {
+            line.split(separator: " ").first(where: { $0.hasPrefix(name + "=") }).map { String($0.dropFirst(name.count + 1)) }
+        }
+        XCTAssertEqual(lines.compactMap { field("event", in: $0) },
+                       ["process-started", "handshake-completed", "stop-requested", "process-reaped"])
+        let pids = lines.compactMap { field("pid", in: $0).flatMap(Int32.init) }
+        XCTAssertEqual(pids.count, 4)
+        XCTAssertEqual(Set(pids).count, 1)
+        XCTAssertTrue(lines.allSatisfy { field("at_ms", in: $0).flatMap(Int64.init) != nil })
+        let pid = try XCTUnwrap(pids.first)
+        var status: Int32 = 0
+        let result = waitpid(pid, &status, WNOHANG)
+        let waitError = errno
+        XCTAssertEqual(result, -1)
+        XCTAssertEqual(waitError, ECHILD, "返回时已经回收，不能只证明发了关闭请求")
+        await client.terminate()
+        XCTAssertEqual(log.lines.filter { $0.contains("event=process-reaped ") }.count, 1)
+        XCTAssertEqual(log.lines.filter { $0.contains("event=stop-requested ") }.count, 1)
+    }
+
     func testToolFailureAndInvalidArgumentsLeaveTheExtensionRunning() async throws {
         let client = makeClient()
         try await client.start()
@@ -90,6 +117,8 @@ final class ToolHostClientTests: XCTestCase {
         let exit = await client.waitForExit()
         XCTAssertEqual(exit, .signalled(SIGABRT))
         XCTAssertTrue(log.lines.contains("about to crash"))
+        XCTAssertEqual(log.lines.filter { $0.contains("event=process-reaped ") }.count, 1)
+        XCTAssertFalse(log.lines.contains { $0.contains("event=reap-unconfirmed ") })
     }
 
     func testTimeoutCancelsAndKeepsTheExtension() async throws {
