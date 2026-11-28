@@ -41,22 +41,19 @@ enum QuotaFormatting {
     }
 
     static func summaryText(for snapshot: AgentQuotaSnapshot) -> String? {
-        switch snapshot.status {
-        case .circuitBroken, .cooldown, .unsupported, .error:
-            return String(localized: "无法查询用量", table: "Quota")
-        case .available, .exhausted:
-            break
-        }
+        let unavailable = ![AgentQuotaStatus.available, .exhausted].contains(snapshot.status)
+        let suffix = unavailable ? " · 上次数据" : ""
         if snapshot.kind == .balance, let balance = snapshot.balances.first(where: \.isAvailable) ?? snapshot.balances.first {
-            return balanceAmountText(balance, amount: balance.remaining ?? balance.total)
+            return balanceAmountText(balance, amount: balance.remaining ?? balance.total) + suffix
         }
         let windows = snapshot.windows.prefix(2).map {
             "\(shortWindowLabel($0)) \(percentText($0.usedPercent))"
         }
-        if !windows.isEmpty { return windows.joined(separator: " · ") }
+        if !windows.isEmpty { return windows.joined(separator: " · ") + suffix }
         if let balance = snapshot.balances.first(where: \.isAvailable) ?? snapshot.balances.first {
-            return balanceAmountText(balance, amount: balance.remaining ?? balance.total)
+            return balanceAmountText(balance, amount: balance.remaining ?? balance.total) + suffix
         }
+        if unavailable { return String(localized: "无法查询用量", table: "Quota") }
         return snapshot.status == .exhausted ? String(localized: "额度已用尽", table: "Quota") : nil
     }
 

@@ -1,11 +1,10 @@
 import ApelinProtocol
 import UIKit
 
-/// 输入框上下文圆环旁的余额徽章：一个柔和的圆角胶囊底，中心只显示余额
-/// 数字本身（不带币种等任何后缀），数字颜色随状态（过期橙色、正常次要
-/// 色）。不再画外框弧线——椭圆环读作一只眼睛，不好看。胶囊常显：当前
-/// 连接不支持查询或还没查到时显示灰色的「--」，本来支持但本次失败时
-/// 显示上次缓存或「--」；只有不在线布局时才隐藏。
+/// 输入框上下文圆环旁的余额徽章：保留柔和的圆角胶囊底，货币显示数字，
+/// tokens紧凑显示，其他原始额度及窗口百分比保留单位标记，过期数字用橙色。
+/// 当前连接不支持查询或还没查到时显示灰色「--」；刷新失败保留缓存，
+/// 只有不在线布局时才隐藏。
 final class ProviderBalanceButton: UIControl {
     /// 与上下文圆环同高，宽度按金额撑开。
     static let height: CGFloat = 24
@@ -92,11 +91,12 @@ final class ProviderBalanceButton: UIControl {
         accessibilityValue = Self.spoken(balance)
     }
 
-    /// 徽章只显示数字本身：不带币种、不带单位、不带百分号。金额类照原样，
-    /// token 类压成短单位（如 80.9M），完整数字留给详情页。
+    /// 货币保留数字、tokens压缩显示；百分比与其他原始单位保留标记，不能冒充金额。
     static func amountText(_ balance: ProviderBalance) -> String {
-        guard balance.currency == "tokens" else { return balance.displayedAmount }
-        return shortTokens(balance.amount)
+        if balance.currency == "tokens" { return shortTokens(balance.amount) }
+        if balance.currency == "%" { return balance.displayedAmount + "%" }
+        if balance.isMonetary { return balance.displayedAmount }
+        return balance.displayedAmount + " " + balance.currency
     }
 
     /// 把 token 数压成紧凑显示：1034 → 1.0K，80852458 → 80.9M，

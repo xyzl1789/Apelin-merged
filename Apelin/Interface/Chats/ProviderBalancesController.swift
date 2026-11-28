@@ -293,7 +293,8 @@ final class ProviderBalanceCardCell: UITableViewCell {
     }
 
     func configure(with balance: ProviderBalance) {
-        providerLabel.text = balance.provider.displayName
+        let accountSuffix = AgentAccountID.number(of: balance.accountID).map { " · 账号\($0)" } ?? ""
+        providerLabel.text = balance.provider.displayName + accountSuffix
         amountLabel.text = balance.displayedAmount
         amountLabel.textColor = balance.stale ? .systemOrange : .label
         currencyLabel.text = balance.currency
@@ -306,15 +307,17 @@ final class ProviderBalanceCardCell: UITableViewCell {
         }
         if balance.stale {
             // 查不到时这一行写原因，站点照旧跟在后面。
-            timeLabel.text = balance.problem ?? String(localized: "Balance unavailable")
+            timeLabel.text = "\(balance.problem ?? String(localized: "Balance unavailable")) · 更新于\(ProviderBalancesController.relativeTime(balance.updatedAt))"
+            timeLabel.numberOfLines = 0
             timeLabel.textColor = .systemOrange
         } else {
+            timeLabel.numberOfLines = 1
             timeLabel.text = String(
                 localized: "Updated \(ProviderBalancesController.relativeTime(balance.updatedAt))",
             )
             timeLabel.textColor = .tertiaryLabel
         }
-        accessibilityLabel = "\(balance.provider.displayName)，\(balance.displayedAmount) \(balance.currency)"
+        accessibilityLabel = "\(providerLabel.text ?? balance.provider.displayName)，\(balance.displayedAmount) \(balance.currency)"
         let ways = balance.earnWays.isEmpty ? "" : "，积分获取方式：\(balance.earnWays.joined(separator: "、"))"
         accessibilityValue = "\(timeLabel.text ?? "")，\(balance.label)\(ways)"
     }

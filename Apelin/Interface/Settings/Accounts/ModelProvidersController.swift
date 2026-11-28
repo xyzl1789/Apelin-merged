@@ -120,6 +120,15 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             return String(localized: "Credentials stay in this device’s keychain. Currently using kwwk \(kwwk).")
         }
         dataSource.update(sections)
+        quotas = ProviderBalanceStore.shared.quotas
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(quotasChanged), name: .providerBalancesChanged, object: nil
+        )
+    }
+
+    @objc private func quotasChanged() {
+        quotas = ProviderBalanceStore.shared.quotas
+        if loaded { regroup() }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -135,6 +144,8 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
                 let accounts = try await ApelinService.app.agentAccountsWithKnownModels()
                 guard !Task.isCancelled, let self else { return }
                 self.accounts = accounts
+                ProviderBalanceStore.shared.reconcile(accounts: accounts)
+                quotas = ProviderBalanceStore.shared.quotas
                 failure = nil
             } catch {
                 guard !Task.isCancelled, let self else { return }
@@ -172,14 +183,8 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
                 refreshControl?.endRefreshing()
             }
             do {
-                let response = try await ApelinService.app.agentProviderQuota(
-                    provider: nil,
-                    mode: manual ? .manualRefresh : .attentionGated,
-                    foreground: true,
-                    force: manual,
-                )
+                quotas = try await ProviderBalanceStore.shared.loadQuotas(manual: manual)
                 guard !Task.isCancelled else { return }
-                quotas = response.quotas
                 regroup()
             } catch {
                 guard !Task.isCancelled, manual else { return }
@@ -436,6 +441,9 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     private func signIn(_ account: AgentAccount) {
         let page = ProviderLoginController(account: account)
         page.onFinish = { [weak self] in self?.load() }
+        page.onSuccessfulSignIn = {
+            ProviderBalanceStore.shared.configurationChanged()
+        }
         // a sheet of its own over Settings, kept up until it is closed: a
         // stray swipe would end a sign-in waiting on Safari
         page.isModalInPresentation = true
@@ -461,6 +469,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
         Task { [weak self] in
             do {
                 try await ApelinService.app.agentSignOut(provider: provider, accountID: accountID)
+                ProviderBalanceStore.shared.invalidate(provider: provider, accountID: accountID)
                 // 只有最后一个账号退出才清空服务商级模型和备注。
                 if self?.accounts.contains(where: { $0.provider == provider && $0.signedIn && $0.storeID != accountID }) == false {
                     EnabledModels.remove(for: provider)

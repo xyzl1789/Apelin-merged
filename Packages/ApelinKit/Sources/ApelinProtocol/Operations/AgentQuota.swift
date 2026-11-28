@@ -227,6 +227,103 @@ public struct AgentQuotaSnapshot: Codable, Sendable, Equatable {
     }
 }
 
+/// 客户端保存的账号/额度池绑定与最近有效快照；不含凭据或完整账号配置。
+/// 绑定必须同时匹配服务商、存储 ID 和额度池，不能按站点或显示名称借用数字。
+public struct AgentQuotaDisplayRecord: Codable, Sendable, Equatable {
+    public var accountID: String
+    public var provider: AgentProvider
+    public var poolID: String
+    public var snapshot: AgentQuotaSnapshot
+
+    public init(accountID: String, snapshot: AgentQuotaSnapshot) {
+        self.accountID = accountID
+        provider = snapshot.provider
+        poolID = snapshot.poolID
+        self.snapshot = snapshot
+    }
+
+    public func matches(_ account: AgentAccount) -> Bool {
+        account.signedIn && provider == account.provider
+            && accountID == (account.storeID ?? account.provider.rawValue)
+            && poolID == account.poolID
+    }
+
+    /// 失败、空响应、较旧快照都不能抹掉数字，也不能冒充一次成功更新。
+    public mutating func merge(_ next: AgentQuotaSnapshot) {
+        guard next.provider == provider, next.poolID == poolID else { return }
+        if let oldDate = snapshot.updatedAt, let nextDate = next.updatedAt, nextDate < oldDate { return }
+        var merged = next
+        if !Self.hasFigures(next) || ![AgentQuotaStatus.available, .exhausted].contains(next.status) {
+            merged.kind = snapshot.kind
+            merged.source = snapshot.source
+            merged.balances = snapshot.balances
+            merged.windows = snapshot.windows
+            merged.updatedAt = snapshot.updatedAt
+            merged.relayKind = snapshot.relayKind
+            merged.planName = snapshot.planName
+            if [AgentQuotaStatus.available, .exhausted].contains(merged.status) { merged.status = .error }
+        }
+        snapshot = merged
+    }
+
+    public static func hasFigures(_ snapshot: AgentQuotaSnapshot) -> Bool {
+        snapshot.updatedAt != nil && (snapshot.balances.contains {
+            $0.isUnlimited || ($0.remaining ?? $0.total).map { !$0.isNaN } == true
+        } || !snapshot.windows.isEmpty)
+    }
+
+    /// 原卡片和胶囊的轻量投影。货币、原始额度与窗口百分比各保留自己的单位。
+    public var balances: [ProviderBalance] {
+        guard let updatedAt = snapshot.updatedAt else { return [] }
+        let stale = ![AgentQuotaStatus.available, .exhausted].contains(snapshot.status)
+        let problem = stale ? "刷新失败，保留上次数据" : nil
+        let label = snapshot.accountLabel ?? provider.displayName
+        let figures = snapshot.balances.compactMap { balance -> ProviderBalance? in
+            let amount: String
+            if balance.isUnlimited { amount = "不限额" }
+            else if let value = balance.remaining ?? balance.total, !value.isNaN { amount = QuotaDecimalCoding.encode(value) }
+            else { return nil }
+            let fraction: Double?
+            if let total = balance.total, total > 0, let remaining = balance.remaining {
+                fraction = min(1, max(0, NSDecimalNumber(decimal: remaining / total).doubleValue))
+            } else { fraction = nil }
+            return ProviderBalance(
+                accountID: accountID, provider: provider, label: label, amount: amount,
+                currency: balance.currency ?? balance.unitLabel ?? "额度", fraction: fraction,
+                updatedAt: updatedAt, stale: stale, problem: problem, relayKind: snapshot.relayKind
+            )
+        }
+        if !figures.isEmpty { return figures }
+        return snapshot.windows.map { window in
+            ProviderBalance(
+                accountID: accountID, provider: provider, label: label + " · " + window.label,
+                amount: QuotaDecimalCoding.encode(window.remainingPercent), currency: "%",
+                fraction: NSDecimalNumber(decimal: window.remainingPercent / 100).doubleValue,
+                updatedAt: updatedAt, stale: stale, problem: problem
+            )
+        }
+    }
+}
+
+public extension ProviderBalance {
+    /// 只将明确的 ISO 货币标记按金额舍入；tokens、quota 和百分比不变成钱。
+    var isMonetary: Bool {
+        currency.count == 3 && currency.allSatisfy { $0.isASCII && $0.isUppercase }
+    }
+
+    var displayedAmount: String {
+        guard isMonetary, let value = QuotaDecimalCoding.parse(amount) else { return amount }
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        formatter.roundingMode = .halfUp
+        return formatter.string(from: NSDecimalNumber(decimal: value)) ?? amount
+    }
+}
+
 /// 协调器应用缓存与防抖的方式。
 public enum AgentQuotaFetchMode: String, Codable, Sendable, Equatable {
     /// 仅返回脱敏缓存，不发起网络请求。

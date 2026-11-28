@@ -39,7 +39,7 @@ final class ProviderQuotaDetailController: TableController {
     ) {
         self.account = account
         self.allowsAccountManagement = allowsAccountManagement
-        snapshot = initialQuota
+        snapshot = initialQuota ?? QuotaFormatting.snapshot(for: account, in: ProviderBalanceStore.shared.quotas)
         self.onAccountsChanged = onAccountsChanged
         super.init(style: .insetGrouped)
     }
@@ -76,6 +76,15 @@ final class ProviderQuotaDetailController: TableController {
             default: nil
             }
         }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(quotaChanged), name: .providerBalancesChanged, object: nil
+        )
+        rebuildSections()
+    }
+
+    @objc private func quotaChanged() {
+        snapshot = QuotaFormatting.snapshot(for: account, in: ProviderBalanceStore.shared.quotas)
+        if let snapshot, [AgentQuotaStatus.available, .exhausted].contains(snapshot.status) { lastError = nil }
         rebuildSections()
     }
 
@@ -111,15 +120,11 @@ final class ProviderQuotaDetailController: TableController {
                 }
             }
             do {
-                let response = try await ApelinService.app.agentProviderQuota(
-                    provider: account.provider,
-                    mode: manual ? .manualRefresh : .attentionGated,
-                    foreground: true,
-                    force: manual,
-                    accountID: account.storeID,
+                let response = try await ProviderBalanceStore.shared.loadQuotas(
+                    provider: account.provider, accountID: account.storeID, manual: manual
                 )
                 guard !Task.isCancelled, generation == token else { return }
-                if let latest = QuotaFormatting.snapshot(for: account, in: response.quotas) {
+                if let latest = QuotaFormatting.snapshot(for: account, in: response) {
                     snapshot = latest
                     lastError = nil
                 } else {
@@ -226,7 +231,8 @@ final class ProviderQuotaDetailController: TableController {
             if let url = billingURL, ["https", "http"].contains(url.scheme?.lowercased() ?? "") { UIApplication.shared.open(url) }
         case .edit:
             let page = ProviderLoginController(account: account)
-            page.onFinish = { [weak self] in self?.reloadAccount() }
+            page.onFinish = { [weak self] in self?.onAccountsChanged() }
+            page.onSuccessfulSignIn = { [weak self] in self?.reloadAccount() }
             page.isModalInPresentation = true
             presentPageAsFormSheet(page)
         case .models: presentPageAsFormSheet(ModelActivationController(account: account))
@@ -244,6 +250,9 @@ final class ProviderQuotaDetailController: TableController {
     }
 
     private func reloadAccount() {
+        generation = UUID()
+        loader?.cancel()
+        ProviderBalanceStore.shared.configurationChanged()
         onAccountsChanged()
         Task { [weak self] in
             guard let self else { return }
@@ -253,8 +262,9 @@ final class ProviderQuotaDetailController: TableController {
                        && ($0.storeID ?? $0.provider.rawValue) == (account.storeID ?? account.provider.rawValue)
                })
             {
-                if latest.poolID != account.poolID { snapshot = nil }
+                ProviderBalanceStore.shared.reconcile(accounts: accounts)
                 account = latest
+                snapshot = QuotaFormatting.snapshot(for: latest, in: ProviderBalanceStore.shared.quotas)
             }
             generation = UUID()
             loader?.cancel()
@@ -268,6 +278,9 @@ final class ProviderQuotaDetailController: TableController {
             guard let self else { return }
             do {
                 try await ApelinService.app.agentSignOut(provider: account.provider, accountID: account.storeID)
+                generation = UUID()
+                loader?.cancel()
+                ProviderBalanceStore.shared.invalidate(provider: account.provider, accountID: account.storeID)
                 if let accounts = try? await ApelinService.app.agentAccountList().accounts,
                    !accounts.contains(where: { $0.provider == account.provider && $0.signedIn })
                 {

@@ -132,3 +132,10 @@ xcrun --sdk macosx swiftc -swift-version 5 -parse-as-library -target arm64-apple
     "$root/Apelin/Service/SharedModelLoad.swift" \
     "$root/Tests/ModelPicker/SharedModelLoadCheck.swift" -o "$work/model-picker"
 "$work/model-picker"
+
+# 原余额入口与新额度页共用的生产存储：使用假传输和独立临时目录。
+xcrun --sdk macosx swiftc -swift-version 5 -parse-as-library -target arm64-apple-macos13.0 \
+    -I "$root/Shared/XPCShim" -I "$modules" \
+    "${objects[@]}" "$root/Apelin/Service/ProviderBalanceStore.swift" \
+    "$root/Tests/QuotaDisplay/ProviderBalanceStoreCheck.swift" -o "$work/quota-display"
+"$work/quota-display"

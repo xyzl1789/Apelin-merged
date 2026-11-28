@@ -1,3 +1,4 @@
+import ApelinCore
 import ApelinProtocol
 import Foundation
 import os.log
@@ -6,87 +7,203 @@ extension Notification.Name {
     static let providerBalancesChanged = Notification.Name("wiki.qaq.apelin.providerBalancesChanged")
 }
 
-/// App 保存的每个连接最近一次余额。网络与短缓存归 worker；这个 store 只
-/// 保存胶囊与余额页共用的数字，所以余额页的手动刷新胶囊立刻可见，不必再
-/// 请求一次。胶囊只画当前选中连接自己的数字，不支持查询时显示「--」；
-/// 切换连接后若上次读取已超过 `autoInterval`，就为支持的连接刷新一次。
+/// 胶囊、原余额卡片及账号额度页共用新线路；磁盘只保存脱敏快照与账号/池绑定。
 @MainActor
 final class ProviderBalanceStore {
     static let shared = ProviderBalanceStore()
-
-    /// 自动刷新的间隔：进入聊天页或切换供应商时如果距上次查询超过它，
-    /// 就立刻查一次。太快会打满服务商的余额接口，太慢则数字失去参考价值。
     private static let autoInterval: TimeInterval = 5 * 60
-
-    private(set) var balances: [ProviderBalance] = []
+    private let logger = Logger(subsystem: "wiki.qaq.apelin", category: "Balance")
+    private var records = PreservedList<AgentQuotaDisplayRecord>()
+    private var writable = true
+    private var generation = UUID()
+    private var bindings: [String: String] = [:]
     private var inFlight: Task<[ProviderBalance], Never>?
-    private var lastRefresh: Date?
+    /// 尝试时间只用于自动查询限频，绝不用于显示「更新时间」。
+    private var lastAttempt: Date?
+    private let folder: DataFolder
+    private let service: ApelinService
+    private var file: URL { folder.root.appendingPathComponent("QuotaDisplay.json") }
 
-    /// 距上次查询是否已超过自动间隔。选中支持查询的供应商时由此决定
-    /// 是否立刻查一次。
-    func stale() -> Bool {
-        guard let lastRefresh else { return true }
-        return Date().timeIntervalSince(lastRefresh) >= Self.autoInterval
+    init(folder: DataFolder = .app, service: ApelinService = .app) {
+        self.folder = folder
+        self.service = service
+        do {
+            let data = try Data(contentsOf: file)
+            do {
+                records = try JSONCoding.decode(PreservedList<AgentQuotaDisplayRecord>.self, from: data)
+            } catch {
+                writable = UnreadableFile.setAside(file) != nil
+            }
+        } catch {
+            let missing = (error as NSError).domain == NSCocoaErrorDomain
+                && (error as NSError).code == NSFileReadNoSuchFileError
+            writable = missing
+        }
+        for record in records.items {
+            bindings[key(record.provider, record.accountID)] = record.poolID
+        }
     }
 
-    /// Reads the balances once, joining a request already running. A failed
-    /// request keeps the last figures rather than replacing them with empty.
+    var balances: [ProviderBalance] { records.items.flatMap(\.balances) }
+    var quotas: [AgentQuotaSnapshot] { records.items.map(\.snapshot) }
+
+    func stale() -> Bool {
+        guard let lastAttempt else { return true }
+        return Date().timeIntervalSince(lastAttempt) >= Self.autoInterval
+    }
+
+    private func key(_ provider: AgentProvider, _ accountID: String) -> String {
+        provider.rawValue + ":" + accountID
+    }
+
+    /// 仅接受完整账号列表作清理依据；网络失败、额度空返回不是账号退出。
+    func reconcile(accounts: [AgentAccount]) {
+        let signedIn = accounts.filter { $0.signedIn && $0.poolID != nil }
+        let next = Dictionary(signedIn.map {
+            (key($0.provider, $0.storeID ?? $0.provider.rawValue), $0.poolID!)
+        }, uniquingKeysWith: { _, latest in latest })
+        if next != bindings {
+            generation = UUID()
+            bindings = next
+            lastAttempt = nil
+        }
+        let previous = records.items
+        records.items.removeAll { record in !signedIn.contains(where: record.matches) }
+        if previous != records.items { publish() }
+    }
+
+    /// 配置保存成功先使旧请求失效；是否换池由完整账号列表决定，同池重登保留有效数字。
+    func configurationChanged() {
+        generation = UUID()
+        lastAttempt = nil
+    }
+
+    /// 退出成功时撤销对应绑定，同时作废所有等待中的旧回包。
+    func invalidate(provider: AgentProvider, accountID: String?) {
+        let id = accountID ?? provider.rawValue
+        generation = UUID()
+        bindings.removeValue(forKey: key(provider, id))
+        records.items.removeAll { $0.provider == provider && $0.accountID == id }
+        lastAttempt = nil
+        publish()
+    }
+
+    /// 所有入口都走这里；请求前后核对账号绑定，换池、退出期间的结果不得落盘。
+    @discardableResult
+    func loadQuotas(provider: AgentProvider? = nil, accountID: String? = nil, manual: Bool = false) async throws -> [AgentQuotaSnapshot] {
+        let started = generation
+        lastAttempt = Date()
+        let accounts: [AgentAccount]
+        do { accounts = try await service.agentAccountList().accounts }
+        catch {
+            if generation == started, !(error is CancellationError) { markStale(provider: provider, accountID: accountID) }
+            throw error
+        }
+        guard generation == started else { throw CancellationError() }
+        reconcile(accounts: accounts)
+        let token = generation
+        lastAttempt = Date()
+        do {
+            let response = try await service.agentProviderQuota(
+                provider: provider, mode: manual ? .manualRefresh : .attentionGated,
+                foreground: true, force: manual, accountID: accountID
+            )
+            guard generation == token else { throw CancellationError() }
+            let latest = try await service.agentAccountList().accounts
+            guard generation == token else { throw CancellationError() }
+            reconcile(accounts: latest)
+            guard generation == token else { throw CancellationError() }
+            let returnedPools = Set(response.quotas.map(\.poolID))
+            let targets = latest.filter {
+                $0.signedIn && (
+                    ((provider == nil || $0.provider == provider)
+                        && (accountID == nil || ($0.storeID ?? $0.provider.rawValue) == accountID))
+                        || $0.poolID.map(returnedPools.contains) == true
+                )
+            }
+            for account in targets {
+                let id = account.storeID ?? account.provider.rawValue
+                guard let poolID = account.poolID else { continue }
+                let index = records.items.firstIndex { $0.matches(account) }
+                if var next = response.quotas.first(where: { $0.provider == account.provider && $0.poolID == poolID })
+                    ?? response.quotas.first(where: { $0.poolID == poolID })
+                {
+                    next.provider = account.provider
+                    next.accountLabel = account.account
+                    if let index { records.items[index].merge(next) }
+                    else {
+                        var initial = next
+                        // 无数字时不能把 HTTP 成功或账单链接时间当作余额更新时间。
+                        if !AgentQuotaDisplayRecord.hasFigures(next) { initial.updatedAt = nil }
+                        records.items.append(AgentQuotaDisplayRecord(accountID: id, snapshot: initial))
+                    }
+                } else if let index {
+                    markStale(at: index)
+                }
+            }
+            publish()
+            return quotas
+        } catch {
+            if generation == token, !(error is CancellationError) {
+                markStale(provider: provider, accountID: accountID)
+                logger.error("额度刷新失败，保留最近有效数据")
+            }
+            throw error
+        }
+    }
+
+    private func markStale(provider: AgentProvider?, accountID: String?) {
+        for index in records.items.indices where
+            (provider == nil || records.items[index].provider == provider)
+                && (accountID == nil || records.items[index].accountID == accountID)
+        { markStale(at: index) }
+        publish()
+    }
+
+    private func markStale(at index: Int) {
+        records.items[index].snapshot.status = .error
+        records.items[index].snapshot.errorSummary = "刷新失败，保留上次数据"
+    }
+
     @discardableResult
     func refresh(force: Bool = false) async -> [ProviderBalance] {
-        if let inFlight {
-            return await inFlight.value
-        }
-        lastRefresh = Date()
-        let previous = balances
+        if let inFlight { return await inFlight.value }
         let task = Task<[ProviderBalance], Never> {
-            do {
-                let response = try await ApelinService.app.agentProviderBalances(force: force).balances
-                Logger(subsystem: "wiki.qaq.apelin", category: "Balance")
-                    .info("余额刷新成功：\(response.count, privacy: .public) 条 \(force ? "强制" : "自动", privacy: .public)")
-                return response
-            } catch {
-                Logger(subsystem: "wiki.qaq.apelin", category: "Balance")
-                    .error("余额刷新失败：\(String(describing: error), privacy: .public)")
-                return previous
-            }
+            do { _ = try await self.loadQuotas(manual: force) }
+            catch { /* 失败不清数字，成功时间保持不变。 */ }
+            return self.balances
         }
         inFlight = task
         let next = await task.value
         inFlight = nil
-        balances = next
-        Logger(subsystem: "wiki.qaq.apelin", category: "Balance")
-            .info("余额存储更新：共 \(next.count, privacy: .public) 条，\(next.map { "\($0.provider.rawValue)=\($0.amount)\($0.currency)" }.joined(separator: ", "), privacy: .public)")
-        NotificationCenter.default.post(name: .providerBalancesChanged, object: nil)
         return next
     }
 
-    /// 胶囊只画当前选中连接自己的余额；这个连接不支持查询、还没查到或
-    /// 根本没选中时，返回 nil，胶囊显示「--」，绝不借别的连接的数字来充数。
-    /// 点开胶囊仍能看到所有能查到余额的连接。
+    private func publish() {
+        if writable {
+            do {
+                try folder.makeLevels(to: folder.root)
+                var saved = records
+                // 错误文本和账单链接只用于当前页面，不在客户端二次持久化。
+                for index in saved.items.indices {
+                    saved.items[index].snapshot.errorSummary = nil
+                    saved.items[index].snapshot.billingURL = nil
+                }
+                try JSONCoding.encoder(pretty: true).encode(saved).write(to: file, options: .atomic)
+            } catch {
+                logger.error("额度缓存未能保存，内存数据仍保留")
+            }
+        }
+        NotificationCenter.default.post(name: .providerBalancesChanged, object: nil)
+    }
+
+    /// 无账号标识的旧会话只取首账号；不同账号或不同池绝不借用。
     func current(for provider: AgentProvider?, accountID: String? = nil) -> ProviderBalance? {
         guard let provider else { return nil }
-        if let accountID, !accountID.isEmpty {
-            return balances.first { $0.provider == provider && $0.accountID == accountID }
+        let candidates = balances.filter {
+            $0.provider == provider && (accountID?.isEmpty == false
+                ? $0.accountID == accountID : !$0.accountID.contains(AgentAccountID.separator))
         }
-        // 旧会话没有账号标识时只取首账号，不把另一个账号的余额当成它的。
-        return balances.first { $0.provider == provider && !$0.accountID.contains(AgentAccountID.separator) }
-    }
-}
-
-extension ProviderBalance {
-    /// 金额统一保留两位小数；token配额仍保留整数/原有单位格式，未知值不伪造为零。
-    var displayedAmount: String {
-        guard currency != "tokens",
-              let value = Decimal(string: amount, locale: Locale(identifier: "en_US_POSIX")),
-              !value.isNaN
-        else { return amount }
-        let formatter = NumberFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.numberStyle = .decimal
-        formatter.usesGroupingSeparator = false
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        formatter.roundingMode = .halfUp
-        return formatter.string(from: NSDecimalNumber(decimal: value)) ?? amount
+        return candidates.first(where: \.isMonetary) ?? candidates.first
     }
 }
