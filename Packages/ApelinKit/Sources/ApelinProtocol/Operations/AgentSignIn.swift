@@ -243,6 +243,10 @@ public struct AgentAccount: Codable, Sendable, Equatable {
     /// for a name the provider does not describe itself, so the settings page
     /// can show a relay's models with the figures they really have.
     public var capabilities: [String: AgentModelCapabilities]?
+    /// 额度缓存池标识，不含密钥；相同 API 密钥共享同一个池。
+    public var poolID: String?
+    /// 凭据存储 ID；旧 worker 不提供时按服务商的首账号处理。
+    public var storeID: String?
     public var isAPIKeyAccount: Bool {
         usesAPIKey ?? (method == .apiKey)
     }
@@ -259,6 +263,8 @@ public struct AgentAccount: Codable, Sendable, Equatable {
         reasoningEfforts: [String: [AgentReasoningEffort]]? = nil,
         serviceTiers: [String: [AgentServiceTier]]? = nil,
         capabilities: [String: AgentModelCapabilities]? = nil,
+        poolID: String? = nil,
+        storeID: String? = nil,
     ) {
         self.provider = provider
         self.method = method
@@ -271,6 +277,38 @@ public struct AgentAccount: Codable, Sendable, Equatable {
         self.reasoningEfforts = reasoningEfforts
         self.serviceTiers = serviceTiers
         self.capabilities = capabilities
+        self.poolID = poolID
+        self.storeID = storeID
+    }
+}
+
+/// 账号在线路上的规范标识：首账号沿用原存储 ID，其他账号使用 #2 到 #9。
+public enum AgentAccountID {
+    public static let separator = "#"
+    public static let maximum = 9
+
+    public static func extra(_ base: String, _ number: Int) -> String {
+        "\(base)\(separator)\(number)"
+    }
+
+    /// 只接受规范十进制后缀，不接受补零、符号或嵌套账号。
+    public static func number(of accountID: String) -> Int? {
+        let parts = accountID.split(separator: "#", omittingEmptySubsequences: false)
+        guard parts.count == 2, !parts[0].isEmpty,
+              let number = Int(parts[1]), (2 ... maximum).contains(number),
+              String(number) == parts[1]
+        else { return nil }
+        return number
+    }
+
+    public static func base(of accountID: String) -> String {
+        guard let number = number(of: accountID) else { return accountID }
+        return String(accountID.dropLast(separator.count + String(number).count))
+    }
+
+    public static func next(base: String, taken: Set<String>) -> String? {
+        guard taken.contains(base) else { return base }
+        return (2 ... maximum).lazy.map { extra(base, $0) }.first { !taken.contains($0) }
     }
 }
 
@@ -311,8 +349,11 @@ public struct AgentAPIConfigurationRequest: OperationRequest {
     public typealias Response = AgentAPIConfigurationResponse
     public static let operation = AppOperation.agentAPIConfiguration
     public var provider: AgentProvider
-    public init(provider: AgentProvider) {
+    /// 指定要编辑的账号；未提供时读取首账号。
+    public var accountID: String?
+    public init(provider: AgentProvider, accountID: String? = nil) {
         self.provider = provider
+        self.accountID = accountID
     }
 }
 
@@ -327,14 +368,16 @@ public struct AgentModelListRequest: OperationRequest {
     public typealias Response = AgentModelListResponse
     public static let operation = AppOperation.agentModelList
     public var provider: AgentProvider
+    public var accountID: String?
     /// Models besides those the provider lists whose automatic limits to
     /// answer: the ones the user added by hand or enabled. At most
     /// `maximumLimitsAsked` are read.
     public var limitsFor: [String]?
     public static let maximumLimitsAsked = 256
 
-    public init(provider: AgentProvider, limitsFor: [String]? = nil) {
+    public init(provider: AgentProvider, accountID: String? = nil, limitsFor: [String]? = nil) {
         self.provider = provider
+        self.accountID = accountID
         self.limitsFor = limitsFor
     }
 }
@@ -359,9 +402,10 @@ public struct AgentModelActivateRequest: OperationRequest {
     public typealias Response = TaskHandle
     public static let operation = AppOperation.agentModelActivate
     public var provider: AgentProvider
+    public var accountID: String?
     public var models: [String]
-    public init(provider: AgentProvider, models: [String]) {
-        self.provider = provider; self.models = models
+    public init(provider: AgentProvider, accountID: String? = nil, models: [String]) {
+        self.provider = provider; self.accountID = accountID; self.models = models
     }
 }
 
@@ -382,10 +426,13 @@ public struct AgentSignInRequest: OperationRequest {
     /// One of the account's `alternativeMethods`; nil is its `method`. Any
     /// other is refused `badRequest` before the task is accepted.
     public var method: AgentSignInMethod?
+    /// 登录写入的凭据 ID；未提供时仍覆盖首账号。
+    public var accountID: String?
 
-    public init(provider: AgentProvider, method: AgentSignInMethod? = nil) {
+    public init(provider: AgentProvider, method: AgentSignInMethod? = nil, accountID: String? = nil) {
         self.provider = provider
         self.method = method
+        self.accountID = accountID
     }
 }
 
@@ -434,8 +481,11 @@ public struct AgentSignOutRequest: OperationRequest {
     public typealias Response = Acknowledged
     public static let operation = AppOperation.agentSignOut
     public var provider: AgentProvider
-    public init(provider: AgentProvider) {
+    /// 未提供时退出该服务商的全部账号。
+    public var accountID: String?
+    public init(provider: AgentProvider, accountID: String? = nil) {
         self.provider = provider
+        self.accountID = accountID
     }
 }
 
@@ -448,20 +498,20 @@ public extension ApelinService {
 
     }
 
-    func agentAPIConfiguration(provider: AgentProvider) async throws -> AgentAPIConfigurationResponse {
-        try await send(AgentAPIConfigurationRequest(provider: provider))
+    func agentAPIConfiguration(provider: AgentProvider, accountID: String? = nil) async throws -> AgentAPIConfigurationResponse {
+        try await send(AgentAPIConfigurationRequest(provider: provider, accountID: accountID))
     }
 
-    func agentModelList(provider: AgentProvider, limitsFor: [String]? = nil) async throws -> AgentModelListResponse {
-        try await send(AgentModelListRequest(provider: provider, limitsFor: limitsFor))
+    func agentModelList(provider: AgentProvider, accountID: String? = nil, limitsFor: [String]? = nil) async throws -> AgentModelListResponse {
+        try await send(AgentModelListRequest(provider: provider, accountID: accountID, limitsFor: limitsFor))
     }
 
-    func agentModelActivate(provider: AgentProvider, models: [String]) async throws -> TaskHandle {
-        try await send(AgentModelActivateRequest(provider: provider, models: models))
+    func agentModelActivate(provider: AgentProvider, accountID: String? = nil, models: [String]) async throws -> TaskHandle {
+        try await send(AgentModelActivateRequest(provider: provider, accountID: accountID, models: models))
     }
 
-    func agentSignIn(provider: AgentProvider, method: AgentSignInMethod? = nil) async throws -> TaskHandle {
-        try await send(AgentSignInRequest(provider: provider, method: method))
+    func agentSignIn(provider: AgentProvider, method: AgentSignInMethod? = nil, accountID: String? = nil) async throws -> TaskHandle {
+        try await send(AgentSignInRequest(provider: provider, method: method, accountID: accountID))
     }
 
     func agentSignInRespond(taskID: TaskID, fields: [AgentSignInField: String], verifyModel: Bool? = nil) async throws {
@@ -472,8 +522,8 @@ public extension ApelinService {
         _ = try await send(AgentSignInCancelRequest(taskID: taskID))
     }
 
-    func agentSignOut(provider: AgentProvider) async throws {
-        _ = try await send(AgentSignOutRequest(provider: provider))
+    func agentSignOut(provider: AgentProvider, accountID: String? = nil) async throws {
+        _ = try await send(AgentSignOutRequest(provider: provider, accountID: accountID))
     }
 }
 

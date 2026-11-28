@@ -75,7 +75,7 @@ final class DefaultModelsController: TableController {
                 for index in accounts.indices where accounts[index].models?.isEmpty != false {
                     do {
                         accounts[index].models = try await ApelinService.app
-                            .agentModelList(provider: accounts[index].provider).models
+                            .agentModelList(provider: accounts[index].provider, accountID: accounts[index].storeID).models
                     } catch {
                         // Keep the account visible even if this provider's model catalog is unavailable.
                     }
@@ -129,11 +129,11 @@ final class DefaultModelsController: TableController {
                     ComposerChoiceSheet.Choice(
                         title: account.displayName(for: model),
                         subtitle: account.catalogTitle(for: model) == nil ? nil : model,
-                        isSelected: current?.provider == account.provider && current?.model == model,
-                        modelTest: AgentModelTestRequest(provider: account.provider, model: model),
+                        isSelected: current?.provider == account.provider && current?.model == model && current?.storeID == account.storeID,
+                        modelTest: AgentModelTestRequest(provider: account.provider, accountID: account.storeID, model: model),
                     ) { [weak self] in
                         Preferences.DefaultModels.save(
-                            .init(provider: account.provider, model: model),
+                            .init(provider: account.provider, model: model, storeID: account.storeID),
                             for: kind,
                         )
                         self?.updateRows()

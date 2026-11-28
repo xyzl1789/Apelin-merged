@@ -52,6 +52,11 @@ public struct ApelinDataRoot: Sendable, Hashable {
         url.appendingPathComponent("Temporary")
     }
 
+    /// `Quota/`：脱敏额度快照与中转探测元数据。
+    public var quota: URL {
+        url.appendingPathComponent("Quota", isDirectory: true)
+    }
+
     /// `ModelData/models.json`: the model data the app updates and the agent
     /// reads.
     public var modelDataFile: URL {

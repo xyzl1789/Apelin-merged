@@ -95,7 +95,7 @@ final class ProviderBalanceButton: UIControl {
     /// 徽章只显示数字本身：不带币种、不带单位、不带百分号。金额类照原样，
     /// token 类压成短单位（如 80.9M），完整数字留给详情页。
     static func amountText(_ balance: ProviderBalance) -> String {
-        guard balance.currency == "tokens" else { return balance.amount }
+        guard balance.currency == "tokens" else { return balance.displayedAmount }
         return shortTokens(balance.amount)
     }
 

@@ -12,13 +12,12 @@ extension UsageProviderIdentity {
     ) -> Self? {
         guard let storeID = configuration.storeID else { return nil }
         let provider: AgentProvider?
-        if let number = CredentialProviderID.endpointNumber(storeID) {
+        let baseStoreID = AccountIDs.base(of: storeID)
+        if let number = CredentialProviderID.endpointNumber(baseStoreID) {
             provider = .openAICompatibleEndpoint(number)
         } else {
-            // 复用已有的协议→凭据映射，避免统计单独维护另一份服务商列表。
-            provider = AgentProvider.allCases.first {
-                ProviderConfiguration.auxiliary(provider: $0, model: model.id).storeID == storeID
-            }
+            // 统计仍按服务商汇总，但额外账号须能识别其所属服务商。
+            provider = AccountIDs.provider(of: storeID, among: AgentProvider.allCases)
         }
         guard let provider else { return nil }
         let base: String

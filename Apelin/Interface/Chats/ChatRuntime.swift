@@ -1280,6 +1280,7 @@ final class ChatRuntime {
                     messageID: draft.id,
                     attachments: inputs,
                     provider: selected?.provider,
+                    accountID: selected?.storeID,
                     model: selected?.model,
                     modelDefaults: Preferences.DefaultModels.wire,
                     reasoningEffort: selected?.effort,
@@ -1562,6 +1563,7 @@ final class ChatRuntime {
             let answer = try await ApelinService.app.agentConfigure(AgentConfigureRequest(
                 sessionID: sessionID,
                 provider: selection.provider,
+                accountID: selection.storeID,
                 model: selection.model,
                 reasoningEffort: selection.effort,
                 serviceTier: selection.tier,
@@ -1617,6 +1619,7 @@ final class ChatRuntime {
             temporaryID: record.summary.projectName == nil ? id.uuidString : nil,
             sessionID: record.sessionID,
             provider: selected?.provider,
+            accountID: selected?.storeID,
             model: selected?.model,
             modelDefaults: Preferences.DefaultModels.wire,
             approvalMode: mode,
@@ -2008,7 +2011,7 @@ final class ChatRuntime {
 
     /// 一个候选的去重键：同一轮里已经试过、又失败的模型不再试。
     private static func candidateKey(_ selection: ComposerModelSelection) -> String {
-        selection.provider.rawValue + "/" + selection.model
+        (selection.storeID ?? selection.provider.rawValue) + "/" + selection.model
     }
 
     /// 一轮里自动切换的上限：候选逐个试，全失败才停下等读者。没有余额的
@@ -2145,7 +2148,7 @@ final class ChatRuntime {
         for result in MeasurementStore.load().results where result.success {
             let selection = result.selection
             guard !ModelExclusions.isModelExcluded(selection.provider, model: selection.model) else { continue }
-            if let current, current.provider == selection.provider, current.model == selection.model { continue }
+            if let current, Self.candidateKey(current) == Self.candidateKey(selection) { continue }
             guard !tried.contains(Self.candidateKey(selection)) else { continue }
             return selection
         }
@@ -2167,11 +2170,12 @@ final class ChatRuntime {
                 else { continue }
                 let selection = ComposerModelSelection(
                     provider: account.provider,
+                    storeID: account.storeID,
                     model: model,
                     supportedEfforts: account.reasoningEfforts?[model] ?? [],
                     supportedTiers: account.serviceTiers?[model],
                 )
-                if let current, current.provider == selection.provider, current.model == selection.model { continue }
+                if let current, Self.candidateKey(current) == Self.candidateKey(selection) { continue }
                 guard !tried.contains(Self.candidateKey(selection)) else { continue }
                 return selection
             }

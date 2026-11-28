@@ -6,6 +6,7 @@ import Foundation
 public struct PendingModelChoice: Sendable, Hashable, Codable {
     public var provider: ProviderConfiguration
     public var wireProvider: AgentProvider?
+    public var accountID: String?
     public var model: String?
     public var reasoningEffort: AgentReasoningEffort?
     public var serviceTier: AgentServiceTier?
@@ -14,9 +15,11 @@ public struct PendingModelChoice: Sendable, Hashable, Codable {
 
     public init(provider: ProviderConfiguration, wireProvider: AgentProvider? = nil, model: String? = nil,
                 reasoningEffort: AgentReasoningEffort? = nil, serviceTier: AgentServiceTier? = nil,
-                parameters: AgentModelParameters = .init(), defaults: AgentModelDefaults? = nil) {
+                parameters: AgentModelParameters = .init(), defaults: AgentModelDefaults? = nil,
+                accountID: String? = nil) {
         self.provider = provider
         self.wireProvider = wireProvider
+        self.accountID = accountID
         self.model = model
         self.reasoningEffort = reasoningEffort
         self.serviceTier = serviceTier

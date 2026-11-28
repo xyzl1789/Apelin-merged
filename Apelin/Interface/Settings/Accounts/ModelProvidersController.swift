@@ -1,5 +1,6 @@
 import ApelinCore
 import ApelinProtocol
+import SPIndicator
 import Then
 import UIKit
 
@@ -37,11 +38,11 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     }
 
     private enum Row: Equatable {
-        case account(AgentAccount, note: String?)
+        case account(AgentAccount, note: String?, quota: AgentQuotaSnapshot?)
         case status(Status)
         var id: String {
             switch self {
-            case let .account(account, _): account.provider.rawValue
+            case let .account(account, _, _): (account.signedIn ? "account:" : "add:") + (account.storeID ?? account.provider.rawValue)
             case .status: "status"
             }
         }
@@ -53,7 +54,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     ) { [weak self] _, _, row in
         guard let self else { return nil }
         switch row {
-        case let .account(account, note): return accountCell(account, note: note)
+        case let .account(account, note, quota): return accountCell(account, note: note, quota: quota)
         case let .status(status): return statusCell(status)
         }
     }
@@ -65,6 +66,9 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     @objc private dynamic var query = ""
     private var sections: [(Section, [Row])] = [(.status, [.status(.loading)])]
     private var loader: Task<Void, Never>?
+    private var quotaLoader: Task<Void, Never>?
+    private var quotas: [AgentQuotaSnapshot] = []
+    private var refreshingQuotas = false
     private let search = UISearchController(searchResultsController: nil)
 
     init() {
@@ -78,12 +82,20 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
 
     deinit {
         loader?.cancel()
+        quotaLoader?.cancel()
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         title = String(localized: "Model Providers")
         navigationItem.backButtonDisplayMode = .minimal
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "arrow.clockwise"),
+            primaryAction: UIAction { [weak self] _ in self?.loadQuotas(manual: true) },
+        ).then { $0.accessibilityLabel = String(localized: "刷新额度", table: "Quota") }
+        refreshControl = UIRefreshControl().then {
+            $0.addAction(UIAction { [weak self] _ in self?.loadQuotas(manual: true) }, for: .valueChanged)
+        }
         search.searchResultsUpdater = self
         search.obscuresBackgroundDuringPresentation = false
         search.searchBar.placeholder = String(localized: "Search")
@@ -131,6 +143,48 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             guard let self else { return }
             loaded = true
             regroup()
+            loadQuotas(manual: false)
+        }
+    }
+
+    /// 额度独立于账号列表更新，查询失败不抹掉已有数字。
+    private func loadQuotas(manual: Bool) {
+        guard !refreshingQuotas, accounts.contains(where: \.signedIn) else {
+            refreshControl?.endRefreshing()
+            return
+        }
+        let now = Date()
+        let queryable = quotas.filter { $0.kind != .billingLink }
+        let debounces = queryable.compactMap(\.manualDebounceUntil).filter { $0 > now }
+        if manual, !queryable.isEmpty, debounces.count == queryable.count, let earliest = debounces.min() {
+            refreshControl?.endRefreshing()
+            let seconds = max(1, Int(ceil(earliest.timeIntervalSince(now))))
+            SPIndicator.present(title: String(localized: "请在\(seconds)秒后重试", table: "Quota"), preset: .error, haptic: .warning)
+            return
+        }
+        refreshingQuotas = true
+        navigationItem.rightBarButtonItem?.isEnabled = false
+        quotaLoader = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                refreshingQuotas = false
+                navigationItem.rightBarButtonItem?.isEnabled = true
+                refreshControl?.endRefreshing()
+            }
+            do {
+                let response = try await ApelinService.app.agentProviderQuota(
+                    provider: nil,
+                    mode: manual ? .manualRefresh : .attentionGated,
+                    foreground: true,
+                    force: manual,
+                )
+                guard !Task.isCancelled else { return }
+                quotas = response.quotas
+                regroup()
+            } catch {
+                guard !Task.isCancelled, manual else { return }
+                presentNotice(title: String.LocalizationValue(stringLiteral: String(localized: "无法查询用量", table: "Quota")), message: error.readableMessage)
+            }
         }
     }
 
@@ -159,7 +213,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             ]
             sections = groups.filter { !$0.1.isEmpty }.map { group, accounts in
                 (.group(group), accounts.map { account in
-                    .account(account, note: Preferences.ProviderNotes.note(for: account.provider))
+                    .account(account, note: Preferences.ProviderNotes.note(for: account.provider), quota: QuotaFormatting.snapshot(for: account, in: quotas))
                 })
             }
             if sections.isEmpty {
@@ -172,7 +226,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     // MARK: - Table
 
     private func account(at indexPath: IndexPath) -> AgentAccount? {
-        guard case let .account(account, _)? = dataSource.value(at: indexPath) else { return nil }
+        guard case let .account(account, _, _)? = dataSource.value(at: indexPath) else { return nil }
         return account
     }
 
@@ -203,16 +257,20 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     }
 
     /// 备注独占标题行尾；菜单始终留在 UIKit 的 accessoryView 区域。
-    private func accountCell(_ account: AgentAccount, note: String?) -> UITableViewCell {
+    private func accountCell(_ account: AgentAccount, note: String?, quota: AgentQuotaSnapshot?) -> UITableViewCell {
+        var detail = account.signedIn ? Self.signedInLine(account) : nil
+        if let quota, let summary = QuotaFormatting.summaryText(for: quota) {
+            detail = [detail, summary].compactMap { $0 }.joined(separator: " · ")
+        }
         let cell = ProviderAccountCell(
             name: account.provider.displayName,
             icon: account.provider.icon,
             note: note,
-            detail: account.signedIn ? Self.signedInLine(account) : nil
+            detail: detail
         )
         if account.signedIn {
             cell.accessoryView = menuButton(account)
-            cell.selectionStyle = .none
+            cell.selectionStyle = .default
         } else {
             cell.accessoryType = .disclosureIndicator
         }
@@ -243,6 +301,10 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
 
     private func accountActions(_ account: AgentAccount) -> [UIMenuElement] {
         [
+            UIAction(title: String(localized: "额度与详情", table: "Quota"), image: UIImage(systemName: "chart.bar")) { [weak self] _ in
+                self?.openQuotaDetail(account)
+            },
+            addAccountAction(for: account.provider),
             UIAction(
                 title: String(localized: "Edit"),
                 image: UIImage(systemName: account.isAPIKeyAccount ? "pencil" : "arrow.clockwise"),
@@ -315,7 +377,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     }
 
     override func tableView(_: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
-        account(at: indexPath).map { !$0.signedIn } ?? false
+        account(at: indexPath) != nil
     }
 
     override func tableView(
@@ -331,11 +393,45 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard let account = account(at: indexPath), !account.signedIn else { return }
-        signIn(account)
+        guard let account = account(at: indexPath) else { return }
+        if account.signedIn { openQuotaDetail(account) }
+        else { signIn(account) }
     }
 
     // MARK: - Acting
+
+    /// 空闲账号位由协议的统一身份规则分配，不覆盖原账号凭据。
+    private func addAccountAction(for provider: AgentProvider) -> UIKit.UIAction {
+        let ids = accounts.filter { $0.provider == provider && $0.signedIn }
+            .map { $0.storeID ?? $0.provider.rawValue }
+        let base = ids.first.map(AgentAccountID.base(of:)) ?? provider.rawValue
+        let free = AgentAccountID.next(base: base, taken: Set(ids))
+        let template = accounts.first { $0.provider == provider && !$0.signedIn }
+            ?? accounts.first { $0.provider == provider }
+        return UIKit.UIAction(
+            title: String(localized: "添加账号", table: "Quota"),
+            image: UIImage(systemName: "person.badge.plus"),
+            attributes: free == nil || template == nil ? .disabled : [],
+        ) { [weak self] _ in
+            guard let self, let free, let template else { return }
+            signIn(AgentAccount(
+                provider: provider,
+                method: template.method,
+                alternativeMethods: template.alternativeMethods,
+                signedIn: false,
+                storeID: free,
+            ))
+        }
+    }
+
+    private func openQuotaDetail(_ account: AgentAccount) {
+        let page = ProviderQuotaDetailController(
+            account: account,
+            initialQuota: QuotaFormatting.snapshot(for: account, in: quotas),
+            onAccountsChanged: { [weak self] in self?.load() },
+        )
+        navigationController?.pushViewController(page, animated: true)
+    }
 
     private func signIn(_ account: AgentAccount) {
         let page = ProviderLoginController(account: account)
@@ -357,16 +453,19 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             confirmTitle: "Sign Out",
             destructive: true,
         ) { [weak self] in
-            self?.signOut(provider)
+            self?.signOut(provider, accountID: account.storeID)
         }
     }
 
-    private func signOut(_ provider: AgentProvider) {
+    private func signOut(_ provider: AgentProvider, accountID: String?) {
         Task { [weak self] in
             do {
-                try await ApelinService.app.agentSignOut(provider: provider)
-                EnabledModels.remove(for: provider)
-                Preferences.ProviderNotes.save("", for: provider)
+                try await ApelinService.app.agentSignOut(provider: provider, accountID: accountID)
+                // 只有最后一个账号退出才清空服务商级模型和备注。
+                if self?.accounts.contains(where: { $0.provider == provider && $0.signedIn && $0.storeID != accountID }) == false {
+                    EnabledModels.remove(for: provider)
+                    Preferences.ProviderNotes.save("", for: provider)
+                }
                 self?.load()
             } catch {
                 self?.presentNotice(title: "Unable to Sign Out", message: error.readableMessage)
@@ -418,7 +517,7 @@ private final class ProviderAccountCell: UITableViewCell {
             subtitle.font = .preferredFont(forTextStyle: .subheadline)
             subtitle.adjustsFontForContentSizeCategory = true
             subtitle.textColor = .secondaryLabel
-            subtitle.numberOfLines = 1
+            subtitle.numberOfLines = 2
             subtitle.lineBreakMode = .byTruncatingTail
             column.addArrangedSubview(subtitle)
         }

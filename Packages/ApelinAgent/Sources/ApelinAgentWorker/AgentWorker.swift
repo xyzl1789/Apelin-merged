@@ -82,15 +82,16 @@ public enum AgentWorker {
                 }
                 let choice = try prompt.provider.map { provider in
                     PendingModelChoice(
-                        provider: try AgentWorker.provider(provider: provider, model: prompt.model),
+                        provider: try AgentWorker.provider(provider: provider, model: prompt.model, accountID: prompt.accountID),
                         wireProvider: provider, model: prompt.model,
                         reasoningEffort: prompt.reasoningEffort, serviceTier: prompt.serviceTier,
-                        parameters: prompt.modelParameters ?? .init(), defaults: prompt.modelDefaults)
+                        parameters: prompt.modelParameters ?? .init(), defaults: prompt.modelDefaults,
+                        accountID: prompt.accountID)
                 }
                 if let provider = prompt.provider {
                     do {
                         try await session.configure(
-                            provider: AgentWorker.provider(AgentOpenRequest(provider: provider, model: prompt.model)),
+                            provider: AgentWorker.provider(AgentOpenRequest(provider: provider, accountID: prompt.accountID, model: prompt.model)),
                             thinking: .init(rawValue: prompt.reasoningEffort?.rawValue ?? "off") ?? .off,
                             serviceTier: AgentWorker.serviceTier(prompt.serviceTier),
                             modelLimits: prompt.modelLimits,
@@ -105,6 +106,7 @@ public enum AgentWorker {
                         reasoningEffort: prompt.reasoningEffort,
                         serviceTier: prompt.serviceTier,
                         modelLimits: prompt.modelLimits,
+                        accountID: prompt.accountID,
                     )
                 }
                 guard (prompt.attachments?.count ?? 0) <= 8 else {
@@ -182,6 +184,7 @@ public enum AgentWorker {
                 let applied = try await session.configure(
                     provider: AgentWorker.provider(AgentOpenRequest(
                         provider: configure.provider,
+                        accountID: configure.accountID,
                         model: configure.model,
                     )),
                     thinking: .init(rawValue: configure.reasoningEffort?.rawValue ?? "off") ?? .off,
@@ -196,6 +199,7 @@ public enum AgentWorker {
                     reasoningEffort: configure.reasoningEffort,
                     serviceTier: configure.serviceTier,
                     modelParameters: configure.modelParameters,
+                    accountID: configure.accountID,
                 )
                 let figure = await session.contextFigure()
                 return AgentConfigureResponse(applied: true, tokens: figure.tokens, window: figure.window)
@@ -266,6 +270,11 @@ public enum AgentWorker {
                     ),
                 )
             }
+        case .agentProviderQuota:
+            await WorkerMain.serve(AgentProviderQuotaRequest.self, request) { query in
+                let home = URL(fileURLWithPath: context.assignment.home, isDirectory: true)
+                return try await accounts.quotas(query, dataRoot: ApelinDataRoot(home: home))
+            }
         case .agentProviderBalances:
             await WorkerMain.serve(AgentProviderBalancesRequest.self, request) { balances in
                 let home = URL(fileURLWithPath: context.assignment.home, isDirectory: true)
@@ -283,8 +292,9 @@ public enum AgentWorker {
             }
         case .agentModelTest:
             await WorkerMain.serve(AgentModelTestRequest.self, request) { query in
+                _ = try AccountDesk.validatedAccountID(query.accountID, for: query.provider)
                 guard let taskID = request.taskID else {
-                    throw ApelinError(.badRequest, "a model test requires a task")
+                    throw ApelinError(.badRequest, "模型测试需要一个任务")
                 }
                 // The probe can take a minute: the handle goes back at once and
                 // each stage is emitted as it starts and ends, then the report
@@ -320,11 +330,11 @@ public enum AgentWorker {
             }
         case .agentAPIConfiguration:
             await WorkerMain.serve(AgentAPIConfigurationRequest.self, request) { query in
-                try await accounts.apiConfiguration(for: query.provider)
+                try await accounts.apiConfiguration(for: query.provider, accountID: query.accountID)
             }
         case .agentModelList:
             await WorkerMain.serve(AgentModelListRequest.self, request) { query in
-                try await accounts.models(for: query.provider, limitsFor: query.limitsFor ?? [])
+                try await accounts.models(for: query.provider, accountID: query.accountID, limitsFor: query.limitsFor ?? [])
             }
         case .agentModelActivate:
             await WorkerMain.serve(AgentModelActivateRequest.self, request) { query in
@@ -349,7 +359,8 @@ public enum AgentWorker {
             }
         case .agentSignOut:
             await WorkerMain.serve(AgentSignOutRequest.self, request) { signOut in
-                try await accounts.signOut(signOut.provider)
+                let home = URL(fileURLWithPath: context.assignment.home, isDirectory: true)
+                try await accounts.signOut(signOut.provider, accountID: signOut.accountID, dataRoot: ApelinDataRoot(home: home))
                 return Acknowledged()
             }
         default:
@@ -397,7 +408,7 @@ public enum AgentWorker {
     /// every other provider uses its credential store id and the default
     /// model chosen by ProviderRegistration when none is named.
     static func provider(_ open: AgentOpenRequest) throws -> ProviderConfiguration {
-        try provider(provider: open.provider ?? .githubCopilot, model: open.model)
+        try provider(provider: open.provider ?? .githubCopilot, model: open.model, accountID: open.accountID)
     }
 
     /// The same, from a provider and model rather than an open request: a
@@ -405,8 +416,20 @@ public enum AgentWorker {
     static func provider(
         provider: AgentProvider,
         model requested: String?,
+        accountID: String? = nil,
     ) throws -> ProviderConfiguration {
+        let account = try AccountDesk.validatedAccountID(accountID, for: provider)
         let model = requested.flatMap { $0.isEmpty ? nil : $0 }
+        // 额外账号按自己的凭据 ID 解析，刷新与传输由注册表映射回原服务商。
+        if account != provider.storeID {
+            if provider == .githubCopilot {
+                return .stored(storeID: account, model: model ?? defaultCopilotModel)
+            }
+            if provider == .anthropic || provider == .anthropicOAuth || provider.kind == .openAICompatible {
+                guard model != nil else { throw ApelinError(.badRequest, "请给出 \(provider.rawValue) 的模型") }
+            }
+            return .stored(storeID: account, model: model)
+        }
         switch provider {
         case .githubCopilot:
             return .githubCopilot(model: model ?? defaultCopilotModel)
@@ -562,6 +585,7 @@ actor WorkerState {
             serviceTier: open.serviceTier,
             modelParameters: open.modelParameters,
             modelLimits: open.modelLimits,
+            accountID: open.accountID,
         )
 
         await modelChoice.setDefaults(open.modelDefaults)
@@ -569,7 +593,8 @@ actor WorkerState {
         await session.observePendingModel { choice in
             await choiceStore.set(provider: choice.wireProvider, model: choice.model,
                                   reasoningEffort: choice.reasoningEffort, serviceTier: choice.serviceTier,
-                                  modelParameters: choice.parameters)
+                                  modelParameters: choice.parameters,
+                                  accountID: choice.accountID ?? choice.provider.storeID)
             if let defaults = choice.defaults { await choiceStore.setDefaults(defaults) }
         }
 

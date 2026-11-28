@@ -44,8 +44,15 @@ public actor AccountDesk {
     private let listener: OAuthLoopbackFactory
     private let timeoutSeconds: Double
     private let verifyKey: @Sendable (AgentProvider, OAuthCredentials, String?) async throws -> Void
+    private let quotaTransport: any QuotaHTTPTransport
+    private var quotaCoordinators: [URL: QuotaCoordinator] = [:]
     private var keyVerification: (run: SignInRun, task: Task<Void, Error>)?
     private var running: SignInRun?
+    /// 退出先递增代次；网络返回后只接受同一代账号的结果。
+    private var accountGenerations: [String: UInt64] = [:]
+    private var signingOut: Set<String> = []
+    /// 同账号写入串行；退出等待已开始的钥匙串写入完成后再删除。
+    private var credentialWrites: [String: (id: UUID, task: Task<Void, Error>)] = [:]
     /// One balance lookup at a time: a second caller joins the request the
     /// first one started, rather than asking every provider twice.
     private var balanceInFlight: Task<AgentProviderBalancesResponse, Error>?
@@ -60,12 +67,14 @@ public actor AccountDesk {
         listener: @escaping OAuthLoopbackFactory = AccountDesk.nioListener,
         timeoutSeconds: Double = Double(AgentSignInRequest.timeoutSeconds),
         verifyKey: @escaping @Sendable (AgentProvider, OAuthCredentials, String?) async throws -> Void = ProviderKeyVerification.verify,
+        quotaTransport: any QuotaHTTPTransport = URLSessionQuotaTransport.shared,
     ) {
         self.store = store
         self.login = login
         self.listener = listener
         self.timeoutSeconds = timeoutSeconds
         self.verifyKey = verifyKey
+        self.quotaTransport = quotaTransport
     }
 
     /// 删除应用已不再提供的服务商凭据。
@@ -75,13 +84,17 @@ public actor AccountDesk {
         retiredSignInsLookedFor = true
         let stored = Set(await store.providerIds())
         var allRemoved = true
-        for retired in AgentProvider.retired where stored.contains(retired.storeID) {
-            do {
-                try await store.remove(retired.storeID)
-                Self.log.warning("Removed saved sign-in for retired provider \(retired.storeID, privacy: .public)")
-            } catch {
-                allRemoved = false
-                Self.log.error("Could not remove saved sign-in for retired provider \(retired.storeID, privacy: .public)")
+        for retired in AgentProvider.retired {
+            let ids = ([retired.storeID] + (2 ... AccountIDs.maximum).map { AgentAccountID.extra(retired.storeID, $0) })
+                .filter { stored.contains($0) }
+            for id in ids {
+                do {
+                    try await store.remove(id)
+                    Self.log.warning("已移除退役服务商的登录凭据 \(id, privacy: .public)")
+                } catch {
+                    allRemoved = false
+                    Self.log.error("无法移除退役服务商的登录凭据 \(id, privacy: .public)")
+                }
             }
         }
         if !allRemoved { retiredSignInsLookedFor = false }
@@ -135,50 +148,63 @@ public actor AccountDesk {
         accounts.reserveCapacity(AgentProvider.signInOrder.count)
         for listed in AgentProvider.signInOrder {
             for provider in Self.listed(listed, stored: stored) {
-            let accountStarted = DispatchTime.now().uptimeNanoseconds
-            let requested = extraModels[provider.rawValue] ?? []
-            let others = Array(provider.signInMethods.dropFirst())
-            var account = AgentAccount(
-                provider: provider,
-                method: provider.signInMethod,
-                alternativeMethods: others.isEmpty ? nil : others,
-                signedIn: stored.contains(provider.storeID),
-            )
-            // An item that does not decode is still signed in: Sign Out is
-            // how it goes away, and the account names no model.
-            if account.signedIn, let credentials = try? await store.credentials(for: provider.storeID) {
-                account.account = Self.accountLabel(provider, credentials)
-                account.expiresAt = Self.lapses(credentials)
-                let models = onlyExtraModels
-                    ? Self.narrowed(requested)
-                    : Self.widened(requested, provider: provider, credentials: credentials)
-                account.models = models
-                // A narrower account with no model leaves the catalogs nothing
-                // to name, and reading them for it costs a file check apiece.
-                // The whole list keeps every field it always carried, empty
-                // model list or not, so nothing else changes for it.
-                if !models.isEmpty || !onlyExtraModels {
-                    let facts = ProviderModels.catalogFacts(provider, credentials: credentials, models: models)
-                    let tiers = ProviderModels.serviceTiers(provider, credentials: credentials)
-                    if onlyExtraModels {
-                        let asked = Set(models)
-                        account.reasoningEfforts = facts.reasoningEfforts.filter { asked.contains($0.key) }
-                        account.serviceTiers = tiers.filter { asked.contains($0.key) }
-                        account.capabilities = facts.capabilities
-                    } else {
-                        account.reasoningEfforts = facts.reasoningEfforts
-                        account.serviceTiers = tiers
-                        account.capabilities = facts.capabilities
-                    }
+                let requested = extraModels[provider.rawValue] ?? []
+                let others = Array(provider.signInMethods.dropFirst())
+                let ids = Self.accountIDs(of: provider, stored: stored)
+                guard !ids.isEmpty else {
+                    accounts.append(AgentAccount(
+                        provider: provider,
+                        method: provider.signInMethod,
+                        alternativeMethods: others.isEmpty ? nil : others,
+                        signedIn: false,
+                        storeID: provider.storeID,
+                    ))
+                    continue
                 }
-                account.usesAPIKey = ProviderModels.usesAPIKey(provider, credentials: credentials) ? true : nil
-            }
-            accounts.append(account)
-            if account.signedIn {
-                Self.log.notice(
-                    "listed \(provider.storeID, privacy: .public) in \(Self.milliseconds(since: accountStarted), privacy: .public) ms: \(account.models?.count ?? 0, privacy: .public) models, catalog \(account.capabilities == nil ? 0 : 1, privacy: .public)",
-                )
-            }
+                // 每份凭据各占一行，无法解码的条目仍可在设置中退出。
+                for id in ids {
+                    let accountStarted = DispatchTime.now().uptimeNanoseconds
+                    var account = AgentAccount(
+                        provider: provider,
+                        method: provider.signInMethod,
+                        alternativeMethods: others.isEmpty ? nil : others,
+                        signedIn: true,
+                        storeID: id,
+                    )
+                    if let credentials = try? await store.credentials(for: id) {
+                        account.account = Self.accountLabel(provider, credentials)
+                        account.expiresAt = Self.lapses(credentials)
+                        let models = onlyExtraModels
+                            ? Self.narrowed(requested)
+                            : Self.widened(requested, provider: provider, credentials: credentials)
+                        account.models = models
+                        // 窄列表未指定模型时不读目录，指定时也只携带这些模型的字段。
+                        if !models.isEmpty || !onlyExtraModels {
+                            let facts = ProviderModels.catalogFacts(provider, credentials: credentials, models: models)
+                            let tiers = ProviderModels.serviceTiers(provider, credentials: credentials)
+                            if onlyExtraModels {
+                                let asked = Set(models)
+                                account.reasoningEfforts = facts.reasoningEfforts.filter { asked.contains($0.key) }
+                                account.serviceTiers = tiers.filter { asked.contains($0.key) }
+                                account.capabilities = facts.capabilities
+                            } else {
+                                account.reasoningEfforts = facts.reasoningEfforts
+                                account.serviceTiers = tiers
+                                account.capabilities = facts.capabilities
+                            }
+                        }
+                        let usesAPIKey = ProviderModels.usesAPIKey(provider, credentials: credentials)
+                        account.usesAPIKey = usesAPIKey ? true : nil
+                        account.poolID = QuotaPoolIdentity.poolID(
+                            provider: provider, storeID: id,
+                            credentials: credentials, usesAPIKey: usesAPIKey,
+                        )
+                    }
+                    accounts.append(account)
+                    Self.log.notice(
+                        "已列出 \(id, privacy: .public)，耗时 \(Self.milliseconds(since: accountStarted), privacy: .public) 毫秒：\(account.models?.count ?? 0, privacy: .public) 个模型，目录 \(account.capabilities == nil ? 0 : 1, privacy: .public)",
+                    )
+                }
             }
         }
         Self.log.notice(
@@ -194,9 +220,10 @@ public actor AccountDesk {
     /// else the lowest number no endpoint has.
     static func listed(_ provider: AgentProvider, stored: Set<String>) -> [AgentProvider] {
         guard provider == .openAICompatible else { return [provider] }
-        let numbers = stored.compactMap(CredentialProviderID.endpointNumber).sorted()
+        let bases = Set(stored.map(AccountIDs.base(of:)))
+        let numbers = Set(bases.compactMap(CredentialProviderID.endpointNumber)).sorted()
         var endpoints = numbers.map(AgentProvider.openAICompatibleEndpoint)
-        if stored.contains(provider.storeID) {
+        if bases.contains(provider.storeID) {
             endpoints.insert(provider, at: 0)
             if let free = AgentProvider.endpointNumbers.first(where: { !numbers.contains($0) }) {
                 endpoints.append(.openAICompatibleEndpoint(free))
@@ -205,6 +232,21 @@ public actor AccountDesk {
             endpoints.append(provider)
         }
         return endpoints
+    }
+
+    /// 验证账号属于该服务商且格式规范，验证前不触碰凭据。
+    static func validatedAccountID(_ requested: String?, for provider: AgentProvider) throws -> String {
+        let id = AccountIDs.resolved(requested, for: provider)
+        guard requested != "", AccountIDs.belongs(id, to: provider) else {
+            throw ApelinError(.badRequest, "账号标识无效或不属于所选服务商。")
+        }
+        return id
+    }
+
+    /// 首账号在前，附加账号按数字排序；不把未知存储条目归给别的服务商。
+    static func accountIDs(of provider: AgentProvider, stored: Set<String>) -> [String] {
+        ([provider.storeID] + (2 ... AccountIDs.maximum).map { AccountIDs.extra(provider, $0) })
+            .filter { stored.contains($0) }
     }
 
     /// The whole list with the caller's own models added: what every account
@@ -233,8 +275,12 @@ public actor AccountDesk {
 
     /// The explicit app-only editor reads the saved key directly; no task is
     /// created and neither account listings nor sign-in events expose it.
-    public func apiConfiguration(for provider: AgentProvider) async throws -> AgentAPIConfigurationResponse {
-        guard let credentials = try await store.credentials(for: provider.storeID) else {
+    public func apiConfiguration(
+        for provider: AgentProvider,
+        accountID: String? = nil,
+    ) async throws -> AgentAPIConfigurationResponse {
+        let accountID = try Self.validatedAccountID(accountID, for: provider)
+        guard let credentials = try await store.credentials(for: accountID) else {
             throw ApelinError(.notFound, "没有找到已保存的 API 配置，请先登录该供应商。")
         }
         guard ProviderModels.usesAPIKey(provider, credentials: credentials) else {
@@ -304,15 +350,189 @@ public actor AccountDesk {
         return try await task.value
     }
 
-    public func signOut(_ provider: AgentProvider) async throws {
-        do {
-            try await store.remove(provider.storeID)
-        } catch {
-            throw ApelinError(
-                .internal,
-                "无法移除已保存的登录：\(error.localizedDescription)。请重试。",
-            )
+    /// 退出指定账号；未指定时退出服务商的全部账号。损坏凭据也必须能删除。
+    public func signOut(
+        _ provider: AgentProvider,
+        accountID: String? = nil,
+        dataRoot: ApelinDataRoot? = nil,
+    ) async throws {
+        let selected = try accountID.map { try Self.validatedAccountID($0, for: provider) }
+        let invalidated = selected.map { [$0] }
+            ?? ([provider.storeID] + (2 ... AccountIDs.maximum).map { AccountIDs.extra(provider, $0) })
+        guard signingOut.isDisjoint(with: invalidated) else {
+            throw ApelinError(.conflict, "所选账号正在退出，请稍后重试。")
         }
+        // 在第一次 await 前作废所有目标，尚未落盘的登录也包含在内。
+        for id in invalidated { accountGenerations[id, default: 0] &+= 1 }
+        signingOut.formUnion(invalidated)
+        defer { signingOut.subtract(invalidated) }
+        if let previous = running, invalidated.contains(previous.accountID) {
+            previous.cancel()
+            if keyVerification?.run === previous {
+                keyVerification?.task.cancel()
+                keyVerification = nil
+            }
+            running = nil
+        }
+        for id in invalidated {
+            if let write = credentialWrites[id] { _ = await write.task.result }
+        }
+        let stored = Set(await store.providerIds())
+        let ids = invalidated.filter { stored.contains($0) }
+        var removedPools: Set<String> = []
+        var removalError: Error?
+        for id in ids {
+            // 解码失败不影响删除；可读凭据则用于找出需要清理的共享池。
+            let credentials = try? await store.credentials(for: id)
+            do {
+                try await store.remove(id)
+                removedPools.insert("oauth:\(id)")
+                if let credentials {
+                    removedPools.insert(QuotaPoolIdentity.poolID(
+                        provider: provider, storeID: id, credentials: credentials,
+                        usesAPIKey: ProviderModels.usesAPIKey(provider, credentials: credentials),
+                    ))
+                }
+            } catch {
+                if removalError == nil { removalError = error }
+            }
+        }
+        if let dataRoot {
+            var sharedPools: Set<String> = []
+            var unreadableRemaining = false
+            for id in await store.providerIds() {
+                guard let credentials = try? await store.credentials(for: id) else {
+                    unreadableRemaining = true
+                    continue
+                }
+                if let owner = AccountIDs.provider(of: id, among: Self.providersForStoredAccounts(id)) {
+                    sharedPools.insert(QuotaPoolIdentity.poolID(
+                        provider: owner, storeID: id, credentials: credentials,
+                        usesAPIKey: ProviderModels.usesAPIKey(owner, credentials: credentials),
+                    ))
+                }
+            }
+            let cache = QuotaCacheStore(dataRoot: dataRoot)
+            for pool in removedPools where !sharedPools.contains(pool) {
+                // 剩余损坏条目可能仍共享此 key 池，无法判断时保留它。
+                if pool.hasPrefix("key:"), unreadableRemaining { continue }
+                if let coordinator = quotaCoordinators[dataRoot.url] {
+                    await coordinator.forget(poolID: pool)
+                } else {
+                    cache.clearPool(poolID: pool)
+                }
+            }
+        }
+        if let removalError {
+            throw ApelinError(.internal, "无法移除已保存的登录：\(removalError.localizedDescription)。请重试。")
+        }
+    }
+
+    /// 动态端点也参与账号归属解析，不能只依赖 allCases 中的首端点。
+    private static func providersForStoredAccounts(_ id: String) -> [AgentProvider] {
+        let base = AccountIDs.base(of: id)
+        if let number = CredentialProviderID.endpointNumber(base) {
+            return [.openAICompatibleEndpoint(number)]
+        }
+        return AgentProvider.signInOrder
+    }
+
+    // MARK: - 服务商额度
+
+    private func quotaCoordinator(for dataRoot: ApelinDataRoot) -> QuotaCoordinator {
+        if let existing = quotaCoordinators[dataRoot.url] { return existing }
+        let coordinator = QuotaCoordinator(store: QuotaCacheStore(dataRoot: dataRoot), transport: quotaTransport)
+        quotaCoordinators[dataRoot.url] = coordinator
+        return coordinator
+    }
+
+    public func quotas(
+        _ request: AgentProviderQuotaRequest,
+        dataRoot: ApelinDataRoot,
+    ) async throws -> AgentProviderQuotaResponse {
+        // 先验证定向请求，再做账号枚举或退役清理。
+        let selected: (provider: AgentProvider, accountID: String)?
+        if let accountID = request.accountID {
+            guard let provider = request.provider else {
+                throw ApelinError(.badRequest, "查询指定账号的额度时必须提供服务商。")
+            }
+            selected = (provider, try Self.validatedAccountID(accountID, for: provider))
+        } else {
+            selected = nil
+        }
+        let generations = accountGenerations
+        await forgetRetiredSignIns()
+        let stored = Set(await store.providerIds())
+        var targets: [(provider: AgentProvider, accountID: String)] = []
+        if let selected {
+            if stored.contains(selected.accountID) { targets = [selected] }
+        } else if let provider = request.provider {
+            targets = Self.accountIDs(of: provider, stored: stored).map { (provider, $0) }
+        } else {
+            for listed in AgentProvider.signInOrder {
+                for provider in Self.listed(listed, stored: stored) {
+                    targets += Self.accountIDs(of: provider, stored: stored).map { (provider, $0) }
+                }
+            }
+        }
+        var descriptors: [QuotaAccountDescriptor] = []
+        for (provider, accountID) in targets {
+            let generation = generations[accountID, default: 0]
+            guard isCurrent(accountID, generation: generation),
+                  var credentials = try? await store.credentials(for: accountID),
+                  isCurrent(accountID, generation: generation)
+            else { continue }
+            let usesAPIKey = ProviderModels.usesAPIKey(provider, credentials: credentials)
+            if request.mode != .cachedOnly, !usesAPIKey,
+               credentials.isExpired, !credentials.refresh.isEmpty
+            {
+                let refreshers: [any OAuthProvider]
+                if let site = KimiSite.site(id: provider.storeID) {
+                    refreshers = OAuthSubscriptions.refresher(
+                        providerId: site.id,
+                        kimiIdentity: KimiIdentity.identity(recordedIn: credentials),
+                    ).map { [$0] } ?? []
+                } else {
+                    refreshers = KimiIdentity.refreshers(for: provider.storeID)
+                }
+                let manager = OAuthManager(source: store, providers: Self.scoped(
+                    refreshers, accountID: accountID, provider: provider,
+                ))
+                if let freshAccess = try? await manager.apiKey(for: accountID), !freshAccess.isEmpty {
+                    credentials = (try? await manager.credentials(for: accountID)) ?? credentials
+                    guard isCurrent(accountID, generation: generation) else { continue }
+                    credentials.access = freshAccess
+                    // OAuthManager 只更新自身内存；持久化必须再次验证账号代次。
+                    try? await persist(credentials, accountID: accountID, generation: generation)
+                }
+            }
+            guard isCurrent(accountID, generation: generation) else { continue }
+            descriptors.append(QuotaAccountDescriptor(
+                provider: provider, storeID: accountID,
+                accountLabel: Self.accountLabel(provider, credentials),
+                credentials: credentials, usesAPIKey: usesAPIKey,
+            ))
+        }
+        descriptors.removeAll { !isCurrent($0.storeID, generation: generations[$0.storeID, default: 0]) }
+        let snapshots = await quotaCoordinator(for: dataRoot).snapshots(
+            for: descriptors, mode: request.mode, foreground: request.foreground, force: request.force,
+        )
+        // 等待网络期间账号可能退出；迟到快照也不得返回给旧账号请求。
+        let current = zip(descriptors, snapshots).compactMap { descriptor, snapshot in
+            isCurrent(descriptor.storeID, generation: generations[descriptor.storeID, default: 0])
+                ? snapshot : nil
+        }
+        return AgentProviderQuotaResponse(quotas: current)
+    }
+
+    /// 附加账号使用同一刷新流程，但读写自己的凭据 ID。
+    static func scoped(
+        _ refreshers: [any OAuthProvider],
+        accountID: String,
+        provider: AgentProvider,
+    ) -> [any OAuthProvider] {
+        guard accountID != provider.storeID else { return refreshers }
+        return refreshers.map { AccountRefresher(base: $0, id: accountID) }
     }
 
     /// Endpoint host shown as the account label for API-key and AirRelay accounts.
@@ -348,8 +568,12 @@ public actor AccountDesk {
                 "\(request.provider.rawValue) does not support \(method.rawValue) sign-in. Choose another method.",
             )
         }
+        let accountID = try Self.validatedAccountID(request.accountID, for: request.provider)
+        let generation = accountGenerations[accountID, default: 0]
+        guard isCurrent(accountID, generation: generation) else { throw CancellationError() }
         await stopRunning()
-        let run = SignInRun(taskID: taskID, provider: request.provider, method: method)
+        guard isCurrent(accountID, generation: generation) else { throw CancellationError() }
+        let run = SignInRun(taskID: taskID, provider: request.provider, accountID: accountID, method: method, generation: generation)
         running = run
         run.work = Task { [weak self] in
             await self?.perform(run, reporter: reporter)
@@ -380,6 +604,7 @@ public actor AccountDesk {
             }
             values[field] = value
         }
+        guard running === run, !run.isCancelled, !Task.isCancelled else { throw CancellationError() }
         switch run.method {
         case .deviceCode:
             throw ApelinError(
@@ -439,8 +664,13 @@ public actor AccountDesk {
 
     /// The models the provider lists and, for an API-key account, the
     /// limits each of them and of `limitsFor` has when the user sets none.
-    public func models(for provider: AgentProvider, limitsFor asked: [String] = []) async throws -> AgentModelListResponse {
-        guard let credentials = try await store.credentials(for: provider.storeID) else {
+    public func models(
+        for provider: AgentProvider,
+        accountID: String? = nil,
+        limitsFor asked: [String] = [],
+    ) async throws -> AgentModelListResponse {
+        let accountID = try Self.validatedAccountID(accountID, for: provider)
+        guard let credentials = try await store.credentials(for: accountID) else {
             throw ApelinError(.notFound, "请先登录该供应商。")
         }
         let models = try await ProviderModels.fetch(provider, credentials: credentials)
@@ -463,15 +693,19 @@ public actor AccountDesk {
         guard !request.models.isEmpty, request.models.count <= 64,
               request.models.allSatisfy({ !$0.isEmpty && $0.count <= 256 && !$0.contains(where: \.isNewline) })
         else { throw ApelinError(.badRequest, "请选择 1 到 64 个有效模型 ID。") }
-        guard let credentials = try await store.credentials(for: request.provider.storeID) else {
-            throw ApelinError(.notFound, "请先登录该供应商。")
-        }
+        let accountID = try Self.validatedAccountID(request.accountID, for: request.provider)
+        let generation = accountGenerations[accountID, default: 0]
+        guard isCurrent(accountID, generation: generation),
+              let credentials = try await store.credentials(for: accountID)
+        else { throw ApelinError(.notFound, "请先登录该供应商。") }
+        guard isCurrent(accountID, generation: generation) else { throw CancellationError() }
         let usesAPIKey = ProviderModels.usesAPIKey(request.provider, credentials: credentials)
         guard usesAPIKey || request.provider == .githubCopilot else {
             throw ApelinError(.badRequest, "该 OAuth 供应商不需要模型验证。")
         }
         await stopRunning()
-        let run = SignInRun(taskID: taskID, provider: request.provider, method: .apiKey)
+        guard isCurrent(accountID, generation: generation) else { throw CancellationError() }
+        let run = SignInRun(taskID: taskID, provider: request.provider, accountID: accountID, method: .apiKey, generation: generation)
         running = run
         run.work = Task { [weak self, verifyKey] in
             var currentModel = ""
@@ -488,9 +722,10 @@ public actor AccountDesk {
                         {
                             // 站点只开 Responses API。换成 Responses 存下来再验，
                             // 之后真实会话也用这个格式，不必让用户手选。
+                            try Task.checkCancellation()
                             verified = Self.switching(verified, to: .responses)
                             try await verifyKey(request.provider, verified, model)
-                            try await self?.store.store(verified, for: request.provider.storeID)
+                            try await self?.save(verified, for: run)
                         }
                     } else {
                         try await KWWKSignIn.enableCopilotModels(verified, models: [model])
@@ -508,6 +743,36 @@ public actor AccountDesk {
             }
             await self?.clear(run)
         }
+    }
+
+    private func isCurrent(_ accountID: String, generation: UInt64) -> Bool {
+        !Task.isCancelled && !signingOut.contains(accountID)
+            && accountGenerations[accountID, default: 0] == generation
+    }
+
+    /// 只有仍在运行且代次有效的登录或模型验证可以保存凭据。
+    private func save(_ credentials: OAuthCredentials, for run: SignInRun) async throws {
+        guard running === run, !run.isCancelled,
+              isCurrent(run.accountID, generation: run.generation)
+        else { throw CancellationError() }
+        try Task.checkCancellation()
+        try await persist(credentials, accountID: run.accountID, generation: run.generation)
+    }
+
+    private func persist(_ credentials: OAuthCredentials, accountID: String, generation: UInt64) async throws {
+        guard isCurrent(accountID, generation: generation) else { throw CancellationError() }
+        let previous = credentialWrites[accountID]?.task
+        let id = UUID()
+        let write = Task { [store] in
+            if let previous { _ = await previous.result }
+            try await store.store(credentials, for: accountID)
+        }
+        credentialWrites[accountID] = (id, write)
+        defer {
+            if credentialWrites[accountID]?.id == id { credentialWrites[accountID] = nil }
+        }
+        try await write.value
+        guard isCurrent(accountID, generation: generation) else { throw CancellationError() }
     }
 
     private func clear(_ run: SignInRun) {
@@ -677,16 +942,16 @@ public actor AccountDesk {
     /// What kwwk's login gets beside its callbacks: for Kimi, either site,
     /// the device id that site's stored sign-in recorded, so signing in
     /// again keeps the device Kimi knows (`KimiIdentity`).
-    private func options(for provider: AgentProvider) async -> SignInOptions {
-        guard provider == .kimiCoding || provider == .kimiCodingGlobal else { return SignInOptions() }
-        let previous = try? await store.credentials(for: provider.storeID)
+    private func options(for run: SignInRun) async -> SignInOptions {
+        guard run.provider == .kimiCoding || run.provider == .kimiCodingGlobal else { return SignInOptions() }
+        let previous = try? await store.credentials(for: run.accountID)
         return SignInOptions(kimiIdentity: KimiIdentity.identity(recordedIn: previous))
     }
 
     private func perform(_ run: SignInRun, reporter: SignInReporter) async {
         let taskID = run.taskID
         do {
-            let options = await options(for: run.provider)
+            let options = await options(for: run)
             // Not named `credentials`: Swift 6.2 reads the call in the closure
             // as the variable it initialises.
             var signedIn = try await Self.withDeadline(timeoutSeconds) { [self] in
@@ -697,7 +962,9 @@ public actor AccountDesk {
             }
             try Task.checkCancellation()
             do {
-                try await store.store(signedIn, for: run.provider.storeID)
+                try await save(signedIn, for: run)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 // A store error names a status, never the secret.
                 throw ApelinError(.internal, "无法保存登录信息：\(error.localizedDescription)。请重试。")
@@ -839,6 +1106,9 @@ private struct SignInPresenter: OAuthBrowserPresenter {
 final class SignInRun: @unchecked Sendable {
     let taskID: TaskID
     let provider: AgentProvider
+    /// 本次操作持有的凭据存储 ID。
+    let accountID: String
+    let generation: UInt64
     let method: AgentSignInMethod
     var work: Task<Void, Never>?
 
@@ -849,9 +1119,11 @@ final class SignInRun: @unchecked Sendable {
     @objc private dynamic var deviceCode = false
     private var listener: PasteableLoopback?
 
-    init(taskID: TaskID, provider: AgentProvider, method: AgentSignInMethod) {
+    init(taskID: TaskID, provider: AgentProvider, accountID: String? = nil, method: AgentSignInMethod, generation: UInt64 = 0) {
         self.taskID = taskID
         self.provider = provider
+        self.accountID = AccountIDs.resolved(accountID, for: provider)
+        self.generation = generation
         self.method = method
     }
 

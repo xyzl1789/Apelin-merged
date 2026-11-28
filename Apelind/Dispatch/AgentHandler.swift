@@ -109,7 +109,7 @@ enum AgentHandler: DomainHandler {
             return await runCode(request, host: host)
         // MCP tool discovery is app-only and reads the protected server config.
         case .agentCredentialImport, .agentAccountList, .agentSkillList, .agentRewritePrompt,
-             .agentAPIConfiguration, .agentModelList, .agentSignOut, .agentProviderBalances, .agentCheckIn,
+             .agentAPIConfiguration, .agentModelList, .agentSignOut, .agentProviderBalances, .agentProviderQuota, .agentCheckIn,
              .agentMCPTools:
             return await host.forward(request, to: .agent, instance: credentialInstance)
         // The probe runs for up to a minute: a task, so the page shows each

@@ -1318,6 +1318,310 @@ struct AccountDeskTests {
         }
     }
 
+    /// 故意不响应取消，用来模拟晚到的供应商网络请求。
+    actor UncancellableAccountGate {
+        private var continuation: CheckedContinuation<Void, Never>?
+        private(set) var entered = false
+        private var released = false
+
+        func wait() async {
+            entered = true
+            if released { return }
+            await withCheckedContinuation { continuation = $0 }
+        }
+        func release() {
+            released = true
+            continuation?.resume()
+            continuation = nil
+        }
+        func waitUntilEntered() async throws {
+            for _ in 0 ..< 500 {
+                if entered { return }
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+            throw POSIXError(.ETIMEDOUT)
+        }
+    }
+
+    @Test
+    func `退出不等待忽略取消的模型验证且迟到结果不能复活凭据`() async throws {
+        let provider = AgentProvider.openAICompatible
+        let second = AccountIDs.extra(provider, 2)
+        let candidate = OAuthCredentials(access: "second-SECRET", refresh: "", expires: .max)
+        let store = DeliveredCredentialSource([second: candidate])
+        let gate = UncancellableAccountGate()
+        let desk = AccountDesk(store: store, verifyKey: { _, credentials, _ in
+            guard credentials.extras["apiFormat"] == .string(AgentAPIFormat.responses.rawValue) else {
+                throw ProviderEndpointRequirement.responsesOnly
+            }
+            await gate.wait()
+        })
+        let recorder = SignInRecorder()
+        try await desk.activateModels(
+            AgentModelActivateRequest(provider: provider, accountID: second, models: ["test-model"]),
+            taskID: TaskID("late-activation"), reporter: recorder.reporter,
+        )
+        try await gate.waitUntilEntered()
+        // 直到 signOut 已返回才释放网络结果，证明退出无需等待不配合取消的任务。
+        try await desk.signOut(provider, accountID: second)
+        #expect(try await store.credentials(for: second) == nil)
+        await gate.release()
+        try await recorder.waitFor { $0.state != nil }
+        #expect(recorder.state == .cancelled)
+        #expect(try await store.credentials(for: second) == nil)
+        #expect(!recorder.events.contains { $0.kind == "modelVerified" })
+    }
+
+    @Test
+    func `退出后显式重新登录使用新代次且旧登录不能覆盖它`() async throws {
+        let provider = AgentProvider.openRouter
+        let second = AccountIDs.extra(provider, 2)
+        let gate = UncancellableAccountGate()
+        let store = DeliveredCredentialSource()
+        let desk = AccountDesk(store: store, login: { _, _, _ in
+            await gate.wait()
+            return OAuthCredentials(access: "late-SECRET", refresh: "", expires: .max)
+        }, verifyKey: { _, _, _ in })
+        let old = SignInRecorder()
+        try await desk.start(AgentSignInRequest(provider: provider, accountID: second), taskID: TaskID("late-login"), reporter: old.reporter)
+        try await gate.waitUntilEntered()
+        try await desk.signOut(provider, accountID: second)
+        let fresh = SignInRecorder()
+        try await desk.start(AgentSignInRequest(provider: provider, method: .apiKey, accountID: second), taskID: TaskID("fresh-login"), reporter: fresh.reporter)
+        try await fresh.waitFor { !$0.events.isEmpty }
+        try await desk.respond(AgentSignInRespondRequest(taskID: TaskID("fresh-login"), fields: [.apiKey: "fresh-SECRET"]))
+        try await fresh.waitFor { $0.state != nil }
+        #expect(fresh.state == .succeeded)
+        await gate.release()
+        try await old.waitFor { $0.state != nil }
+        #expect(old.state == .cancelled)
+        #expect(try await store.credentials(for: second)?.access == "fresh-SECRET")
+    }
+
+    // MARK: - 多账号隔离
+
+    /// 记录凭据读取；损坏条目仍在 providerIds 中，以覆盖退出时的解码失败。
+    actor AccountAccessRecorder: CredentialSource {
+        private var entries: [String: OAuthCredentials]
+        private var unreadable: Set<String>
+        private(set) var readIDs: [String] = []
+
+        init(_ entries: [String: OAuthCredentials] = [:], unreadable: Set<String> = []) {
+            self.entries = entries
+            self.unreadable = unreadable
+        }
+
+        func providerIds() -> [String] { Set(entries.keys).union(unreadable).sorted() }
+        func credentials(for providerId: String) throws -> OAuthCredentials? {
+            readIDs.append(providerId)
+            if unreadable.contains(providerId) { throw POSIXError(.EIO) }
+            return entries[providerId]
+        }
+        func store(_ credentials: OAuthCredentials, for providerID: String) {
+            entries[providerID] = credentials
+            unreadable.remove(providerID)
+        }
+        func remove(_ providerID: String) {
+            entries.removeValue(forKey: providerID)
+            unreadable.remove(providerID)
+        }
+    }
+
+    @Test
+    func `账号后缀只接受规范形式且空位可以再次分配`() {
+        let provider = AgentProvider.anthropicOAuth
+        let base = provider.storeID
+        #expect(AccountIDs.belongs(base, to: provider))
+        #expect(AccountIDs.belongs("\(base)#2", to: provider))
+        #expect(AccountIDs.belongs("\(base)#9", to: provider))
+        for suffix in ["#1", "#02", "#+2", "#10", "#2#2", "#2\n", "#"] {
+            #expect(!AccountIDs.belongs(base + suffix, to: provider))
+        }
+        #expect(!AccountIDs.belongs(AgentProvider.openAI.storeID, to: provider))
+        #expect(AccountIDs.next(for: provider, taken: [base, "\(base)#3"]) == "\(base)#2")
+        #expect(AccountIDs.next(for: provider, taken: Set([base] + (2 ... 9).map { "\(base)#\($0)" })) == nil)
+    }
+
+    @Test
+    func `首账号退出后仍列出自定义端点的额外账号`() async throws {
+        let provider = AgentProvider.openAICompatibleEndpoint(2)
+        let second = AccountIDs.extra(provider, 2)
+        let store = DeliveredCredentialSource([
+            second: OAuthCredentials(access: "endpoint-SECRET", refresh: "", expires: .max),
+        ])
+        let desk = AccountDesk(store: store)
+        let rows = await desk.list(onlyExtraModels: true).accounts
+        #expect(rows.contains { $0.provider == provider && $0.storeID == second && $0.signedIn })
+        #expect(rows.filter { $0.provider == provider }.count == 1)
+        #expect(rows.contains { $0.provider == .openAICompatible && !$0.signedIn })
+    }
+
+    @Test
+    func `同服务商的每份凭据单独列出且窄列表不回填目录`() async throws {
+        let provider = AgentProvider.deepSeek
+        let base = provider.storeID
+        let second = AccountIDs.extra(provider, 2)
+        let broken = AccountIDs.extra(provider, 3)
+        let store = AccountAccessRecorder([
+            base: OAuthCredentials(access: "key-first-SECRET", refresh: "", expires: .max),
+            second: OAuthCredentials(access: "key-second-SECRET", refresh: "", expires: .max),
+        ], unreadable: [broken])
+        let desk = AccountDesk(store: store)
+        let rows = await desk.list(extraModels: [provider.rawValue: ["custom", "custom", ""]], onlyExtraModels: true)
+            .accounts.filter { $0.provider == provider }
+        try #require(rows.count == 3)
+        #expect(rows.map(\.storeID) == [base, second, broken])
+        #expect(rows.allSatisfy(\.signedIn))
+        #expect(rows[0].models == ["custom"])
+        #expect(rows[1].models == ["custom"])
+        #expect(rows[0].poolID != rows[1].poolID)
+        #expect(rows[2].models == nil && rows[2].poolID == nil)
+        let encoded = try JSONCoding.encode(rows)
+        #expect(!String(decoding: encoded, as: UTF8.self).contains("SECRET"))
+    }
+
+    @Test
+    func `附加账号登录不覆盖首账号且编辑读取按账号隔离`() async throws {
+        let provider = AgentProvider.deepSeek
+        let original = OAuthCredentials(access: "first-SECRET", refresh: "", expires: .max)
+        let store = DeliveredCredentialSource([provider.storeID: original])
+        let second = AccountIDs.extra(provider, 2)
+        let desk = AccountDesk(store: store, login: Self.neverCalled, listener: Self.silent, verifyKey: { _, _, _ in })
+        let recorder = SignInRecorder()
+        let taskID = TaskID("multi-account")
+        try await desk.start(AgentSignInRequest(provider: provider, accountID: second), taskID: taskID, reporter: recorder.reporter)
+        try await recorder.waitFor { !$0.events.isEmpty }
+        try await desk.respond(AgentSignInRespondRequest(taskID: taskID, fields: [.apiKey: "second-SECRET"]))
+        try await recorder.waitFor { $0.state != nil }
+        #expect(recorder.state == .succeeded)
+        #expect(try await store.credentials(for: provider.storeID) == original)
+        #expect(try await desk.apiConfiguration(for: provider, accountID: second).values["apiKey"] == "second-SECRET")
+        #expect(!recorder.transcript.contains("SECRET"))
+        try await desk.signOut(provider, accountID: second)
+        #expect(try await store.credentials(for: second) == nil)
+        #expect(try await store.credentials(for: provider.storeID) == original)
+    }
+
+    @Test
+    func `模型验证切换接口格式时只更新所选账号`() async throws {
+        let provider = AgentProvider.openAICompatible
+        let second = AccountIDs.extra(provider, 2)
+        let original = OAuthCredentials(access: "first-SECRET", refresh: "", expires: .max)
+        let candidate = OAuthCredentials(access: "second-SECRET", refresh: "", expires: .max, extras: [
+            "baseUrl": .string("https://relay.example.invalid"),
+            "defaultModel": .string("test-model"),
+        ])
+        let store = DeliveredCredentialSource([provider.storeID: original, second: candidate])
+        let desk = AccountDesk(store: store, verifyKey: { actualProvider, credentials, model in
+            #expect(actualProvider == provider)
+            #expect(credentials.access == candidate.access)
+            #expect(model == "test-model")
+            guard credentials.extras["apiFormat"] == .string(AgentAPIFormat.responses.rawValue) else {
+                throw ProviderEndpointRequirement.responsesOnly
+            }
+        })
+        let recorder = SignInRecorder()
+        try await desk.activateModels(
+            AgentModelActivateRequest(provider: provider, accountID: second, models: ["test-model"]),
+            taskID: TaskID("activate-second"), reporter: recorder.reporter,
+        )
+        try await recorder.waitFor { $0.state != nil }
+        #expect(recorder.state == .succeeded)
+        #expect(try await store.credentials(for: provider.storeID) == original)
+        #expect(try await store.credentials(for: second)?.extras["apiFormat"] == .string(AgentAPIFormat.responses.rawValue))
+        #expect(!recorder.transcript.contains("SECRET"))
+    }
+
+    @Test
+    func `跨服务商及非规范账号在任何凭据读取前拒绝`() async throws {
+        let provider = AgentProvider.deepSeek
+        let store = AccountAccessRecorder()
+        let desk = AccountDesk(store: store)
+        for id in [AgentProvider.openAI.storeID, "", "\(provider.storeID)#02", "\(provider.storeID)#2#2"] {
+            await #expect(throws: ApelinError.self) { _ = try await desk.apiConfiguration(for: provider, accountID: id) }
+            await #expect(throws: ApelinError.self) { _ = try await desk.models(for: provider, accountID: id) }
+            await #expect(throws: ApelinError.self) { try await desk.signOut(provider, accountID: id) }
+            await #expect(throws: ApelinError.self) {
+                try await desk.start(AgentSignInRequest(provider: provider, accountID: id), taskID: TaskID("invalid"), reporter: SignInRecorder().reporter)
+            }
+            await #expect(throws: ApelinError.self) {
+                try await desk.activateModels(AgentModelActivateRequest(provider: provider, accountID: id, models: ["test"]), taskID: TaskID("invalid-model"), reporter: SignInRecorder().reporter)
+            }
+            #expect(throws: ApelinError.self) { _ = try AgentWorker.provider(provider: provider, model: "test", accountID: id) }
+        }
+        #expect(await store.readIDs.isEmpty)
+    }
+
+    @Test
+    func `损坏凭据可以退出且全部退出清理每个账号的额度池`() async throws {
+        let provider = AgentProvider.anthropicOAuth
+        let first = provider.storeID
+        let second = AccountIDs.extra(provider, 2)
+        let broken = AccountIDs.extra(provider, 3)
+        let store = AccountAccessRecorder([first: Self.issued, second: Self.issued], unreadable: [broken])
+        let desk = AccountDesk(store: store)
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("accounts-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let root = ApelinDataRoot(home: home)
+        let cache = QuotaCacheStore(dataRoot: root)
+        for id in [first, second, broken] {
+            cache.mergePassiveUpdate(poolID: "oauth:\(id)", provider: provider, accountLabel: nil,
+                                     windows: [], balances: [], planName: nil, isExhausted: false)
+        }
+        try await desk.signOut(provider, dataRoot: root)
+        #expect(await store.providerIds().isEmpty)
+        for id in [first, second, broken] { #expect(cache.pool(for: "oauth:\(id)") == nil) }
+    }
+
+    @Test
+    func `退出保留其他服务商仍共享的密钥额度池`() async throws {
+        let shared = OAuthCredentials(access: "shared-SECRET", refresh: "", expires: .max)
+        let second = AccountIDs.extra(.deepSeek, 2)
+        let store = DeliveredCredentialSource([
+            AgentProvider.deepSeek.storeID: shared,
+            second: OAuthCredentials(access: "other-SECRET", refresh: "", expires: .max),
+            AgentProvider.openAI.storeID: shared,
+        ])
+        let desk = AccountDesk(store: store)
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("account-pools-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let root = ApelinDataRoot(home: home)
+        let cache = QuotaCacheStore(dataRoot: root)
+        let sharedID = QuotaPoolIdentity.poolID(provider: .deepSeek, storeID: AgentProvider.deepSeek.storeID, credentials: shared, usesAPIKey: true)
+        let other = try #require(try await store.credentials(for: second))
+        let otherID = QuotaPoolIdentity.poolID(provider: .deepSeek, storeID: second, credentials: other, usesAPIKey: true)
+        for pool in [sharedID, otherID] {
+            cache.mergePassiveUpdate(poolID: pool, provider: .deepSeek, accountLabel: nil,
+                                     windows: [], balances: [], planName: nil, isExhausted: false)
+        }
+        try await desk.signOut(.deepSeek, dataRoot: root)
+        #expect(cache.pool(for: sharedID) != nil)
+        #expect(cache.pool(for: otherID) == nil)
+        try await desk.signOut(.openAI, dataRoot: root)
+        #expect(cache.pool(for: sharedID) == nil)
+    }
+
+    @Test
+    func `缓存额度查询只返回所选账号并拒绝跨服务商请求`() async throws {
+        let first = AgentProvider.deepSeek.storeID
+        let second = AccountIDs.extra(.deepSeek, 2)
+        let store = AccountAccessRecorder([
+            first: OAuthCredentials(access: "first", refresh: "", expires: .max),
+            second: OAuthCredentials(access: "second", refresh: "", expires: .max),
+        ])
+        let desk = AccountDesk(store: store)
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("account-quota-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let root = ApelinDataRoot(home: home)
+        let reply = try await desk.quotas(AgentProviderQuotaRequest(provider: .deepSeek, mode: .cachedOnly, accountID: second), dataRoot: root)
+        #expect(reply.quotas.count == 1)
+        #expect(await store.readIDs == [second])
+        await #expect(throws: ApelinError.self) {
+            _ = try await desk.quotas(AgentProviderQuotaRequest(provider: .openAI, mode: .cachedOnly, accountID: second), dataRoot: root)
+        }
+        #expect(await store.readIDs == [second])
+    }
+
     /// Every renewing login remains supported, but a session constructs
     /// only the selected account's refresher (and none for API keys).
     @Test

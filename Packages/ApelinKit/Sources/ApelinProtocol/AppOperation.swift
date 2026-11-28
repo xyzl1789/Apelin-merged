@@ -92,6 +92,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
     case agentMCPTools
     /// Read-only balance lookups for the provider accounts that publish one.
     case agentProviderBalances
+    case agentProviderQuota
     /// 每日签到：从已登录的 WorkBuddy / Trae CN / Qoder CN 账号领取当天积分。
     case agentCheckIn
     case agentSkillList
@@ -217,7 +218,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
             .diagnostics
         case .agentDelegation, .agentOpen, .agentPrompt, .agentSteer, .agentAbort, .agentCompact, .agentGenerateImage, .agentConfigure, .agentSetRunMode, .agentQueue, .agentApprove, .agentAttach, .agentList,
              .agentClose, .agentRunCode, .agentCredentialImport, .agentAccountList, .agentSkillList,
-             .agentRewritePrompt, .agentModelTest, .agentProviderBalances, .agentCheckIn, .agentMCPTools,
+             .agentRewritePrompt, .agentModelTest, .agentProviderBalances, .agentProviderQuota, .agentCheckIn, .agentMCPTools,
              .agentAPIConfiguration, .agentModelList,
              .agentModelActivate, .agentSignIn, .agentSignInRespond, .agentSignInCancel, .agentSignOut,
              .agentRewind, .agentEditMessage, .agentDeleteReply, .agentFork:
@@ -313,6 +314,7 @@ public enum AppOperation: String, Codable, CaseIterable, Sendable {
         case .agentCredentialImport: AgentCredentialImportRequest.self
         case .agentAccountList: AgentAccountListRequest.self
         case .agentProviderBalances: AgentProviderBalancesRequest.self
+        case .agentProviderQuota: AgentProviderQuotaRequest.self
         case .agentCheckIn: AgentCheckInRequest.self
         case .agentMCPTools: AgentMCPToolsRequest.self
         case .agentSkillList: AgentSkillListRequest.self

@@ -13,6 +13,8 @@ extension Notification.Name {
 /// does, and a later model that offers them gets them back.
 struct ComposerModelSelection: Codable, Equatable {
     var provider: AgentProvider
+    /// 此模型使用的账号；旧选择没有此字段时仍采用服务商的首个账号。
+    var storeID: String? = nil
     var model: String
     /// The last catalog snapshot, so the effort control also restores offline.
     var supportedEfforts: [AgentReasoningEffort]
@@ -109,6 +111,7 @@ struct ComposerModelSelection: Codable, Equatable {
         else { return }
         var seed = Self(
             provider: chosen.provider,
+            storeID: chosen.storeID,
             model: chosen.model,
             supportedEfforts: [],
             supportedTiers: [],

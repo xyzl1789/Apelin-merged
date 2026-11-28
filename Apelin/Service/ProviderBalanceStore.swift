@@ -63,8 +63,30 @@ final class ProviderBalanceStore {
     /// 胶囊只画当前选中连接自己的余额；这个连接不支持查询、还没查到或
     /// 根本没选中时，返回 nil，胶囊显示「--」，绝不借别的连接的数字来充数。
     /// 点开胶囊仍能看到所有能查到余额的连接。
-    func current(for provider: AgentProvider?) -> ProviderBalance? {
+    func current(for provider: AgentProvider?, accountID: String? = nil) -> ProviderBalance? {
         guard let provider else { return nil }
-        return balances.first { $0.provider == provider }
+        if let accountID, !accountID.isEmpty {
+            return balances.first { $0.provider == provider && $0.accountID == accountID }
+        }
+        // 旧会话没有账号标识时只取首账号，不把另一个账号的余额当成它的。
+        return balances.first { $0.provider == provider && !$0.accountID.contains(AgentAccountID.separator) }
+    }
+}
+
+extension ProviderBalance {
+    /// 金额统一保留两位小数；token配额仍保留整数/原有单位格式，未知值不伪造为零。
+    var displayedAmount: String {
+        guard currency != "tokens",
+              let value = Decimal(string: amount, locale: Locale(identifier: "en_US_POSIX")),
+              !value.isNaN
+        else { return amount }
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        formatter.roundingMode = .halfUp
+        return formatter.string(from: NSDecimalNumber(decimal: value)) ?? amount
     }
 }

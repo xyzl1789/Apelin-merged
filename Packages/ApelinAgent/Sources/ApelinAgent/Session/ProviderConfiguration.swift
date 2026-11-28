@@ -26,7 +26,7 @@ public enum ProviderConfiguration: Sendable, Hashable, Codable {
     /// in-process fakes). Needs no credential.
     case registered(Model)
 
-    var storeID: String? {
+    public var storeID: String? {
         switch self {
         case let .anthropic(_, oauth):
             oauth ? CredentialProviderID.anthropicOAuth : CredentialProviderID.anthropicAPIKey
@@ -39,8 +39,11 @@ public enum ProviderConfiguration: Sendable, Hashable, Codable {
 
     /// Converts the protocol's provider choice for an auxiliary operation.
     /// Auxiliary defaults always carry a concrete model identifier.
-    public static func auxiliary(provider: AgentProvider, model: String) -> Self {
-        switch provider {
+    public static func auxiliary(provider: AgentProvider, model: String, accountID: String? = nil) -> Self {
+        if let accountID, AccountIDs.belongs(accountID, to: provider), accountID != provider.storeID {
+            return .stored(storeID: accountID, model: model)
+        }
+        return switch provider {
         case .githubCopilot: .githubCopilot(model: model)
         case .anthropic: .anthropic(model: model, oauth: false)
         case .anthropicOAuth: .anthropic(model: model, oauth: true)
@@ -142,6 +145,7 @@ public enum ProviderResolver {
         _ configuration: ProviderConfiguration,
         credentials: any CredentialSource,
         modelParameters: AgentModelParameters? = nil,
+        quotaStore: QuotaCacheStore? = nil,
         diagnostic: @Sendable (String) -> Void = { _ in },
     ) async throws -> ResolvedProvider {
         let reading = Date()
@@ -157,7 +161,12 @@ public enum ProviderResolver {
         // never writes them anywhere. Only this account's refresher is made;
         // API keys need none, and Kimi's identity never reaches for ~/.kwwk.
         let preparing = Date()
-        let manager = OAuthManager(source: credentials, providers: KimiIdentity.refreshers(for: storeID))
+        let baseStoreID = AccountIDs.base(of: storeID)
+        let refreshers = KimiIdentity.refreshers(for: baseStoreID)
+        let scoped: [any OAuthProvider] = baseStoreID == storeID
+            ? refreshers
+            : refreshers.map { AccountRefresher(base: $0, id: storeID) }
+        let manager = OAuthManager(source: credentials, providers: scoped)
         diagnostic("provider refreshers prepared in \(elapsed(since: preparing))")
         let registering = Date()
         guard let resolved = try await ProviderRegistration.resolve(
@@ -165,6 +174,7 @@ public enum ProviderResolver {
             manager: manager,
             modelOverride: configuration.modelID,
             parameters: modelParameters,
+            quotaStore: quotaStore,
         ) else {
             throw ProviderResolutionError.missingCredentials(storeID)
         }

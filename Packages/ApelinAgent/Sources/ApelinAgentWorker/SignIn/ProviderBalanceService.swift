@@ -205,10 +205,11 @@ enum ProviderBalanceService {
 
     /// 一个 store id 对应的 provider；编号的兼容端点也算 openAICompatible。
     private static func provider(for storeID: String) -> AgentProvider? {
-        if let number = CredentialProviderID.endpointNumber(storeID) {
-            return .openAICompatibleEndpoint(number)
+        if let number = CredentialProviderID.endpointNumber(AccountIDs.base(of: storeID)) {
+            let provider = AgentProvider.openAICompatibleEndpoint(number)
+            return AccountIDs.belongs(storeID, to: provider) ? provider : nil
         }
-        return AgentProvider.allCases.first { $0.storeID == storeID }
+        return AccountIDs.provider(of: storeID, among: AgentProvider.allCases)
     }
 
     private static func adapterOff(_ credential: OAuthCredentials) -> Bool {

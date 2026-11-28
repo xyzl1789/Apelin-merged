@@ -11,9 +11,12 @@ public enum ProviderRegistration {
         manager: OAuthManager,
         modelOverride: String? = nil,
         parameters: AgentModelParameters? = nil,
+        quotaStore: QuotaCacheStore? = nil,
     ) async throws -> ResolvedAuth? {
         guard let credentials = try await manager.credentials(for: storeID) else { return nil }
-        if storeID == CredentialProviderID.deepSeek {
+        // 额外账号按原服务商注册传输，但始终使用本账号读取的凭据。
+        let baseStoreID = AccountIDs.base(of: storeID)
+        if baseStoreID == CredentialProviderID.deepSeek {
             let id = modelOverride ?? DeepSeekProvider.extra("defaultModel", in: credentials) ?? DeepSeekProvider.defaultModel
             let base = DeepSeekProvider.extra("baseUrl", in: credentials) ?? DeepSeekProvider.baseURL
             let fallback = Model(id: id, api: "openai-completions", provider: "deepseek", baseURL: base)
@@ -27,7 +30,7 @@ public enum ProviderRegistration {
                 ResolvedProviderAuth(token: credentials.access, scheme: .bearer)
             })
         }
-        let registered: ResolvedAuth? = if CredentialProviderID.endpointNumber(storeID) != nil {
+        let registered: ResolvedAuth? = if CredentialProviderID.endpointNumber(baseStoreID) != nil {
             // kwwk knows one OpenAI-compatible login, by its store id. A
             // further endpoint is registered as that login, from its own
             // credentials: the model carries its base URL, and the key is
@@ -37,6 +40,12 @@ public enum ProviderRegistration {
                 manager: OAuthManager(
                     source: DeliveredCredentialSource([CredentialProviderID.openAICompatible: credentials]),
                 ),
+                modelOverride: modelOverride,
+            )
+        } else if baseStoreID != storeID {
+            try await registerStored(
+                storeId: baseStoreID,
+                manager: OAuthManager(source: DeliveredCredentialSource([baseStoreID: credentials])),
                 modelOverride: modelOverride,
             )
         } else {
@@ -49,9 +58,12 @@ public enum ProviderRegistration {
         // figures are already the catalog's changes nothing here.
         var model = ModelResolver.resolving(
             DeepSeekProvider.isOfficial(credentials) ? DeepSeekProvider.applyingCatalog(to: resolved.model) : resolved.model,
-            catalogKey: catalogKey(storeID: storeID),
+            catalogKey: catalogKey(storeID: baseStoreID),
             parameters: parameters,
         )
+        if let quotaStore {
+            model = await observingQuota(model, storeID: storeID, baseStoreID: baseStoreID, store: quotaStore)
+        }
         // An OpenAI-compatible endpoint may speak either request shape. The
         // saved extra is kwwk's `Model.api` value, so the catalog read above
         // cannot change which transport the session dispatches to. kwwk's
@@ -60,13 +72,13 @@ public enum ProviderRegistration {
         // under that same scope, with SSE only so a relay without WebSockets
         // still works.
         var format = AgentAPIFormat.chatCompletions
-        if CredentialProviderID.isOpenAICompatible(storeID),
+        if CredentialProviderID.isOpenAICompatible(baseStoreID),
            case let .string(value)? = credentials.extras[AgentSignInField.apiFormat.rawValue],
            let chosen = AgentAPIFormat(rawValue: value)
         {
             format = chosen
         }
-        let compatible = CredentialProviderID.isOpenAICompatible(storeID)
+        let compatible = CredentialProviderID.isOpenAICompatible(baseStoreID)
         let azure = compatible && ProviderRegistration.extra(AgentSignInField.azure.rawValue, in: credentials) == "true"
         if compatible, !azure, format == .responses {
             // kwwk 的 Responses 传输只把 `StreamOptions.headers` 带进普通流式
@@ -85,7 +97,7 @@ public enum ProviderRegistration {
         // 请求（kwwk 都读取 model.headers）都会被中转站接受。只对这些端点
         // 注入，OAuth/CLI 登录自带的强制 UA 不动。
         // 自定义 User-Agent（Minis 的 `customUserAgent`）非空时替代默认标识。
-        if CredentialProviderID.isOpenAICompatible(storeID) {
+        if CredentialProviderID.isOpenAICompatible(baseStoreID) {
             // 仅在端点未明确声明时使用旧接口兼容的 system 角色。
             if model.compat?.supportsDeveloperRole == nil {
                 var compat = model.compat ?? ModelCompat()
@@ -127,7 +139,7 @@ public enum ProviderRegistration {
                 model.baseURL = normalized
             }
         }
-        guard CredentialProviderID.isOpenAICompatible(storeID) else {
+        guard CredentialProviderID.isOpenAICompatible(baseStoreID) else {
             return ResolvedAuth(
                 model: model,
                 modelLabel: resolved.modelLabel,
@@ -147,6 +159,64 @@ public enum ProviderRegistration {
             providerSlots: resolved.providerSlots,
             authResolvers: resolved.authResolvers,
         )
+    }
+
+    /// 每个账号使用独立传输作用域，防止共享注册器把第二个账号的额度头记到第一个账号。
+    /// 包装时保留原客户端与全部传输选项，不重新创建默认HTTP客户端。
+    static func observingQuota(
+        _ original: Model,
+        storeID: String,
+        baseStoreID: String,
+        store: QuotaCacheStore,
+    ) async -> Model {
+        var model = original
+        let scope = "\(original.provider)-quota-\(storeID)"
+        if baseStoreID == CredentialProviderID.anthropicOAuth,
+           let existing = await APIRegistry.shared.provider(scope: original.provider, api: original.api) as? AnthropicProvider
+        {
+            let client = QuotaHeaderObservingHTTPClient(inner: existing.client, storeID: storeID, store: store)
+            let wrapped = AnthropicProvider(
+                api: existing.api,
+                client: client,
+                defaultBaseURL: existing.defaultBaseURL,
+                defaultAPIKey: existing.defaultAPIKey,
+                apiVersion: existing.apiVersion,
+                extraHeaders: existing.extraHeaders,
+                authHeaderBuilder: existing.authHeaderBuilder,
+                systemPromptPrefix: existing.systemPromptPrefix,
+                maximumOutputTokens: existing.maximumOutputTokens,
+                modelIDTransform: existing.modelIDTransform,
+                compatTransform: existing.compatTransform,
+            )
+            await APIRegistry.shared.register(wrapped, scope: scope)
+            model.provider = scope
+        } else if baseStoreID == "openai-codex",
+                  let existing = await APIRegistry.shared.provider(scope: original.provider, api: original.api) as? OpenAIResponsesProvider
+        {
+            let client = QuotaHeaderObservingHTTPClient(inner: existing.client, storeID: storeID, store: store)
+            let wrapped = OpenAIResponsesProvider(
+                api: existing.api,
+                client: client,
+                webSocketClient: existing.webSocketClient,
+                defaultBaseURL: existing.defaultBaseURL,
+                defaultAPIKey: existing.defaultAPIKey,
+                extraHeaders: existing.extraHeaders,
+                bodyOverrides: existing.bodyOverrides,
+                urlBuilder: existing.urlBuilder,
+                webSocketURLBuilder: existing.webSocketURLBuilder,
+                maxWebSocketFailures: existing.maxWebSocketFailures,
+                authHeaderBuilder: existing.authHeaderBuilder,
+                webSocketEndpoints: existing.webSocketEndpoints,
+            )
+            await APIRegistry.shared.register(wrapped, scope: scope)
+            model.provider = scope
+        }
+        if model.provider != original.provider {
+            var compatibility = model.compat ?? ModelCompat()
+            compatibility.behavesLikeProvider = original.behaviorProvider
+            model.compat = compatibility
+        }
+        return model
     }
 
     /// 只重建 Azure 的路径，保留 `api-version` 等原有查询参数。

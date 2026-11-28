@@ -147,8 +147,12 @@ final class ProviderLoginController: UIViewController {
         return UIBarButtonItem(customView: spinner)
     }()
 
+    /// 登录、配置及后续模型拉取始终使用此账号。
+    private let accountID: String?
+
     init(account: AgentAccount) {
         provider = account.provider
+        accountID = account.storeID
         methods = [account.method] + (account.alternativeMethods ?? []).filter { $0 != account.method }
         isEditingConfiguration = account.signedIn && account.isAPIKeyAccount
         method = account.isAPIKeyAccount ? .apiKey : account.method
@@ -256,15 +260,18 @@ final class ProviderLoginController: UIViewController {
         render()
         let method = method == methods.first ? nil : method
         let editing = isEditingConfiguration && method != .browser && method != .deviceCode
-        follower = Task { [weak self, provider] in
+        follower = Task { [weak self, provider, accountID] in
             let handle: TaskHandle
             do {
                 if editing {
-                    let configuration = try await ApelinService.app.agentAPIConfiguration(provider: provider)
+                    let configuration = try await ApelinService.app.agentAPIConfiguration(
+                        provider: provider,
+                        accountID: accountID,
+                    )
                     guard !Task.isCancelled else { return }
                     self?.savedValues = configuration.values
                 }
-                handle = try await ApelinService.app.agentSignIn(provider: provider, method: method)
+                handle = try await ApelinService.app.agentSignIn(provider: provider, method: method, accountID: accountID)
             } catch {
                 guard !Task.isCancelled else { return }
                 self?.lose(error)
@@ -358,13 +365,13 @@ final class ProviderLoginController: UIViewController {
                 // bundled catalog and the default model. A node that does
                 // not answer (no /v1/models, throttled, offline) keeps the
                 // account's own list; the page fetches again on appearing.
-                if let index = accounts.firstIndex(where: { $0.provider == self.provider && $0.signedIn }),
+                if let index = accounts.firstIndex(where: { $0.provider == self.provider && $0.signedIn && (accountID == nil || $0.storeID == accountID) }),
                    accounts[index].usesAPIKey == true || accounts[index].method == .apiKey {
-                    if let live = try? await ApelinService.app.agentModelList(provider: self.provider).models, !live.isEmpty {
+                    if let live = try? await ApelinService.app.agentModelList(provider: self.provider, accountID: accountID).models, !live.isEmpty {
                         accounts[index].models = Array(Set((accounts[index].models ?? [])).union(live)).sorted()
                     }
                 }
-                guard let account = accounts.first(where: { $0.provider == self.provider && $0.signedIn }),
+                guard let account = accounts.first(where: { $0.provider == self.provider && $0.signedIn && (accountID == nil || $0.storeID == accountID) }),
                       let navigation = navigationController, navigation.presentingViewController != nil
                 else { return }
                 let page = ModelActivationController(account: account)

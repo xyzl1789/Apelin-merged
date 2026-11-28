@@ -547,23 +547,15 @@ do {
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .confirmLoaded) && CallerPolicy.allows(.worker(.agent, instance: "s"), .confirmLoadedAttach), "the agent starts and reads a load check")
     check(CallerPolicy.allows(.worker(.agent, instance: "s"), .confirmLoadedCancel), "and stops one with the call that waited on it")
     check(!CallerPolicy.allows(.worker(.environment, instance: nil), .confirmLoadedCancel), "no other worker stops one")
-    // Accounts and MCP server configuration are the app's alone: a session's
-    // agent never starts, answers or reads a sign-in, or probes configured servers.
+    // 账号、MCP 配置和设备口令仅供应用访问，会话智能体不得调用。
     for operation: AppOperation in [
         .protectedEditOpen, .protectedEditCommit, .ptyOpen, .ptyAttach, .agentApprove, .agentSteer, .agentCompact,
         .toolchainRemove, .sdkRemove, .environmentCancel,
         .agentAccountList, .agentAPIConfiguration, .agentModelList, .agentModelActivate, .agentSignIn,
-        .agentSignInRespond, .agentSignInCancel, .agentSignOut, .agentMCPTools,
+        .agentSignInRespond, .agentSignInCancel, .agentSignOut, .agentProviderQuota, .agentMCPTools,
         .agentCredentialImport, .transferExport, .transferInspect, .transferImport,
+        .devicePasscodeState, .devicePasscodeSave, .devicePasscodeRemove,
     ] {
-    // Accounts are the app's alone: a session's agent never starts, answers
-    // or reads a sign-in, and never lists or forgets an account.
-    for operation: AppOperation in [.protectedEditOpen, .protectedEditCommit, .ptyOpen, .ptyAttach, .agentApprove, .agentSteer, .agentCompact,
-                                    .toolchainRemove, .sdkRemove, .environmentCancel,
-                                    .agentAccountList, .agentAPIConfiguration, .agentModelList, .agentModelActivate, .agentSignIn, .agentSignInRespond, .agentSignInCancel, .agentSignOut,
-                                    .agentCredentialImport, .transferExport, .transferInspect, .transferImport,
-                                    .devicePasscodeState, .devicePasscodeSave, .devicePasscodeRemove]
-    {
         check(!CallerPolicy.allows(.worker(.agent, instance: "s"), operation), "the agent may not call \(operation.rawValue)")
     }
     // The device's toolchains and SDKs: listed, set up, imported, tested

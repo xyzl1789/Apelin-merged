@@ -364,10 +364,12 @@ public extension AgentProvider {
 /// A provider/model pair used by an auxiliary agent operation.
 public struct AgentModelSelection: Codable, Sendable, Equatable, Hashable {
     public var provider: AgentProvider
+    public var accountID: String?
     public var model: String
 
-    public init(provider: AgentProvider, model: String) {
+    public init(provider: AgentProvider, accountID: String? = nil, model: String) {
         self.provider = provider
+        self.accountID = accountID
         self.model = model
     }
 }
@@ -519,6 +521,8 @@ public struct AgentOpenRequest: OperationRequest {
     public var sessionID: String?
     /// The provider; nil is GitHub Copilot.
     public var provider: AgentProvider?
+    /// 会话使用的凭据存储 ID；未提供时沿用首账号。
+    public var accountID: String?
     /// A model identifier from the app's model settings; nil is the default.
     public var model: String?
     /// Defaults for auxiliary operations in this session.
@@ -594,6 +598,7 @@ public struct AgentOpenRequest: OperationRequest {
         temporaryID: String? = nil,
         sessionID: String? = nil,
         provider: AgentProvider? = nil,
+        accountID: String? = nil,
         model: String? = nil,
         modelDefaults: AgentModelDefaults? = nil,
         approvalMode: ApprovalMode = .confirm,
@@ -620,6 +625,7 @@ public struct AgentOpenRequest: OperationRequest {
         self.temporaryID = temporaryID
         self.sessionID = sessionID
         self.provider = provider
+        self.accountID = accountID
         self.model = model
         self.modelDefaults = modelDefaults
         self.approvalMode = approvalMode
@@ -691,6 +697,8 @@ public struct AgentPromptRequest: OperationRequest {
     public var text: String
     public var messageID: UUID?
     public var provider: AgentProvider?
+    /// 会话使用的凭据存储 ID；未提供时沿用首账号。
+    public var accountID: String?
     public var model: String?
     /// Updated app-wide auxiliary model defaults for this session.
     public var modelDefaults: AgentModelDefaults?
@@ -751,6 +759,7 @@ public struct AgentPromptRequest: OperationRequest {
         messageID: UUID? = nil,
         attachments: [AgentInputAttachment]? = nil,
         provider: AgentProvider? = nil,
+        accountID: String? = nil,
         model: String? = nil,
         modelDefaults: AgentModelDefaults? = nil,
         reasoningEffort: AgentReasoningEffort? = nil,
@@ -771,6 +780,7 @@ public struct AgentPromptRequest: OperationRequest {
         self.text = text
         self.messageID = messageID
         self.provider = provider
+        self.accountID = accountID
         self.model = model
         self.modelDefaults = modelDefaults
         self.reasoningEffort = reasoningEffort
@@ -929,6 +939,7 @@ public struct AgentConfigureRequest: OperationRequest {
     public static let operation = AppOperation.agentConfigure
     public var sessionID: String
     public var provider: AgentProvider
+    public var accountID: String?
     public var model: String
     public var reasoningEffort: AgentReasoningEffort?
     public var serviceTier: AgentServiceTier?
@@ -937,6 +948,7 @@ public struct AgentConfigureRequest: OperationRequest {
     public init(
         sessionID: String,
         provider: AgentProvider,
+        accountID: String? = nil,
         model: String,
         reasoningEffort: AgentReasoningEffort? = nil,
         serviceTier: AgentServiceTier? = nil,
@@ -944,6 +956,7 @@ public struct AgentConfigureRequest: OperationRequest {
     ) {
         self.sessionID = sessionID
         self.provider = provider
+        self.accountID = accountID
         self.model = model
         self.reasoningEffort = reasoningEffort
         self.serviceTier = serviceTier

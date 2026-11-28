@@ -31,6 +31,8 @@ final class ComposerChoiceSheet: UIViewController {
     struct Group {
         var title: String?
         var note: String? = nil
+        /// 只打开本账号用量，不关闭模型选择器。
+        var quota: (() -> Void)? = nil
         var choices: [Choice]
     }
 
@@ -190,8 +192,25 @@ final class ComposerChoiceSheet: UIViewController {
                 } else {
                     header = label
                 }
-                stack.addArrangedSubview(header)
-                stack.setCustomSpacing(4, after: header)
+                let headingRow = UIStackView(arrangedSubviews: [header])
+                headingRow.axis = .horizontal
+                headingRow.alignment = .center
+                headingRow.spacing = 8
+                header.setContentHuggingPriority(.defaultLow, for: .horizontal)
+                header.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                if let open = group.quota {
+                    let icon = UIButton(type: .system)
+                    icon.setImage(UIImage(systemName: "chart.bar"), for: .normal)
+                    icon.tintColor = .secondaryLabel
+                    icon.accessibilityLabel = String(localized: "账号用量", table: "Quota")
+                    icon.accessibilityValue = title
+                    icon.widthAnchor.constraint(equalToConstant: 44).isActive = true
+                    icon.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+                    icon.addAction(UIAction { _ in open() }, for: .primaryActionTriggered)
+                    headingRow.addArrangedSubview(icon)
+                }
+                stack.addArrangedSubview(headingRow)
+                stack.setCustomSpacing(4, after: headingRow)
             }
             for choice in group.choices {
                 let row = ChoiceRow(

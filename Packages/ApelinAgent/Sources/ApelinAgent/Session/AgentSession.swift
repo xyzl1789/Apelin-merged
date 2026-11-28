@@ -240,6 +240,7 @@ public actor AgentSession {
                 configuration.provider,
                 credentials: credentials,
                 modelParameters: configuration.modelParameters,
+                quotaStore: QuotaCacheStore(dataRoot: configuration.dataRoot),
                 diagnostic: { journal.startup($0) },
             )
         } catch {
@@ -449,6 +450,7 @@ public actor AgentSession {
             provider,
             credentials: credentials,
             modelParameters: modelParameters,
+            quotaStore: QuotaCacheStore(dataRoot: configuration.dataRoot),
         )
         guard runTask == nil, pendingDrain == nil, !historyMutation else { return false }
         recordModel = resolved.model
@@ -799,7 +801,7 @@ public actor AgentSession {
                             let authResolver: (@Sendable (Model, String?) async throws -> ResolvedProviderAuth?)?
                             if let titleSelection {
                                 let resolved = try await ProviderResolver.resolve(
-                                    .auxiliary(provider: titleSelection.provider, model: titleSelection.model),
+                                    .auxiliary(provider: titleSelection.provider, model: titleSelection.model, accountID: titleSelection.accountID),
                                     credentials: credentialSource,
                                 )
                                 model = resolved.model
@@ -1228,13 +1230,18 @@ public actor AgentSession {
                     if choice.provider == resolvedFrom.provider, stored == resolvedFrom.credentials, let recordModel {
                         resolvedChoice = ResolvedProvider(model: recordModel, authResolver: agent.authResolver, credentials: stored)
                     } else {
-                        resolvedChoice = try await ProviderResolver.resolve(choice.provider, credentials: credentials, modelParameters: choice.parameters)
+                        resolvedChoice = try await ProviderResolver.resolve(
+                            choice.provider,
+                            credentials: credentials,
+                            modelParameters: choice.parameters,
+                            quotaStore: QuotaCacheStore(dataRoot: configuration.dataRoot),
+                        )
                     }
                 }
                 if !images.isEmpty, let vision = (item.modelChoice?.defaults ?? modelDefaults).vision {
                     // Optional auxiliary choice; keep the main model if it is unavailable.
                     resolvedVision = try? await ProviderResolver.resolve(
-                        .auxiliary(provider: vision.provider, model: vision.model), credentials: credentials)
+                        .auxiliary(provider: vision.provider, model: vision.model, accountID: vision.accountID), credentials: credentials)
                 }
             }
             var facts = await SystemState.facts(
@@ -1310,7 +1317,7 @@ public actor AgentSession {
                     modelRestoreAfterRun = (agent.state.model, agent.authResolver)
                     temporaryUsageProvider = modelDefaults.vision.flatMap { selection in
                         UsageProviderIdentity.resolved(
-                            from: .auxiliary(provider: selection.provider, model: selection.model),
+                            from: .auxiliary(provider: selection.provider, model: selection.model, accountID: selection.accountID),
                             credentials: vision.credentials,
                             model: vision.model,
                         )
@@ -1436,10 +1443,10 @@ public actor AgentSession {
         let imageCredentials: OAuthCredentials?
         if let imageSelection = modelDefaults.imageGeneration {
             let resolved = try await ProviderResolver.resolve(
-                .auxiliary(provider: imageSelection.provider, model: imageSelection.model),
+                .auxiliary(provider: imageSelection.provider, model: imageSelection.model, accountID: imageSelection.accountID),
                 credentials: credentials,
             )
-            provider = .auxiliary(provider: imageSelection.provider, model: imageSelection.model)
+            provider = .auxiliary(provider: imageSelection.provider, model: imageSelection.model, accountID: imageSelection.accountID)
             model = resolved.model
             authResolver = resolved.authResolver
             imageCredentials = resolved.credentials
@@ -1558,7 +1565,7 @@ public actor AgentSession {
         do {
             if let compression = modelDefaults.compression {
                 let resolved = try await ProviderResolver.resolve(
-                    .auxiliary(provider: compression.provider, model: compression.model),
+                    .auxiliary(provider: compression.provider, model: compression.model, accountID: compression.accountID),
                     credentials: credentials,
                 )
                 agent.state.model = resolved.model

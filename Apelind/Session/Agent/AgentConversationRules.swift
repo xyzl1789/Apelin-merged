@@ -61,6 +61,7 @@ enum AgentConversationRules {
             projectID: target.id,
             projectName: target.name,
             provider: open.provider,
+            accountID: open.accountID,
             model: open.model,
             approvalMode: opener.mode,
             asksBeforeScreen: opener.asksBeforeScreen,

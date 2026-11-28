@@ -64,6 +64,7 @@ enum Preferences {
     struct DefaultModelSelection: Equatable {
         let provider: AgentProvider
         let model: String
+        var storeID: String? = nil
     }
 
     /// The model defaults used by agent operations. An unset value means that
@@ -76,18 +77,20 @@ enum Preferences {
                   let model = defaults.string(forKey: modelKey(kind)),
                   !model.isEmpty
             else { return nil }
-            return DefaultModelSelection(provider: provider, model: model)
+            return DefaultModelSelection(provider: provider, model: model, storeID: defaults.string(forKey: accountKey(kind)))
         }
 
         static func save(_ selection: DefaultModelSelection, for kind: DefaultModelKind, defaults: UserDefaults = .standard) {
             defaults.set(selection.provider.rawValue, forKey: providerKey(kind))
             defaults.set(selection.model, forKey: modelKey(kind))
+            defaults.set(selection.storeID, forKey: accountKey(kind))
             NotificationCenter.default.post(name: changed, object: kind)
         }
 
         static func remove(for kind: DefaultModelKind, defaults: UserDefaults = .standard) {
             defaults.removeObject(forKey: providerKey(kind))
             defaults.removeObject(forKey: modelKey(kind))
+            defaults.removeObject(forKey: accountKey(kind))
             NotificationCenter.default.post(name: changed, object: kind)
         }
 
@@ -107,7 +110,7 @@ enum Preferences {
         static var wire: AgentModelDefaults {
             func convert(_ kind: DefaultModelKind) -> AgentModelSelection? {
                 guard let value = selection(for: kind) else { return nil }
-                return AgentModelSelection(provider: value.provider, model: value.model)
+                return AgentModelSelection(provider: value.provider, accountID: value.storeID, model: value.model)
             }
             return AgentModelDefaults(
                 promptRewrite: convert(.promptRewrite),
@@ -121,6 +124,10 @@ enum Preferences {
 
         private static func providerKey(_ kind: DefaultModelKind) -> String {
             "agent.defaultModel.\(kind.rawValue).provider"
+        }
+
+        private static func accountKey(_ kind: DefaultModelKind) -> String {
+            "agent.defaultModel.\(kind.rawValue).accountID"
         }
 
         private static func modelKey(_ kind: DefaultModelKind) -> String {

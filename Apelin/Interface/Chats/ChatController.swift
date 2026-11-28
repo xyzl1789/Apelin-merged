@@ -621,7 +621,7 @@ final class ChatController: UIViewController {
                 // 只有当前选中的供应商报过余额，才值得为它轮询。
                 let selection = self.chat.flatMap { ComposerModelSelection.selection(for: $0.id) }
                 guard let provider = selection?.provider,
-                      ProviderBalanceStore.shared.current(for: provider) != nil,
+                      ProviderBalanceStore.shared.current(for: provider, accountID: selection?.storeID) != nil,
                       ProviderBalanceStore.shared.stale()
                 else { return }
                 self.refreshBalances()
@@ -1428,7 +1428,7 @@ final class ChatController: UIViewController {
         // App 重启后存储也是空的，否则胶囊会一直停在「--」。查不到时保留
         // 上次缓存或显示「--」，数字不会被刷没。
         if let provider = selection?.provider,
-           !ProviderBalanceStore.shared.balances.contains(where: { $0.provider == provider })
+           ProviderBalanceStore.shared.current(for: provider, accountID: selection?.storeID) == nil
               || ProviderBalanceStore.shared.stale()
         {
             refreshBalances()
@@ -1463,7 +1463,7 @@ final class ChatController: UIViewController {
     @objc private func refreshBalancesWhenStale() {
         let selection = chat.flatMap { ComposerModelSelection.selection(for: $0.id) }
         guard let provider = selection?.provider,
-              ProviderBalanceStore.shared.current(for: provider) != nil,
+              ProviderBalanceStore.shared.current(for: provider, accountID: selection?.storeID) != nil,
               ProviderBalanceStore.shared.stale()
         else { return }
         refreshBalances()
@@ -1475,7 +1475,7 @@ final class ChatController: UIViewController {
 
     private func updateBalanceRing() {
         let selection = chat.flatMap { ComposerModelSelection.selection(for: $0.id) }
-        composer.modelBar.setBalance(ProviderBalanceStore.shared.current(for: selection?.provider))
+        composer.modelBar.setBalance(ProviderBalanceStore.shared.current(for: selection?.provider, accountID: selection?.storeID))
     }
 
     /// The balance ring's page: all providers' figures and a manual refresh.
@@ -1485,6 +1485,26 @@ final class ChatController: UIViewController {
         let navigation = SheetNavigationController(rootViewController: page)
         navigation.modalPresentationStyle = .pageSheet
         present(navigation, animated: true)
+    }
+
+    /// 模型选择器用量页独立呈现；返回仍留在模型列表，不替换原余额入口。
+    private func presentQuotaSheet(for account: AgentAccount) {
+        guard let sheet = modelSheet, !sheet.isBeingDismissed, sheet.presentedViewController == nil else { return }
+        let page = ProviderQuotaDetailController(
+            account: account,
+            initialQuota: nil,
+            onAccountsChanged: { [weak self, weak sheet] in
+                guard let self, let sheet, let id = chat?.id else { return }
+                refreshModelSheet(sheet, for: id)
+            },
+        )
+        let navigation = SheetNavigationController(rootViewController: page)
+        navigation.modalPresentationStyle = .pageSheet
+        if let presentation = navigation.sheetPresentationController {
+            presentation.detents = [.medium(), .large()]
+            presentation.prefersGrabberVisible = true
+        }
+        sheet.present(navigation, animated: true)
     }
 
     /// A model disabled in Settings stops being the one the next message uses.
@@ -1653,14 +1673,17 @@ final class ChatController: UIViewController {
             ComposerChoiceSheet.Group(
                 title: account.account ?? account.provider.displayName,
                 note: Preferences.ProviderNotes.note(for: account.provider),
+                quota: { [weak self] in self?.presentQuotaSheet(for: account) },
                 choices: (account.models ?? []).map { model in
                     ComposerChoiceSheet.Choice(
                         // The name the catalog gives it, with the provider's own
                         // id under it: the id is what the conversation sends.
                         title: account.displayName(for: model),
                         subtitle: account.catalogTitle(for: model) == nil ? nil : model,
-                        isSelected: account.provider == selected?.provider && model == selected?.model,
-                        modelTest: AgentModelTestRequest(provider: account.provider, model: model),
+                        isSelected: account.provider == selected?.provider
+                            && (account.storeID ?? account.provider.rawValue) == (selected?.storeID ?? selected?.provider.rawValue)
+                            && model == selected?.model,
+                        modelTest: AgentModelTestRequest(provider: account.provider, accountID: account.storeID, model: model),
                         badges: account.abilityBadges(for: model),
                     ) { [weak self] in
                         guard let self, self.chat?.id == id else { return }
@@ -1903,6 +1926,7 @@ extension ChatController {
     private static func selection(of model: String, in account: AgentAccount) -> ComposerModelSelection {
         ComposerModelSelection(
             provider: account.provider,
+            storeID: account.storeID,
             model: model,
             supportedEfforts: AgentReasoningEffort.allCases.filter {
                 account.reasoningEfforts?[model]?.contains($0) == true
@@ -1935,10 +1959,14 @@ extension ChatController {
                   !Task.isCancelled, self.chat?.id == id
             else { return }
             if let current = ComposerModelSelection.selection(for: id) {
-                if let account = listed.first(where: { $0.provider == current.provider && $0.signedIn }) {
+                if let account = listed.first(where: {
+                    $0.provider == current.provider && $0.signedIn
+                        && ($0.storeID ?? $0.provider.rawValue) == (current.storeID ?? current.provider.rawValue)
+                }) {
                     if account.models == nil || account.models?.contains(current.model) == true {
                         let refreshed = Self.selection(of: current.model, in: account)
-                        if refreshed.supportedEfforts != current.supportedEfforts
+                        if refreshed.storeID != current.storeID
+                            || refreshed.supportedEfforts != current.supportedEfforts
                             || refreshed.supportedTiers != current.supportedTiers
                         {
                             ComposerModelSelection.choose(refreshed, for: id)

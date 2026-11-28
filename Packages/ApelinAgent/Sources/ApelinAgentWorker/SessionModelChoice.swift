@@ -1,9 +1,6 @@
 import ApelinProtocol
 
-/// The provider, model, effort, tier and model figures a session runs with
-/// The provider, model, effort, tier and model limits a session runs with
-/// now: what its open request named, then what each of the app's prompts
-/// named. A conversation the session opens starts with the same.
+/// 会话当前的模型及账号选择；派生会话继承相同的凭据身份，不携带任何密钥。
 public actor SessionModelChoice {
     public struct Choice: Sendable, Equatable {
         public var provider: AgentProvider?
@@ -12,13 +9,10 @@ public actor SessionModelChoice {
         public var serviceTier: AgentServiceTier?
         public var modelParameters: AgentModelParameters?
         public var modelLimits: AgentModelLimits?
+        public var accountID: String?
     }
 
     public private(set) var current = Choice()
-
-    /// The app's model defaults, as the last open or prompt carried them: a
-    /// conversation this session opens reads the model delegated chats are
-    /// given here, since the backend keeps only the open's copy.
     public private(set) var defaults: AgentModelDefaults?
 
     public func setDefaults(_ defaults: AgentModelDefaults?) {
@@ -32,14 +26,13 @@ public actor SessionModelChoice {
         serviceTier: AgentServiceTier? = nil,
         modelParameters: AgentModelParameters? = nil,
         modelLimits: AgentModelLimits? = nil,
+        accountID: String? = nil,
     ) {
         current = Choice(
-            provider: provider,
-            model: model,
-            reasoningEffort: reasoningEffort,
-            serviceTier: serviceTier,
-            modelParameters: modelParameters,
-            modelLimits: modelLimits,
+            provider: provider, model: model,
+            reasoningEffort: reasoningEffort, serviceTier: serviceTier,
+            modelParameters: modelParameters, modelLimits: modelLimits,
+            accountID: accountID,
         )
     }
 
@@ -50,14 +43,13 @@ public actor SessionModelChoice {
         serviceTier: AgentServiceTier?,
         modelParameters: AgentModelParameters? = nil,
         modelLimits: AgentModelLimits? = nil,
+        accountID: String? = nil,
     ) {
         current = Choice(
-            provider: provider,
-            model: model,
-            reasoningEffort: reasoningEffort,
-            serviceTier: serviceTier,
-            modelParameters: modelParameters,
-            modelLimits: modelLimits,
+            provider: provider, model: model,
+            reasoningEffort: reasoningEffort, serviceTier: serviceTier,
+            modelParameters: modelParameters, modelLimits: modelLimits,
+            accountID: accountID,
         )
     }
 }

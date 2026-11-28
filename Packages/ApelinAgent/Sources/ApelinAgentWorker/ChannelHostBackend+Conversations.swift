@@ -19,7 +19,9 @@ public extension ChannelHostBackend {
         // opened on its own figures: the effort, tier and limits here belong
         // to the model they were chosen for.
         let delegated = defaults?.derivedConversation
-        let inherits = delegated.map { $0.provider == choice.provider && $0.model == choice.model } ?? true
+        let inherits = delegated.map {
+            $0.provider == choice.provider && $0.model == choice.model && $0.accountID == choice.accountID
+        } ?? true
         let target = request.target ?? project
         // The host opens it in that project, resolved again, under this
         // session's mode; the mode here is a placeholder.
@@ -28,6 +30,7 @@ public extension ChannelHostBackend {
                 projectID: target.id,
                 projectName: target.name.rawValue,
                 provider: inherits ? choice.provider : delegated?.provider,
+                accountID: inherits ? choice.accountID : delegated?.accountID,
                 model: inherits ? choice.model : delegated?.model,
                 modelDefaults: defaults ?? modelDefaults,
                 approvalMode: .confirm,

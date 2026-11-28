@@ -294,7 +294,7 @@ final class ProviderBalanceCardCell: UITableViewCell {
 
     func configure(with balance: ProviderBalance) {
         providerLabel.text = balance.provider.displayName
-        amountLabel.text = balance.amount
+        amountLabel.text = balance.displayedAmount
         amountLabel.textColor = balance.stale ? .systemOrange : .label
         currencyLabel.text = balance.currency
         hostLabel.text = balance.label
@@ -314,7 +314,7 @@ final class ProviderBalanceCardCell: UITableViewCell {
             )
             timeLabel.textColor = .tertiaryLabel
         }
-        accessibilityLabel = "\(balance.provider.displayName)，\(balance.amount) \(balance.currency)"
+        accessibilityLabel = "\(balance.provider.displayName)，\(balance.displayedAmount) \(balance.currency)"
         let ways = balance.earnWays.isEmpty ? "" : "，积分获取方式：\(balance.earnWays.joined(separator: "、"))"
         accessibilityValue = "\(timeLabel.text ?? "")，\(balance.label)\(ways)"
     }

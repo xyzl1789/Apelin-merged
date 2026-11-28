@@ -186,6 +186,8 @@ final class ServiceTableTests: XCTestCase {
             return Row(reply: AgentAccountListResponse(accounts: [
                 AgentAccount(provider: .githubCopilot, method: .deviceCode, signedIn: true),
             ])) { _ = try await $0.agentAccountList() }
+        case .agentProviderQuota:
+            return Row(reply: AgentProviderQuotaResponse()) { _ = try await $0.agentProviderQuota() }
         case .agentProviderBalances:
             return Row(reply: AgentProviderBalancesResponse()) { _ = try await $0.agentProviderBalances(force: true) }
         case .agentCheckIn:

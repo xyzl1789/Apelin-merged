@@ -48,7 +48,7 @@ enum AgentModelTester {
             report.finish(failure: unsupported)
             return
         }
-        let configuration = try AgentWorker.provider(provider: request.provider, model: request.model)
+        let configuration = try AgentWorker.provider(provider: request.provider, model: request.model, accountID: request.accountID)
         report.begin(.credentials)
         let resolved = try await ProviderResolver.resolve(configuration, credentials: credentials) { diagnostic in
             // The resolver emits this only after the saved credential read.

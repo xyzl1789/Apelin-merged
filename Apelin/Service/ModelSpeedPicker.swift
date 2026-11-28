@@ -111,6 +111,7 @@ enum ModelSpeedPicker {
             let probe = await measure(candidate.account, model: candidate.model)
             var selection = ComposerModelSelection(
                 provider: candidate.account.provider,
+                storeID: candidate.account.storeID,
                 model: candidate.model,
                 supportedEfforts: candidate.account.reasoningEfforts?[candidate.model] ?? [],
                 supportedTiers: candidate.account.serviceTiers?[candidate.model],
@@ -139,7 +140,7 @@ enum ModelSpeedPicker {
     private static func measure(_ account: AgentAccount, model: String) async -> Probe {
         do {
             let handle = try await ApelinService.app.agentModelTest(
-                AgentModelTestRequest(provider: account.provider, model: model)
+                AgentModelTestRequest(provider: account.provider, accountID: account.storeID, model: model)
             )
             return await withTaskGroup(of: Probe.self) { group in
                 group.addTask {

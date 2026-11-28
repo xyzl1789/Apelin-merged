@@ -16,6 +16,10 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
     private var automaticLimits: [String: AgentModelLimits] = [:]
     private var loader: Task<Void, Never>?
     @objc private dynamic var saving = false
+    /// 原地显示拉取进度，保留当前模型列表及搜索状态。
+    private let fetchSpinner = UIActivityIndicatorView(style: .medium)
+    private var fetchItem: UIBarButtonItem?
+    private var fetching = false
     private var verification: TaskHandle?
     private let search = UISearchController(searchResultsController: nil)
 
@@ -52,16 +56,16 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
             primaryAction: UIAction { [weak self] _ in self?.save() },
             menu: menu,
         )
-        if usesAPIKey {
-            let add = UIBarButtonItem(
-                image: UIImage(systemName: "plus"),
-                primaryAction: UIAction { [weak self] _ in self?.addCustomModel() },
-            )
-            add.accessibilityLabel = String(localized: "Add Custom Model")
-            navigationItem.rightBarButtonItems = [save, add]
-        } else {
-            navigationItem.rightBarButtonItem = save
-        }
+        let fetch = UIBarButtonItem(
+            image: UIImage(systemName: "arrow.clockwise"),
+            primaryAction: UIAction { [weak self] _ in self?.fetchModels() },
+        )
+        fetch.accessibilityLabel = String(localized: "刷新模型", table: "Quota")
+        fetchItem = fetch
+        fetchSpinner.accessibilityLabel = String(localized: "正在拉取模型", table: "Quota")
+        navigationItem.rightBarButtonItems = usesAPIKey
+            ? [save, addModelItem(), fetch]
+            : [save, fetch]
         search.searchResultsUpdater = self
         search.obscuresBackgroundDuringPresentation = false
         search.searchBar.placeholder = String(localized: "Search Models")
@@ -106,22 +110,62 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        guard usesAPIKey, loader == nil else { return }
+        guard loader == nil else { return }
+        fetchModels()
+    }
+
+    deinit { loader?.cancel() }
+
+    private func addModelItem() -> UIBarButtonItem {
+        let item = UIBarButtonItem(
+            image: UIImage(systemName: "plus"),
+            primaryAction: UIAction { [weak self] _ in self?.addCustomModel() },
+        )
+        item.accessibilityLabel = String(localized: "Add Custom Model")
+        return item
+    }
+
+    /// 刷新图标原位变成转圈，保存与自定义模型按钮不移位。
+    private func showFetching(_ active: Bool) {
+        guard let fetchItem, var items = navigationItem.rightBarButtonItems else { return }
+        if active {
+            fetchSpinner.startAnimating()
+            let item = UIBarButtonItem(customView: fetchSpinner)
+            items = items.map { $0 === fetchItem ? item : $0 }
+        } else {
+            fetchSpinner.stopAnimating()
+            items = items.map { $0.customView === fetchSpinner ? fetchItem : $0 }
+        }
+        navigationItem.rightBarButtonItems = items
+    }
+
+    @objc private dynamic func fetchModels() {
+        guard !fetching, !saving else { return }
+        fetching = true
         dataSource.beginLoad()
+        navigationItem.prompt = nil
+        showFetching(true)
         loader = Task { [weak self] in
             guard let self else { return }
+            defer { fetching = false; showFetching(false) }
             do {
-                let fetched = try await ProviderProgress.run(title: "Fetching Models", from: self) {
-                    try await ApelinService.app.agentModelList(
-                        provider: self.account.provider,
-                        limitsFor: self.custom.union(self.selected).sorted(),
-                    )
+                let fetched = try await ApelinService.app.agentModelList(
+                    provider: account.provider,
+                    accountID: account.storeID,
+                    limitsFor: custom.union(selected).sorted(),
+                )
+                guard !Task.isCancelled else { return }
+                automaticLimits = fetched.limits ?? automaticLimits
+                if !fetched.models.isEmpty {
+                    models = Array(Set(fetched.models).union(custom).union(selected).subtracting(hidden)).sorted()
+                } else {
+                    navigationItem.prompt = String(localized: "无法拉取模型", table: "Quota")
                 }
-                automaticLimits = fetched.limits ?? [:]
-                models = Array(Set(fetched.models).union(custom).union(selected).subtracting(hidden)).sorted()
                 updateSearchResults(for: search)
             } catch {
-                presentNotice(title: "Unable to Fetch Models", message: error.readableMessage)
+                guard !Task.isCancelled else { return }
+                navigationItem.prompt = String(localized: "无法拉取模型", table: "Quota")
+                updateSearchResults(for: search)
             }
         }
     }
@@ -314,6 +358,7 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
                 ) {
                     let handle = try await ApelinService.app.agentModelActivate(
                         provider: self.account.provider,
+                        accountID: self.account.storeID,
                         models: self.selected.sorted(),
                     )
                     self.verification = handle
