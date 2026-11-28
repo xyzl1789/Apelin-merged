@@ -358,7 +358,7 @@ let pendingBuildEvents = [
     ]),
 ]
 let pendingBuild = ChatTranscript(events: pendingBuildEvents) { _ in nil }
-precondition(!pendingBuild.messages.contains(where: \\.isGeneratedFiles), "build artifact remains hidden until the turn ends")
+precondition(!pendingBuild.messages.contains(where: \.isGeneratedFiles), "build artifact remains hidden until the turn ends")
 let successfulBuild = ChatTranscript(events: pendingBuildEvents + [event(3, "finished")]) { _ in nil }
 let artifactMessage = successfulBuild.messages.first { $0.text.contains("apelin-artifact://share/artifact-1") }
 precondition(artifactMessage?.text == String(localized: "Files generated this turn:") + "\n\n[hello.deb](apelin-artifact://share/artifact-1)", "a successful build exposes its artifact after the turn ends")
@@ -388,7 +388,7 @@ do {
         result(4, "rootless-last", "rootless"),
         event(5, "finished"),
     ]
-    let footer = ChatTranscript(events: events) { _ in nil }.messages.first(where: \\.isGeneratedFiles)
+    let footer = ChatTranscript(events: events) { _ in nil }.messages.first(where: \.isGeneratedFiles)
     precondition(footer?.text.contains("rootless-last") == true, "同目标保留最后一个产物")
     precondition(footer?.text.contains("rootless-old") == false, "同目标旧产物不再显示")
     precondition(footer?.text.contains("roothide-only") == true, "另一构建目标仍保留")
@@ -400,7 +400,7 @@ do {
             "output": .string("{\"succeeded\":true,\"artifacts\":[{\"id\":\"first\",\"name\":\"first.deb\",\"bootstrap\":\"rootless\"},{\"id\":\"last\",\"name\":\"last.deb\",\"bootstrap\":\"rootless\"}] }"),
         ]),
         event(3, "finished"),
-    ]) { _ in nil }.messages.first(where: \\.isGeneratedFiles)
+    ]) { _ in nil }.messages.first(where: \.isGeneratedFiles)
     precondition(sameBuild?.text.contains("last.deb") == true && sameBuild?.text.contains("first.deb") == false,
                  "同一结果里的同目标也只保留最后一个")
 }
@@ -726,9 +726,13 @@ let storageURL = FileManager.default.temporaryDirectory.appendingPathComponent("
 try FileManager.default.createDirectory(at: storageURL, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: storageURL) }
 let storage = ChatStore(folder: DataFolder(root: storageURL))
-let record = ChatRecord(summary: ChatSummary(title: "Deletion regression", lastInteraction: Date()))
+var record = ChatRecord(summary: ChatSummary(title: "Deletion regression", lastInteraction: Date()))
+record.automaticCompactionAttempt = ChatCompactionAttempt(tokens: 800, window: 1000)
 try await storage.save(record, revision: 1)
 let savedRecords = try await storage.load().records
+precondition(savedRecords.first?.automaticCompactionAttempt == record.automaticCompactionAttempt, "自动压缩快照必须通过会话头落盘恢复")
+let savedHeads = try await storage.load(readingEvents: false).records
+precondition(savedHeads.first?.automaticCompactionAttempt == record.automaticCompactionAttempt, "冷启动仅读会话头也必须保留防重记录")
 precondition(savedRecords.count == 1, "A chat saved through the temporary-directory alias must load")
 try await storage.remove(record.summary.id)
 try await storage.save(record, revision: 2)

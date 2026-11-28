@@ -26,6 +26,14 @@ struct ChatRecord: Codable, Sendable {
     var receivedShares: Set<UUID>?
     /// 发出后，服务端副本与原分享附件的对应关系。
     var sharedFiles: [SharedHistoryFile]?
+    /// 自动压缩的最近一次占用快照；重进页面或更新应用后仍只尝试一次。
+    var automaticCompactionAttempt: ChatCompactionAttempt?
+}
+
+/// 自动压缩请求所针对的占用快照，不依赖聊天页面的渲染类型。
+struct ChatCompactionAttempt: Codable, Sendable, Equatable {
+    var tokens: Int
+    var window: Int
 }
 
 struct SharedHistoryFile: Codable, Sendable, Identifiable {
@@ -130,6 +138,10 @@ struct SessionReplay: Codable, Sendable {
     /// Queue snapshots already shown by the app. A recovery or a queue-only
     /// edit can be the first new event after reopening, with no prompt.
     private var pendingSnapshots: Int?
+    /// 已显示的轮次/压缩结束回执仍属回放；恢复新补的结束回执必须保留。
+    private var activityEnds: [String: Int]?
+
+    var needsActivityRecovery: Bool { activityEnds == nil }
 
     /// The replay of a session whose history is `events`.
     init(of events: [TaskEvent]) {
@@ -155,6 +167,23 @@ struct SessionReplay: Codable, Sendable {
         historyChanges = changes
         waitingApprovals = waiting
         pendingSnapshots = events.count { $0.kind == "pendingQueue" }
+        var ends: [String: Int] = [:]
+        for event in events where event.kind == "finished" || event.kind == "compactionFinished" {
+            ends[event.kind, default: 0] += 1
+        }
+        activityEnds = ends
+    }
+
+    /// 恢复进程补写的结束不是新的用户输入，但必须更新旧的忙碌/压缩状态。
+    mutating func resolvesActivityEnd(_ event: TaskEvent) -> Bool {
+        guard event.kind == "finished" || event.kind == "compactionFinished",
+              let remaining = activityEnds else { return false }
+        let count = remaining[event.kind, default: 0]
+        if count > 0 {
+            activityEnds?[event.kind] = count - 1
+            return false
+        }
+        return true
     }
 
     /// Whether `event` resolves an approval the history left waiting, which
@@ -203,6 +232,14 @@ struct SessionReplay: Codable, Sendable {
 }
 
 extension ChatRecord {
+    /// 旧版回放没有结束回执计数。只重置回放游标重新核对，不删除或重写历史。
+    @discardableResult
+    mutating func restoreReplayBoundaries() -> Bool {
+        guard replay?.needsActivityRecovery == true else { return false }
+        replay = SessionReplay(of: events)
+        return true
+    }
+
     /// Whether a message is still on its way to the host.
     var isSending: Bool {
         !(sending ?? []).isEmpty
@@ -317,7 +354,7 @@ extension ChatRecord {
         }
         var resolved: [TaskEvent] = []
         for (index, event) in fresh.enumerated() {
-            if replay.resolvesWaitingApproval(event) {
+            if replay.resolvesWaitingApproval(event) || replay.resolvesActivityEnd(event) {
                 resolved.append(event)
             } else if !replay.replays(event) {
                 self.replay = nil
@@ -418,6 +455,7 @@ actor ChatStore {
         var replay: SessionReplay?
         var receivedShares: Set<UUID>?
         var sharedFiles: [SharedHistoryFile]?
+        var automaticCompactionAttempt: ChatCompactionAttempt?
         var eventCount = 0
 
         init(_ record: ChatRecord) {
@@ -430,6 +468,7 @@ actor ChatStore {
             replay = record.replay
             receivedShares = record.receivedShares
             sharedFiles = record.sharedFiles
+            automaticCompactionAttempt = record.automaticCompactionAttempt
             eventCount = record.events.count
         }
 
@@ -445,6 +484,7 @@ actor ChatStore {
                 replay: replay,
                 receivedShares: receivedShares,
                 sharedFiles: sharedFiles,
+                automaticCompactionAttempt: automaticCompactionAttempt,
             )
         }
 

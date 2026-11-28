@@ -24,6 +24,75 @@ func checkReplayEnd() {
     precondition(!orphan.endRunWithoutSession())
     precondition(orphan.summary.isWorking && orphan.run == .running, "有会话时须等待 host 校准")
 
+    // 更新打断压缩后，worker 在历史边界内补 cancelled；旧版本把它吞作回放。
+    let compactHistory = [
+        event(1, "prompt"), event(2, "finished"),
+        event(3, "compactionStarted"), event(4, "compactionFinished", ["outcome": .string("compacted")]),
+        event(5, "prompt"), event(6, "finished"), event(7, "compactionStarted"),
+    ]
+    var compactReplay = ChatRecord(summary: ChatSummary(title: "压缩恢复", lastInteraction: Date(), isWorking: true))
+    compactReplay.events = compactHistory
+    compactReplay.reopen(as: TaskHandle(taskID: .make(), kind: .agent))
+    precondition(compactReplay.take(Array(compactHistory.prefix(4))).isEmpty, "已显示的压缩结果仍只回放")
+    compactReplay = try! JSONDecoder().decode(ChatRecord.self, from: JSONEncoder().encode(compactReplay))
+    var legacyReplayJSON = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(compactReplay)) as! [String: Any]
+    var legacyReplayFields = legacyReplayJSON["replay"] as! [String: Any]
+    legacyReplayFields.removeValue(forKey: "activityEnds")
+    legacyReplayJSON["replay"] = legacyReplayFields
+    var legacyReplay = try! JSONDecoder().decode(ChatRecord.self, from: JSONSerialization.data(withJSONObject: legacyReplayJSON))
+    precondition(legacyReplay.restoreReplayBoundaries() && legacyReplay.cursor == .start, "旧版部分回放只重读边界，不丢历史")
+    precondition(!legacyReplay.restoreReplayBoundaries(), "回放边界迁移只做一次")
+    precondition(legacyReplay.take(compactHistory).isEmpty, "重读完整旧历史不追加重复消息")
+    precondition(compactReplay.take(Array(compactHistory.dropFirst(4))).isEmpty)
+    let cancelledCompaction = event(8, "compactionFinished", ["outcome": .string("cancelled"), "historical": .bool(true)])
+    precondition(compactReplay.take([cancelledCompaction]) == [cancelledCompaction], "恢复补写的压缩结束必须保留")
+    precondition(legacyReplay.take([cancelledCompaction]) == [cancelledCompaction], "旧版部分回放升级后也必须收到恢复结束")
+    precondition(compactReplay.take([cancelledCompaction]).isEmpty, "重试批次不能重复追加回执")
+    let compactRecovered = ChatTranscript(events: compactReplay.events) { _ in nil }
+    precondition(!compactRecovered.isWorking && !compactRecovered.isCompacting, "无需发送新消息也应结束旧压缩")
+    let afterRecovery = event(9, "prompt")
+    precondition(compactReplay.take([afterRecovery]) == [afterRecovery] && compactReplay.replay == nil)
+    precondition(ChatTranscript(events: compactReplay.events) { _ in nil }.isWorking, "恢复后新轮次仍可开始")
+
+    // 轮次的 aborted 回执也会在新任务的初始历史边界里，不得只修压缩。
+    var turnReplay = ChatRecord(summary: ChatSummary(title: "轮次恢复", lastInteraction: Date(), isWorking: true))
+    turnReplay.events = [event(1, "prompt"), event(2, "messageStarted")]
+    turnReplay.reopen(as: TaskHandle(taskID: .make(), kind: .agent))
+    precondition(turnReplay.take(turnReplay.events).isEmpty)
+    let abortedTurn = event(3, "finished", ["reason": .string("aborted"), "historical": .bool(true)])
+    precondition(turnReplay.take([abortedTurn]) == [abortedTurn])
+    precondition(!ChatTranscript(events: turnReplay.events) { _ in nil }.isWorking)
+
+    // 宿主确认整个任务结束时，两种忙碌态都要收尾；连接丢失不等于任务终态。
+    var compactActivity = ChatRunActivity(events: [event(1, "compactionStarted")])
+    precondition(compactActivity.isActive(runEnded: false), "真实压缩任务重连时仍保持忙碌")
+    precondition(!compactActivity.isActive(runEnded: true), "已结束的任务不能仅因压缩标记而忙碌")
+    compactActivity.endTask()
+    precondition(!compactActivity.isWorking && !compactActivity.isCompacting)
+    for tail in [[event(1, "compactionStarted")], [event(1, "prompt"), event(2, "compactionStarted")]] {
+        let endedCompaction = ChatTranscript(events: tail, runEnded: true) { _ in nil }
+        precondition(!endedCompaction.isWorking && !endedCompaction.isCompacting)
+    }
+    let staleCompaction = ChatTranscript(events: [
+        event(1, "compactionStarted"), event(2, "prompt"), event(3, "finished"),
+    ]) { _ in nil }
+    precondition(!staleCompaction.isWorking && !staleCompaction.isCompacting, "旧版漏回执不能跨新轮次残留")
+    let liveCompaction = ChatTranscript(events: [event(1, "compactionStarted")]) { _ in nil }
+    precondition(liveCompaction.isCompacting, "不能把仍在运行的压缩当成遗留标记清掉")
+
+    // 防重快照随会话保存，不随页面重建或进程重启丢失；旧记录仍可读取。
+    var automatic = ChatRecord(summary: ChatSummary(title: "自动压缩", lastInteraction: Date()))
+    let fill = ChatCompactionAttempt(tokens: 800, window: 1000)
+    automatic.automaticCompactionAttempt = fill
+    let automaticData = try! JSONEncoder().encode(automatic)
+    let restoredAutomatic = try! JSONDecoder().decode(ChatRecord.self, from: automaticData)
+    precondition(restoredAutomatic.automaticCompactionAttempt == fill)
+    precondition(restoredAutomatic.automaticCompactionAttempt != ChatCompactionAttempt(tokens: 900, window: 1000))
+    var legacy = try! JSONSerialization.jsonObject(with: automaticData) as! [String: Any]
+    legacy.removeValue(forKey: "automaticCompactionAttempt")
+    let legacyData = try! JSONSerialization.data(withJSONObject: legacy)
+    precondition(try! JSONDecoder().decode(ChatRecord.self, from: legacyData).automaticCompactionAttempt == nil)
+
     let askedID = UUID()
     // A turn the conversation saw start and not end: its task stopped while
     // the app was away. The new task replays it, numbered as it was.

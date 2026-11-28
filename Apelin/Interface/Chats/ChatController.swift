@@ -76,10 +76,8 @@ final class ChatController: UIViewController {
     /// a fast reply has brought its message to the top of the visible area,
     /// or the reader dragged, until the next turn.
     private var followedTurn: UUID?
-    /// The conversations compacting themselves now, and how full each was
-    /// when it last tried, so one fill compacts once.
+    /// 自动压缩请求仍在等待；防重快照保存在会话记录，不随页面销毁丢失。
     private var autoCompacting: Set<UUID> = []
-    private var autoCompactAttempt: [UUID: Int] = [:]
     /// The request the composer shows in place of the input, and the
     /// conversation its Stop stops. Each change to either lays the whole
     /// window out on the composer's spring, so the composer is told only of
@@ -993,13 +991,13 @@ final class ChatController: UIViewController {
               usage.fraction >= Preferences.compressionThreshold,
               !isWorking, !isCompacting,
               !autoCompacting.contains(id),
-              autoCompactAttempt[id] != usage.tokens,
-              runtime.canCompact(id)
+              runtime.isReconciled,
+              runtime.canCompact(id),
+              runtime.records[id]?.automaticCompactionAttempt != ChatCompactionAttempt(tokens: usage.tokens, window: usage.window)
         else { return }
-        autoCompactAttempt[id] = usage.tokens
         autoCompacting.insert(id)
         Task { @MainActor in
-            _ = try? await runtime.compact(id)
+            _ = try? await runtime.compactAutomatically(id, usage: usage)
             autoCompacting.remove(id)
             refreshRuntime()
         }
@@ -1493,6 +1491,7 @@ final class ChatController: UIViewController {
         let page = ProviderQuotaDetailController(
             account: account,
             initialQuota: nil,
+            allowsAccountManagement: false,
             onAccountsChanged: { [weak self, weak sheet] in
                 guard let self, let sheet, let id = chat?.id else { return }
                 refreshModelSheet(sheet, for: id)

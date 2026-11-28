@@ -23,7 +23,7 @@ struct ChatRunActivity {
     }
 
     func isActive(runEnded: Bool) -> Bool {
-        (isWorking && !runEnded) || isCompacting
+        !runEnded && (isWorking || isCompacting)
     }
 
     mutating func apply(_ event: TaskEvent) {
@@ -32,12 +32,17 @@ struct ChatRunActivity {
         isCompacting = change.compacting ?? isCompacting
     }
 
-    mutating func endTurn() { isWorking = false }
+    /// 宿主已确认任务结束，压缩也不可能继续；不能只结束模型轮次。
+    mutating func endTask() {
+        isWorking = false
+        isCompacting = false
+    }
 
     private static func change(for event: TaskEvent) -> (working: Bool?, compacting: Bool?) {
         switch event.kind {
-        case "prompt", "steer", "messageStarted": return (true, nil)
-        case "finished": return (false, nil)
+        case "prompt": return (true, false)
+        case "steer", "messageStarted": return (true, nil)
+        case "finished": return (false, false)
         case "compactionStarted": return (nil, true)
         case "compactionFinished": return (nil, false)
         case TaskEvent.stateKind where ChatTranscript.endsTask(event): return (false, false)
@@ -523,12 +528,11 @@ struct ChatTranscript {
             }
         }
         eventCount += events.count
-        if runEnded, isWorking {
-            // The app knows this run is over and nothing more is coming, so
-            // the turn stops looking as if it were going — whatever end the
-            // process that ran it left unread.
-            activity.endTurn()
-            endTurn(at: now ?? lastEventTime ?? Date())
+        if runEnded {
+            // 宿主确认任务终止后不再有任何压缩；单独清运行标记会留下永久转圈。
+            let wasWorking = isWorking
+            activity.endTask()
+            if wasWorking { endTurn(at: now ?? lastEventTime ?? Date()) }
         }
         show(sending: sending, now: now)
     }

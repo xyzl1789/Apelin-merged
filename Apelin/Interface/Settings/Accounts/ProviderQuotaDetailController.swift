@@ -14,6 +14,7 @@ final class ProviderQuotaDetailController: TableController {
     }
 
     private var account: AgentAccount
+    private let allowsAccountManagement: Bool
     private var snapshot: AgentQuotaSnapshot?
     private let onAccountsChanged: () -> Void
     private var loader: Task<Void, Never>?
@@ -30,8 +31,14 @@ final class ProviderQuotaDetailController: TableController {
         identifier: { $0 },
     ) { [weak self] _, _, row in self?.cell(for: row) }
 
-    init(account: AgentAccount, initialQuota: AgentQuotaSnapshot?, onAccountsChanged: @escaping () -> Void) {
+    init(
+        account: AgentAccount,
+        initialQuota: AgentQuotaSnapshot?,
+        allowsAccountManagement: Bool = true,
+        onAccountsChanged: @escaping () -> Void,
+    ) {
         self.account = account
+        self.allowsAccountManagement = allowsAccountManagement
         snapshot = initialQuota
         self.onAccountsChanged = onAccountsChanged
         super.init(style: .insetGrouped)
@@ -138,7 +145,9 @@ final class ProviderQuotaDetailController: TableController {
         var actions: [Row] = [.refresh]
         if billingURL != nil { actions.append(.billing) }
         sections.append((.actions, actions))
-        sections.append((.management, [.edit, .models, .parameters, .signOut]))
+        if allowsAccountManagement {
+            sections.append((.management, [.edit, .models, .parameters, .signOut]))
+        }
         dataSource.update(sections, reconfigure: true)
     }
 
@@ -201,14 +210,16 @@ final class ProviderQuotaDetailController: TableController {
         guard let row = dataSource.value(at: indexPath) else { return false }
         switch row {
         case .refresh: return !refreshing
-        case .billing, .edit, .models, .parameters, .signOut: return true
+        case .billing: return true
+        case .edit, .models, .parameters, .signOut: return allowsAccountManagement
         default: return false
         }
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard let row = dataSource.value(at: indexPath) else { return }
+        guard self.tableView(tableView, shouldHighlightRowAt: indexPath),
+              let row = dataSource.value(at: indexPath) else { return }
         switch row {
         case .refresh: refresh(manual: true)
         case .billing:

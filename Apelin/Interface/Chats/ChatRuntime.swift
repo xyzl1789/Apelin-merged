@@ -105,6 +105,8 @@ final class ChatRuntime {
     /// Called once no conversation is being written (`saveNow`).
     private var savesDrained: [() -> Void] = []
     private static let saveInterval: Duration = .seconds(3)
+    /// 保存防重标记期间的自动压缩请求；停止可使其失效，不能在停止后补启动。
+    private var automaticCompactionRequests: [UUID: UUID] = [:]
     /// Who waits for a conversation's compaction to end, by conversation.
     private var compactions: [UUID: CheckedContinuation<AgentCompactionResult, Error>] = [:]
 
@@ -1344,6 +1346,7 @@ final class ChatRuntime {
     }
 
     func stop(_ id: UUID, continueQueue: Bool = true) async throws {
+        automaticCompactionRequests[id] = nil
         // 读者主动停止：这不是失败，不能过了一会儿又自动重发。
         stallWatchdogs[id]?.cancel()
         stallWatchdogs[id] = nil
@@ -1512,10 +1515,37 @@ final class ChatRuntime {
             && opening[id] == nil && compactions[id] == nil
     }
 
+    /// 先保存尝试快照，再发起自动压缩；同一占用不随页面重建或进程更新重试。
+    func compactAutomatically(_ id: UUID, usage: ChatContextUsage) async throws {
+        let attempt = ChatCompactionAttempt(tokens: usage.tokens, window: usage.window)
+        guard isReconciled, canCompact(id),
+              records[id]?.automaticCompactionAttempt != attempt else { return }
+        records[id]?.automaticCompactionAttempt = attempt
+        let request = UUID()
+        automaticCompactionRequests[id] = request
+        defer {
+            if automaticCompactionRequests[id] == request { automaticCompactionRequests[id] = nil }
+        }
+        persist(id, urgent: true)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            saveNow { continuation.resume() }
+        }
+        guard !Task.isCancelled, !unsaved.contains(id),
+              automaticCompactionRequests[id] == request,
+              canCompact(id), transcript(id).contextUsage == usage else { return }
+        _ = try await compact(id, automaticRequest: request)
+    }
+
     /// Compacts the conversation, and returns how it went once the session
     /// says so. Cancelled, it stops the compaction.
-    func compact(_ id: UUID) async throws -> AgentCompactionResult {
+    func compact(_ id: UUID, automaticRequest: UUID? = nil) async throws -> AgentCompactionResult {
         let opened = try await open(id)
+        if let automaticRequest {
+            guard automaticCompactionRequests[id] == automaticRequest, canCompact(id) else {
+                throw CancellationError()
+            }
+        }
+        try Task.checkCancellation()
         // what the reader takes from here on, which may answer before the request does
         let seen = records[id]?.events.count ?? 0
         try await ApelinService.app.agentCompact(
@@ -1524,6 +1554,9 @@ final class ChatRuntime {
         )
         if let event = records[id]?.events.dropFirst(seen).last(where: { $0.kind == "compactionFinished" }) {
             return Self.compactionResult(event)
+        }
+        guard records[id]?.task == opened.task, readers[id] != nil else {
+            throw ApelinError(.notFound, String(localized: "This chat is no longer running."))
         }
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -1707,6 +1740,9 @@ final class ChatRuntime {
             } catch {
                 self?.onError?(error)
                 return
+            }
+            if self?.records[id]?.restoreReplayBoundaries() == true {
+                self?.persist(id, urgent: true)
             }
             // 保留两个运行标记，不把整份事件数组持有到下一次等待。
             var activity = ChatRunActivity(events: self?.records[id]?.events ?? [])
