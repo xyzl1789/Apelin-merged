@@ -173,7 +173,8 @@ struct ForkContextTests {
 
         // The manifest names its messages; it no longer holds a copy of the
         // turn's UI records, which the append-only log still has.
-        let manifest = try Data(contentsOf: log.directory.appendingPathComponent("forks/\(second.uuidString.lowercased()).json"))
+        let directory = await log.directory
+        let manifest = try Data(contentsOf: directory.appendingPathComponent("forks/\(second.uuidString.lowercased()).json"))
         let json = try #require(try JSONSerialization.jsonObject(with: manifest) as? [String: Any])
         #expect(json["version"] as? Int == 2)
         #expect(json["records"] == nil)
@@ -219,10 +220,11 @@ struct ForkContextTests {
         try await log.writeHistorySnapshot(partial + [.assistant(fauxAssistantMessage("Later response"))], anchors: anchors, seal: true)
         let forkID = UUID().uuidString.lowercased()
         let metadata = SessionMetadata(id: forkID, project: home.project, provider: .registered(faux.getModel()), mode: .confirm, created: Date())
+        let directory = await log.directory
         try SessionEventLog.writeFork(
             sessionsRoot: home.dataRoot.sessions, metadata: metadata,
             records: selected.records, transcript: selected.messages, anchors: selected.anchors,
-            historySource: log.directory, history: try await log.records(afterSeq: 0), through: second,
+            historySource: directory, history: try await log.records(afterSeq: 0), through: second,
             savedObjects: preload ? selected.savedObjects : [:],
         )
         if preload {
@@ -230,7 +232,7 @@ struct ForkContextTests {
             #expect(try FileManager.default.contentsOfDirectory(atPath: objects.path) == [HistoryObjectStore.archiveName])
         }
         await log.close()
-        try FileManager.default.removeItem(at: log.directory)
+        try FileManager.default.removeItem(at: directory)
         let fork = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: forkID)
         #expect(try await fork.readTranscript() == partial)
         let firstFork = try #require(try await fork.readForkContext(first))
@@ -481,7 +483,8 @@ struct ForkContextTests {
         let reopened = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: sessionID)
         // 与 AgentSession 初始化相同：异常退出没有结束事件时先补中断事件。
         if implicitStop {
-            for event in reopened.opened.interruptionEvents { try await reopened.append(event) }
+            let opening = await reopened.opened
+            for event in opening.interruptionEvents { try await reopened.append(event) }
         }
         let expected = try ForkContext.droppingUnansweredCalls(hole)
         let repaired = try await reopened.readResumableTranscript()
@@ -601,10 +604,11 @@ struct ForkContextTests {
         let history = try await log.records(afterSeq: 0)
         let forkID = UUID().uuidString.lowercased()
         let metadata = SessionMetadata(id: forkID, project: home.project, provider: .registered(faux.getModel()), mode: .confirm, created: Date())
+        let directory = await log.directory
         try SessionEventLog.writeFork(
             sessionsRoot: home.dataRoot.sessions, metadata: metadata,
             records: history, transcript: cut, anchors: anchors,
-            historySource: log.directory, history: history, through: second,
+            historySource: directory, history: history, through: second,
         )
         await log.close()
         let fork = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: forkID)
@@ -628,16 +632,17 @@ struct ForkContextTests {
         try await log.writeHistorySnapshot(messages, anchors: [id.uuidString.lowercased(): anchor(user)])
         let incomplete = messages + pendingBatch()
         try await log.writeTranscript(incomplete)
-        let transcriptURL = log.directory.appendingPathComponent("transcript.json")
+        let directory = await log.directory
+        let transcriptURL = directory.appendingPathComponent("transcript.json")
         let bytes = try Data(contentsOf: transcriptURL)
-        let manifest = log.directory.appendingPathComponent("forks/\(id.uuidString.lowercased()).json")
+        let manifest = directory.appendingPathComponent("forks/\(id.uuidString.lowercased()).json")
         if failure == "manifest" {
             try Data("damaged".utf8).write(to: manifest)
         } else if failure == "object" {
             let json = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: manifest)) as? [String: Any])
             let names = try #require(json["messages"] as? [String])
             let name = try #require(names.first)
-            try Data("damaged".utf8).write(to: log.directory.appendingPathComponent("forks/objects/\(name)"))
+            try Data("damaged".utf8).write(to: directory.appendingPathComponent("forks/objects/\(name)"))
         } else {
             try FileManager.default.removeItem(at: transcriptURL)
             try FileManager.default.createDirectory(at: transcriptURL, withIntermediateDirectories: false)

@@ -1004,8 +1004,12 @@ actor EventRelay {
                 "mode": .string(runMode.rawValue),
                 "reason": .string(reason),
             ]))]
-        case let .error(message):
-            return [("error", .object(["message": .string(message)]))]
+        case let .error(message, reason):
+            var payload: [String: ApelinCore.JSONValue] = ["message": .string(message)]
+            if let reason {
+                payload[Wire.errorReasonKey] = .string(reason.rawValue)
+            }
+            return [("error", .object(payload))]
         case .recoveryContinues:
             return [("recoveryContinues", nil)]
         case let .finished(reason):

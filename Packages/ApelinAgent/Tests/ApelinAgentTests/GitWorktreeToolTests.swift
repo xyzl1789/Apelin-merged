@@ -63,7 +63,7 @@ struct GitWorktreeToolTests {
 
     @Test
     func `a discarded path asks in every mode`() async throws {
-        for mode: ApprovalMode in [.relaxed, .full, .confirm] {
+        for mode: ApelinAgent.ApprovalMode in [.relaxed, .full, .confirm] {
             let harness = try DigestApprovalTests.Harness(mode: mode)
             defer { harness.home.remove() }
             let (_, asked) = try await harness.run(.gitRestore, ["paths": ["Sources/Tweak.m"]])
@@ -91,7 +91,7 @@ struct GitWorktreeToolTests {
 
     @Test
     func `a tag on a remote asks in every mode and names it`() async throws {
-        for mode: ApprovalMode in [.relaxed, .full, .confirm] {
+        for mode: ApelinAgent.ApprovalMode in [.relaxed, .full, .confirm] {
             let harness = try DigestApprovalTests.Harness(mode: mode)
             defer { harness.home.remove() }
             let (_, asked) = try await harness.run(

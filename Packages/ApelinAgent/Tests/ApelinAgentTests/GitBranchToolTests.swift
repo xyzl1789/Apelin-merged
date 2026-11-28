@@ -97,7 +97,7 @@ struct GitBranchToolTests {
 
     @Test
     func `relaxed and full do not ask for branch mutations`() async throws {
-        for mode: ApprovalMode in [.relaxed, .full] {
+        for mode: ApelinAgent.ApprovalMode in [.relaxed, .full] {
             let harness = try DigestApprovalTests.Harness(mode: mode)
             defer { harness.home.remove() }
             for (tool, arguments) in Self.writes {

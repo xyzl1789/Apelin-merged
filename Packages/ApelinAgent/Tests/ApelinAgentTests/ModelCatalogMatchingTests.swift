@@ -1,4 +1,5 @@
 import Testing
+import KWWKAI
 @testable import ApelinAgent
 
 /// What a name finds in the catalogs: a model id, or the name a catalog gives
@@ -47,30 +48,30 @@ struct ModelCatalogMatchingTests {
     private static let none = ModelCatalogIndex.Table()
 
     @Test func `a relay's name finds the model a catalog names in words`() {
-        let found = ModelCatalogIndex.entry(for: "cn:deepseek-v4.1-flash", catalogKey: nil, bundled: bundled, snapshot: none)
+        let found = ModelCatalogIndex.entry(for: "cn:deepseek-v4.1-flash", catalogKey: nil, bundled: Self.bundled, snapshot: Self.none)
         #expect(found?.id == "deepseek-flash")
         #expect(found?.contextWindow == 1_000_000)
         #expect(found?.maxTokens == 64_000)
     }
 
     @Test func `a provider's own key is asked first and finds the same entry`() {
-        let found = ModelCatalogIndex.entry(for: "cn:deepseek-v4.1-flash", catalogKey: "deepseek", bundled: bundled, snapshot: none)
+        let found = ModelCatalogIndex.entry(for: "cn:deepseek-v4.1-flash", catalogKey: "deepseek", bundled: Self.bundled, snapshot: Self.none)
         #expect(found?.id == "deepseek-flash")
     }
 
     @Test func `a relay's spelling with a space after the prefix still finds it`() {
-        let found = ModelCatalogIndex.entry(for: "free: deepseek-v4.1-flash", catalogKey: nil, bundled: bundled, snapshot: none)
+        let found = ModelCatalogIndex.entry(for: "free: deepseek-v4.1-flash", catalogKey: nil, bundled: Self.bundled, snapshot: Self.none)
         #expect(found?.id == "deepseek-flash")
     }
 
     @Test func `a version alone is not a model`() {
-        #expect(ModelCatalogIndex.entry(for: "v4.1", catalogKey: nil, bundled: bundled, snapshot: none) == nil)
-        #expect(ModelCatalogIndex.entry(for: "flash", catalogKey: nil, bundled: bundled, snapshot: none) == nil)
-        #expect(ModelCatalogIndex.entry(for: "cn:", catalogKey: nil, bundled: bundled, snapshot: none) == nil)
+        #expect(ModelCatalogIndex.entry(for: "v4.1", catalogKey: nil, bundled: Self.bundled, snapshot: Self.none) == nil)
+        #expect(ModelCatalogIndex.entry(for: "flash", catalogKey: nil, bundled: Self.bundled, snapshot: Self.none) == nil)
+        #expect(ModelCatalogIndex.entry(for: "cn:", catalogKey: nil, bundled: Self.bundled, snapshot: Self.none) == nil)
     }
 
     @Test func `a name the catalog files as itself keeps its own entry`() {
-        let found = ModelCatalogIndex.entry(for: "deepseek-v4-pro", catalogKey: "deepseek", bundled: bundled, snapshot: none)
+        let found = ModelCatalogIndex.entry(for: "deepseek-v4-pro", catalogKey: "deepseek", bundled: Self.bundled, snapshot: Self.none)
         #expect(found?.id == "deepseek-v4-pro")
     }
 
@@ -79,17 +80,17 @@ struct ModelCatalogMatchingTests {
             (
                 provider: "acme",
                 models: [
-                    (id: "acme-mk2", entry: entry("acme-mk2", "acme", "Acme MK2", window: 128_000, tokens: 8_000)),
+                    (id: "acme-mk2", entry: Self.entry("acme-mk2", "acme", "Acme MK2", window: 128_000, tokens: 8_000)),
                 ],
             ),
         ])
-        let found = ModelCatalogIndex.entry(for: "acme-mk2", catalogKey: nil, bundled: bundled, snapshot: snapshot)
+        let found = ModelCatalogIndex.entry(for: "acme-mk2", catalogKey: nil, bundled: Self.bundled, snapshot: snapshot)
         #expect(found?.id == "acme-mk2")
         #expect(found?.contextWindow == 128_000)
     }
 
     @Test func `a model neither copy names is left alone`() {
-        #expect(ModelCatalogIndex.entry(for: "anthropic/claude-sonnet-4.5", catalogKey: nil, bundled: bundled, snapshot: none) == nil)
+        #expect(ModelCatalogIndex.entry(for: "anthropic/claude-sonnet-4.5", catalogKey: nil, bundled: Self.bundled, snapshot: Self.none) == nil)
     }
 
     /// The account list reads a whole set at once; every model in it must be
@@ -99,7 +100,7 @@ struct ModelCatalogMatchingTests {
             (
                 provider: "acme",
                 models: [
-                    (id: "acme-mk2", entry: entry("acme-mk2", "acme", "Acme MK2", window: 128_000, tokens: 8_000)),
+                    (id: "acme-mk2", entry: Self.entry("acme-mk2", "acme", "Acme MK2", window: 128_000, tokens: 8_000)),
                 ],
             ),
         ])
@@ -108,10 +109,10 @@ struct ModelCatalogMatchingTests {
             "acme-mk2", "anthropic/claude-sonnet-4.5", "", "cn:", "v4.1",
         ]
         for key in [String?.none, "deepseek", "acme"] {
-            let batch = ModelCatalogIndex.entries(for: ids, catalogKey: key, bundled: bundled, snapshot: snapshot)
+            let batch = ModelCatalogIndex.entries(for: ids, catalogKey: key, bundled: Self.bundled, snapshot: snapshot)
             for id in ids {
                 #expect(
-                    batch[id] == ModelCatalogIndex.entry(for: id, catalogKey: key, bundled: bundled, snapshot: snapshot),
+                    batch[id] == ModelCatalogIndex.entry(for: id, catalogKey: key, bundled: Self.bundled, snapshot: snapshot),
                     "\(id) under \(key ?? "-")",
                 )
             }
@@ -122,7 +123,7 @@ struct ModelCatalogMatchingTests {
     @Test func `a batch answers one entry per id asked for`() {
         let batch = ModelCatalogIndex.entries(
             for: ["deepseek-flash", "deepseek-flash"],
-            catalogKey: nil, bundled: bundled, snapshot: none,
+            catalogKey: nil, bundled: Self.bundled, snapshot: Self.none,
         )
         #expect(batch.count == 1)
         #expect(batch["deepseek-flash"]?.id == "deepseek-flash")
@@ -130,11 +131,11 @@ struct ModelCatalogMatchingTests {
         // the id it was given, so each is answered under its own.
         let spelled = ModelCatalogIndex.entries(
             for: ["deepseek-flash", "cn:deepseek-v4.1-flash"],
-            catalogKey: nil, bundled: bundled, snapshot: none,
+            catalogKey: nil, bundled: Self.bundled, snapshot: Self.none,
         )
         #expect(spelled.count == 2)
         #expect(spelled["cn:deepseek-v4.1-flash"]?.id == "deepseek-flash")
-        #expect(ModelCatalogIndex.entries(for: [], catalogKey: "deepseek", bundled: bundled, snapshot: none).isEmpty)
+        #expect(ModelCatalogIndex.entries(for: [], catalogKey: "deepseek", bundled: Self.bundled, snapshot: Self.none).isEmpty)
     }
 
     /// The order a lookup keeps, kept: a provider's own models.dev copy is
@@ -146,13 +147,13 @@ struct ModelCatalogMatchingTests {
         let bundledElsewhere = ModelCatalogIndex.table([
             (
                 provider: "acme",
-                models: [(id: "deepseek-flash", entry: entry("deepseek-flash", "acme", "Acme Flash", window: 8_000))],
+                models: [(id: "deepseek-flash", entry: Self.entry("deepseek-flash", "acme", "Acme Flash", window: 8_000))],
             ),
         ])
         let snapshot = ModelCatalogIndex.table([
             (
                 provider: "deepseek",
-                models: [(id: "deepseek-flash", entry: entry("deepseek-flash", "deepseek", "DeepSeek V4.1 Flash", window: 32_000))],
+                models: [(id: "deepseek-flash", entry: Self.entry("deepseek-flash", "deepseek", "DeepSeek V4.1 Flash", window: 32_000))],
             ),
         ])
         let found = ModelCatalogIndex.entries(for: ["deepseek-flash"], catalogKey: "deepseek", bundled: bundledElsewhere, snapshot: snapshot)
@@ -167,13 +168,13 @@ struct ModelCatalogMatchingTests {
         let bundledElsewhere = ModelCatalogIndex.table([
             (
                 provider: "acme",
-                models: [(id: "deepseek-v4.1-flash", entry: entry("deepseek-v4.1-flash", "acme", "Acme Flash", window: 8_000))],
+                models: [(id: "deepseek-v4.1-flash", entry: Self.entry("deepseek-v4.1-flash", "acme", "Acme Flash", window: 8_000))],
             ),
         ])
         let snapshot = ModelCatalogIndex.table([
             (
                 provider: "deepseek",
-                models: [(id: "ds-41f", entry: entry("ds-41f", "deepseek", "DeepSeek V4.1 Flash", window: 32_000))],
+                models: [(id: "ds-41f", entry: Self.entry("ds-41f", "deepseek", "DeepSeek V4.1 Flash", window: 32_000))],
             ),
         ])
         let found = ModelCatalogIndex.entries(for: ["deepseek-v4.1-flash"], catalogKey: "deepseek", bundled: bundledElsewhere, snapshot: snapshot)
@@ -188,14 +189,14 @@ struct ModelCatalogMatchingTests {
         let snapshot = ModelCatalogIndex.table([
             (
                 provider: "kilo",
-                models: [(id: "nvidia/nemotron-3.5-super-vl:free", entry: entry("nvidia/nemotron-3.5-super-vl:free", "kilo", "NVIDIA: Nemotron 3.5 Super VL (free)", window: 1_000_000, tokens: 64_000))],
+                models: [(id: "nvidia/nemotron-3.5-super-vl:free", entry: Self.entry("nvidia/nemotron-3.5-super-vl:free", "kilo", "NVIDIA: Nemotron 3.5 Super VL (free)", window: 1_000_000, tokens: 64_000))],
             ),
         ])
         var model = Model(id: "nvidia/nemotron-3.5-super-vl:free", api: "openai-completions", provider: "test")
         model.input = [.text]
         model.contextWindow = 131_072
         model.maxTokens = 32_000
-        let resolved = ModelResolver.resolving(model, catalogKey: nil, index: ModelCatalogIndex(bundled: bundled, snapshot: snapshot))
+        let resolved = ModelResolver.resolving(model, catalogKey: nil, index: ModelCatalogIndex(bundled: Self.bundled, snapshot: snapshot))
         #expect(resolved.input.contains(.image))
         #expect(resolved.contextWindow == 1_000_000)
     }

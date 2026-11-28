@@ -23,7 +23,7 @@ jobs:
           - package: ApelinToolHost
             filter: ToolHostClientTests
           - package: ApelinAgent
-            filter: ToolExtensionSessionTests|ToolExtensionTests|SessionJournalTests|ToolExtensionBackendTests|ConversationTurnLimitRecoveryTests|NetworkRecoveryTests|NetworkCancellationTests|ApprovalMatrixTests|ConversationTurnLimitTests|StoppedWorkTests
+            filter: ToolExtensionSessionTests|ToolExtensionTests|SessionJournalTests|ToolExtensionBackendTests|ConversationTurnLimitRecoveryTests|NetworkRecoveryTests|NetworkCancellationTests|ApprovalMatrixTests|ConversationTurnLimitTests|StoppedWorkTests|FailureReasonTests|ForkContextTests|GitBranchDeleteToolTests|GitBranchToolTests|GitWorktreeToolTests|ModelCatalogMatchingTests|EventRelayTests|EventReplayTests|EventCoalescingTests
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
     steps:

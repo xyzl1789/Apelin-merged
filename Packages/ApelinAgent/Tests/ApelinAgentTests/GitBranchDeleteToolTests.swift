@@ -24,7 +24,7 @@ struct GitBranchDeleteToolTests {
 
     @Test
     func `every mode asks, once per call, and offers no session grant`() async throws {
-        for mode: ApprovalMode in [.relaxed, .confirm, .full] {
+        for mode: ApelinAgent.ApprovalMode in [.relaxed, .confirm, .full] {
             let harness = try DigestApprovalTests.Harness(mode: mode)
             defer { harness.home.remove() }
             for _ in 0 ..< 2 {

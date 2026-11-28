@@ -1,6 +1,7 @@
 @testable import ApelinAgent
 import ApelinProtocol
 import Foundation
+import KWWKAgent
 import KWWKAI
 import Testing
 
@@ -35,7 +36,7 @@ struct FailureReasonTests {
     @Test
     func `a failed handshake is the network's failure, a certificate that will not do is not`() {
         #expect(FailureReason.of(Self.transport(NSURLErrorSecureConnectionFailed), hasRoute: true) == .network)
-        #expect(FailureReason.of(Self.transport(NSURLErrorServerCertificateUntrusted), hasRoute: true) == nil)
+        #expect(FailureReason.of(Self.transport(NSURLErrorServerCertificateUntrusted), hasRoute: true) == .invalidRequest)
     }
 
     @Test
@@ -64,8 +65,9 @@ struct FailureReasonTests {
     }
 
     @Test
-    func `a request the provider would not take keeps its own words`() {
-        #expect(FailureReason.of(Self.status(404, "model not found"), hasRoute: true) == nil)
+    func `无效请求保留既有分类，取消不另附原因`() {
+        #expect(FailureReason.of(Self.status(400, "malformed request"), hasRoute: true) == .invalidRequest)
+        #expect(FailureReason.of(Self.status(404, "model not found"), hasRoute: true) == .invalidRequest)
         #expect(FailureReason.of(ProviderFailure(message: "Request was aborted", transportDomain: NSURLErrorDomain, transportCode: -999), hasRoute: true) == nil)
     }
 
@@ -91,6 +93,74 @@ struct FailureReasonTests {
             from: Data(#"{"error":{"message":"x","reason":"eclipse"}}"#.utf8),
         )
         #expect(newer == .error(message: "x", reason: ApelinError.Reason(rawValue: "eclipse")), "a reason not known yet still reads")
+    }
+
+    @Test
+    func `错误原因在关闭与重开事件日志后仍完整保留`() async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let id = UUID().uuidString
+        let log = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: id)
+        let events: [AgentSessionEvent] = [
+            .error(message: "旧版无原因错误"),
+            .error(message: "设备离线", reason: .offline),
+            .error(message: "未来原因", reason: .init(rawValue: "eclipse")),
+        ]
+        for event in events { try await log.append(event) }
+        await log.close()
+
+        let reopened = try SessionEventLog(sessionsRoot: home.dataRoot.sessions, sessionID: id)
+        let records = try await reopened.records(afterSeq: 0)
+        #expect(records.map(\.event) == events)
+        #expect(records.map(\.seq) == [1, 2, 3])
+        await reopened.close()
+    }
+
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true], [400, 401, 402, 429])
+    func `模型返回或抛出的错误均记录分类且不误触发轮数恢复`(_ thrown: Bool, _ status: Int) async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let faux = await registerFauxProvider()
+        defer { faux.unregister() }
+        let message = "供应商拒绝请求"
+        var failure = ProviderFailure(message: message, httpStatus: status)
+        failure.shouldRetry = false
+        // 捕获不可变副本，确保假供应商的并发闭包只读已冻结的错误。
+        let settled = failure
+        if thrown {
+            faux.setResponses([.factory { _, _, _, _ in throw settled }])
+        } else {
+            var reply = fauxAssistantMessage("", stopReason: .error, errorMessage: message)
+            reply.failure = settled
+            faux.setResponses([.message(reply)])
+        }
+        let expected: ApelinError.Reason = switch status {
+        case 400: .invalidRequest
+        case 401: .authentication
+        case 402: .quota
+        default: .rateLimit
+        }
+        let session = try await AgentSession(
+            configuration: AgentSessionConfiguration(
+                project: home.project,
+                provider: .registered(faux.getModel()),
+                approval: ApprovalPolicy(mode: .relaxed),
+                dataRoot: home.dataRoot,
+                network: NetworkPath { true },
+            ),
+            backend: MockBackend(),
+            digests: MockDigestLedger(),
+            credentials: DeliveredCredentialSource(),
+        )
+        try await session.prompt("核对模型错误")
+        await session.waitForIdle()
+        let events = try await session.log.records(afterSeq: 0).map(\.event)
+        #expect(events.contains(.error(message: message, reason: expected)))
+        #expect(events.last == .finished(reason: .failed))
+        #expect(faux.state.callCount == 1)
+        #expect(!events.contains(.reconnecting) && !events.contains(.waitingForNetwork))
+        #expect(!events.contains(.compactionStarted))
+        await session.close()
     }
 
     // MARK: - A sign-in's exchange

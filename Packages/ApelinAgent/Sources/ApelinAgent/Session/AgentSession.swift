@@ -2020,9 +2020,12 @@ public actor AgentSession {
                     turnLimitErrorMessage = limitMessage
                     runFailure = .contextOverflow
                 } else {
+                    let hasRoute = configuration.network.isSatisfied()
+                    runFailure = failure.flatMap { FailureReason.of($0, hasRoute: hasRoute) }
                     await record(.error(
                         message: assistant.errorMessage.map(ErrorDescription.localized)
                             ?? "模型供应商返回了错误，请重试。",
+                        reason: runFailure,
                     ))
                 }
             }
@@ -2328,8 +2331,8 @@ public actor AgentSession {
             turnLimitErrorMessage = limitMessage
             runFailure = .contextOverflow
         } else {
-            runFailure = SpentAllowance.isSpent(failure) ? .quota : nil
-            await record(.error(message: error.localizedDescription))
+            runFailure = FailureReason.of(failure, hasRoute: configuration.network.isSatisfied())
+            await record(.error(message: error.localizedDescription, reason: runFailure))
         }
     }
 

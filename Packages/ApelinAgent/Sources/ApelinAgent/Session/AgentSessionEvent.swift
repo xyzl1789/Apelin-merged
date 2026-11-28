@@ -71,7 +71,8 @@ public enum AgentSessionEvent: Sendable, Hashable, Codable {
     /// as the composer's pill would: the mode it is now and why. The app
     /// writes it where the pill reads it, so the next prompt goes out with it.
     case runModeChanged(runMode: AgentRunMode, reason: String)
-    case error(message: String)
+    /// 保留供应商原文；未知或非模型错误不附带原因。
+    case error(message: String, reason: ApelinError.Reason? = nil)
     /// This run ended only to compact after a provider turn limit; the same
     /// logical task immediately continues, so its following `finished` event
     /// must not produce a completion notification.
