@@ -5,89 +5,112 @@ extension Notification.Name {
     static let enabledModelsChanged = Notification.Name("wiki.qaq.apelin.enabledModelsChanged")
 }
 
-/// A device preference, separate from the provider's credentials and catalog.
+/// 模型偏好按实际账号保存；首账号沿用旧键，不复制到额外账号。
 enum EnabledModels {
-    private static func key(_ provider: AgentProvider) -> String {
-        "enabledModels.\(provider.rawValue)"
+    private static func suffix(_ provider: AgentProvider, storeID: String?) -> String {
+        AccountPreferences.storageKey(provider: provider, storeID: storeID)
     }
 
-    static func ids(for provider: AgentProvider) -> Set<String> {
-        Set(UserDefaults.standard.stringArray(forKey: key(provider)) ?? [])
+    static func ids(for provider: AgentProvider, storeID: String? = nil, defaults: UserDefaults = .standard) -> Set<String> {
+        Set(defaults.stringArray(forKey: "enabledModels.\(suffix(provider, storeID: storeID))") ?? [])
     }
 
-    static func save(_ models: Set<String>, custom: Set<String>, hidden: Set<String>, for provider: AgentProvider) {
-        UserDefaults.standard.set(models.sorted(), forKey: key(provider))
-        UserDefaults.standard.set(custom.sorted(), forKey: "customModels.\(provider.rawValue)")
-        UserDefaults.standard.set(hidden.sorted(), forKey: "hiddenModels.\(provider.rawValue)")
+    static func save(_ models: Set<String>, custom: Set<String>, hidden: Set<String>, for provider: AgentProvider,
+                     storeID: String? = nil, defaults: UserDefaults = .standard) {
+        let id = suffix(provider, storeID: storeID)
+        defaults.set(models.sorted(), forKey: "enabledModels.\(id)")
+        defaults.set(custom.sorted(), forKey: "customModels.\(id)")
+        defaults.set(hidden.sorted(), forKey: "hiddenModels.\(id)")
         NotificationCenter.default.post(name: .enabledModelsChanged, object: nil)
     }
 
-    static func remove(for provider: AgentProvider) {
-        forget(provider.rawValue)
+    static func remove(for provider: AgentProvider, storeID: String? = nil, defaults: UserDefaults = .standard) {
+        forget(suffix(provider, storeID: storeID), in: defaults)
         NotificationCenter.default.post(name: .enabledModelsChanged, object: nil)
     }
 
-    /// 按协议名称清理服务商的启用、自定义、隐藏模型和限额偏好。
-    private static func forget(_ name: String, in defaults: UserDefaults = .standard) {
-        defaults.removeObject(forKey: "enabledModels.\(name)")
-        defaults.removeObject(forKey: "customModels.\(name)")
-        defaults.removeObject(forKey: "hiddenModels.\(name)")
+    private static func forget(_ name: String, in defaults: UserDefaults) {
+        for prefix in ["enabledModels.", "customModels.", "hiddenModels."] {
+            defaults.removeObject(forKey: prefix + name)
+        }
         ModelLimitsStore.remove(forName: name, in: defaults)
+        ModelParameters.removeAll(forName: name, defaults: defaults)
     }
 
-    /// 启动时删除已退役服务商留下的模型偏好与失效的 composer 选择。
+    /// 保留退役清理；连同额外账号的偏好清理，不影响仍可用的服务商。
     static func forgetRetiredProviders(in defaults: UserDefaults = .standard) {
-        for name in Set(AgentProvider.retired.map(\.name)) {
-            forget(name, in: defaults)
+        let retired = Set(AgentProvider.retired.flatMap { [$0.name, $0.storeID] })
+        for name in retired { forget(name, in: defaults) }
+        for key in defaults.dictionaryRepresentation().keys {
+            for prefix in ["enabledModels.", "customModels.", "hiddenModels.", "modelLimits.", "modelParameters.", "accountName."] where key.hasPrefix(prefix) {
+                let name = String(key.dropFirst(prefix.count)).split(separator: ".").first.map(String.init) ?? ""
+                if retired.contains(AgentAccountID.base(of: name)) { defaults.removeObject(forKey: key) }
+            }
         }
         ComposerModelSelection.forgetRetiredProvider(in: defaults)
     }
 
-    static func customIDs(for provider: AgentProvider) -> [String] {
-        UserDefaults.standard.stringArray(forKey: "customModels.\(provider.rawValue)") ?? []
+    static func customIDs(for provider: AgentProvider, storeID: String? = nil, defaults: UserDefaults = .standard) -> [String] {
+        defaults.stringArray(forKey: "customModels.\(suffix(provider, storeID: storeID))") ?? []
     }
 
-    static func hiddenIDs(for provider: AgentProvider) -> Set<String> {
-        Set(UserDefaults.standard.stringArray(forKey: "hiddenModels.\(provider.rawValue)") ?? [])
+    static func hiddenIDs(for provider: AgentProvider, storeID: String? = nil, defaults: UserDefaults = .standard) -> Set<String> {
+        Set(defaults.stringArray(forKey: "hiddenModels.\(suffix(provider, storeID: storeID))") ?? [])
     }
 
-    /// 附加的兼容端点不在内置供应商枚举中，从已保存的模型偏好补齐。
-    static var providers: [AgentProvider] {
-        let builtIn = AgentProvider.allCases
-        let prefix = "enabledModels."
-        let endpoints = UserDefaults.standard.dictionaryRepresentation().keys.compactMap { key -> AgentProvider? in
-            guard key.hasPrefix(prefix),
-                  let provider = AgentProvider(rawValue: String(key.dropFirst(prefix.count))),
-                  case .openAICompatibleEndpoint = provider else { return nil }
-            return provider
-        }
-        return builtIn + endpoints.filter { !builtIn.contains($0) }.sorted { $0.rawValue < $1.rawValue }
-    }
+    static var providers: [AgentProvider] { configuredProviders(in: .standard) }
 
-    /// The model ids this device keeps for each provider, keyed by the
-    /// provider's own id: handed to the account listing so the catalogs are
-    /// read over the models the app shows — a custom endpoint's own — and not
-    /// only the ones the agent can list for itself.
-    static func knownModelIDs() -> [String: [String]] {
-        var known: [String: [String]] = [:]
-        for provider in providers {
-            let models = ids(for: provider)
-                .union(customIDs(for: provider))
-                .subtracting(hiddenIDs(for: provider))
-            if !models.isEmpty {
-                known[provider.rawValue] = models.sorted()
+    private static func configuredProviders(in defaults: UserDefaults) -> [AgentProvider] {
+        var result = AgentProvider.allCases
+        for key in defaults.dictionaryRepresentation().keys.sorted() {
+            for prefix in ["enabledModels.", "customModels."] where key.hasPrefix(prefix) {
+                let raw = String(key.dropFirst(prefix.count))
+                guard !raw.contains(AgentAccountID.separator), let provider = AgentProvider(rawValue: raw),
+                      case .openAICompatibleEndpoint = provider, !result.contains(provider)
+                else { continue }
+                result.append(provider)
             }
+        }
+        return result
+    }
+
+    static var configuredAccounts: [(key: String, provider: AgentProvider, storeID: String?)] {
+        configuredAccounts(in: .standard)
+    }
+
+    static func configuredAccounts(in defaults: UserDefaults) -> [(key: String, provider: AgentProvider, storeID: String?)] {
+        var entries = configuredProviders(in: defaults).map { (key: $0.rawValue, provider: $0, storeID: Optional<String>.none) }
+        var seen = Set(entries.map(\.key))
+        for key in defaults.dictionaryRepresentation().keys.sorted() {
+            for prefix in ["enabledModels.", "customModels."] where key.hasPrefix(prefix) {
+                let raw = String(key.dropFirst(prefix.count))
+                guard AgentAccountID.number(of: raw) != nil,
+                      let provider = AccountPreferences.provider(for: raw), seen.insert(raw).inserted
+                else { continue }
+                entries.append((key: raw, provider: provider, storeID: raw))
+            }
+        }
+        return entries
+    }
+
+    /// 主账号用旧 wire 键，额外账号用各自 storeID，worker 不会把两者混合。
+    static func knownModelIDs(defaults: UserDefaults = .standard) -> [String: [String]] {
+        var known: [String: [String]] = [:]
+        for entry in configuredAccounts(in: defaults) {
+            let models = ids(for: entry.provider, storeID: entry.storeID, defaults: defaults)
+                .union(customIDs(for: entry.provider, storeID: entry.storeID, defaults: defaults))
+                .subtracting(hiddenIDs(for: entry.provider, storeID: entry.storeID, defaults: defaults))
+            if !models.isEmpty { known[entry.key] = models.sorted() }
         }
         return known
     }
 
-    /// Only the choices the composer can show, not disabled custom IDs. Kept
-    /// separate from knownModelIDs(), which settings needs in full.
-    static func selectedModelIDs() -> [String: [String]] {
+    static func selectedModelIDs(defaults: UserDefaults = .standard) -> [String: [String]] {
         var selected: [String: [String]] = [:]
-        for provider in providers {
-            let models = ids(for: provider).subtracting(hiddenIDs(for: provider))
-            if !models.isEmpty { selected[provider.rawValue] = models.sorted() }
+        for entry in configuredAccounts(in: defaults) {
+            let models = ids(for: entry.provider, storeID: entry.storeID, defaults: defaults)
+                .subtracting(hiddenIDs(for: entry.provider, storeID: entry.storeID, defaults: defaults))
+            if !models.isEmpty { selected[entry.key] = models.sorted() }
         }
         return selected
     }
@@ -96,7 +119,8 @@ enum EnabledModels {
         accounts.compactMap { account in
             guard account.signedIn else { return nil }
             var enabled = account
-            let ids = ids(for: account.provider).subtracting(hiddenIDs(for: account.provider))
+            let ids = ids(for: account.provider, storeID: account.storeID)
+                .subtracting(hiddenIDs(for: account.provider, storeID: account.storeID))
             enabled.models = account.isAPIKeyAccount ? ids.sorted() : (account.models ?? []).filter { ids.contains($0) }
             return enabled.models?.isEmpty == false ? enabled : nil
         }

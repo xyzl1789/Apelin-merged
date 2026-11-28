@@ -268,7 +268,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             detail = [detail, summary].compactMap { $0 }.joined(separator: " · ")
         }
         let cell = ProviderAccountCell(
-            name: account.provider.displayName,
+            name: AccountNames.title(for: account),
             icon: account.provider.icon,
             note: note,
             detail: detail
@@ -310,6 +310,11 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
                 self?.openQuotaDetail(account)
             },
             addAccountAction(for: account.provider),
+            UIMenu(options: .displayInline, children: account.provider.kind == .openAICompatible ? [] : [
+                UIAction(title: String(localized: "账号名称", table: "AccountNames"), image: UIImage(systemName: "pencil.line")) { [weak self] _ in
+                    self?.editAccountName(account)
+                },
+            ]),
             UIAction(
                 title: String(localized: "Edit"),
                 image: UIImage(systemName: account.isAPIKeyAccount ? "pencil" : "arrow.clockwise"),
@@ -338,6 +343,25 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
                 },
             ]),
         ]
+    }
+
+    private func editAccountName(_ account: AgentAccount) {
+        guard account.provider.kind != .openAICompatible else { return }
+        let title = String(localized: "账号名称", table: "AccountNames")
+        let alert = UIAlertController(title: title, message: nil, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.text = AccountNames.customName(for: account.provider, storeID: account.storeID)
+            field.placeholder = AccountNames.title(for: account)
+            field.accessibilityLabel = title
+            field.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(UIAlertAction(title: String(localized: "Save"), style: .default) { [weak self, weak alert] _ in
+            guard let field = alert?.textFields?.first else { return }
+            AccountNames.save(field.text ?? "", for: account.provider, storeID: account.storeID)
+            self?.regroup()
+        })
+        present(alert, animated: true)
     }
 
     private func noteActionTitle(for provider: AgentProvider) -> String {
@@ -454,7 +478,7 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
     /// several, all with the provider's one name.
     private func confirmSignOut(_ account: AgentAccount) {
         let provider = account.provider
-        let name = provider.kind == .openAICompatible ? account.account ?? provider.displayName : provider.displayName
+        let name = AccountNames.groupTitle(for: account)
         presentConfirmation(
             title: "Sign Out of \(name)?",
             message: "Agent sessions that use it stop working until you sign in again.",
@@ -470,9 +494,10 @@ final class ModelProvidersController: TableController, UISearchResultsUpdating {
             do {
                 try await ApelinService.app.agentSignOut(provider: provider, accountID: accountID)
                 ProviderBalanceStore.shared.invalidate(provider: provider, accountID: accountID)
-                // 只有最后一个账号退出才清空服务商级模型和备注。
+                EnabledModels.remove(for: provider, storeID: accountID)
+                AccountNames.remove(for: provider, storeID: accountID)
+                // 备注仍属于服务商，只有最后一个账号退出才清空。
                 if self?.accounts.contains(where: { $0.provider == provider && $0.signedIn && $0.storeID != accountID }) == false {
-                    EnabledModels.remove(for: provider)
                     Preferences.ProviderNotes.save("", for: provider)
                 }
                 self?.load()

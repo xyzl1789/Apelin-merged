@@ -1,0 +1,24 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "账号名称": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit":{"state":"translated","value":"Account Name"}},
+        "ar": {"stringUnit":{"state":"translated","value":"اسم الحساب"}},
+        "de": {"stringUnit":{"state":"translated","value":"Kontoname"}},
+        "es": {"stringUnit":{"state":"translated","value":"Nombre de la cuenta"}},
+        "fr": {"stringUnit":{"state":"translated","value":"Nom du compte"}},
+        "it": {"stringUnit":{"state":"translated","value":"Nome dell’account"}},
+        "ja": {"stringUnit":{"state":"translated","value":"アカウント名"}},
+        "ko": {"stringUnit":{"state":"translated","value":"계정 이름"}},
+        "pt-BR": {"stringUnit":{"state":"translated","value":"Nome da conta"}},
+        "ru": {"stringUnit":{"state":"translated","value":"Имя аккаунта"}},
+        "vi": {"stringUnit":{"state":"translated","value":"Tên tài khoản"}},
+        "zh-Hans": {"stringUnit":{"state":"translated","value":"账号名称"}},
+        "zh-Hant": {"stringUnit":{"state":"translated","value":"帳號名稱"}}
+      }
+    }
+  },
+  "version": "1.0"
+}

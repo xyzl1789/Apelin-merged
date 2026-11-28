@@ -116,7 +116,7 @@ final class ComposerModelBar: ComposerSectionView {
     /// The mark of the model that will answer: whose model the name says it is,
     /// and the provider's own where the name says nothing — its artwork, or a
     /// plain symbol for a provider the bundle has none for.
-    func setModel(_ provider: AgentProvider?, model: String?) {
+    func setModel(_ provider: AgentProvider?, accountName: String? = nil, model: String?) {
         updateControls { [self] in
             // A mark keeps the colours it was drawn with: as a template it
             // would be one flat silhouette, and a black one in light mode. Only
@@ -128,7 +128,7 @@ final class ComposerModelBar: ComposerSectionView {
                 modelButton.iconView.image = UIImage(systemName: "cpu")?.withRenderingMode(.alwaysTemplate)
             }
             modelButton.accessibilityLabel = String(localized: "Select Model")
-            modelButton.accessibilityValue = [provider?.displayName, model]
+            modelButton.accessibilityValue = [accountName ?? provider?.displayName, model]
                 .compactMap { $0 }
                 .joined(separator: " · ")
         }

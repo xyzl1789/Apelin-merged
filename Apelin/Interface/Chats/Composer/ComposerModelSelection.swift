@@ -148,7 +148,7 @@ struct ComposerModelSelection: Codable, Equatable {
     /// The context window and largest reply the reader set for this model
     /// in Model Providers (#68); nil is automatic.
     var limits: AgentModelLimits? {
-        ModelLimitsStore.limits(for: provider, model: model)
+        ModelLimitsStore.limits(for: provider, storeID: storeID, model: model)
     }
 
     static var current: Self? {

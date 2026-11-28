@@ -1296,7 +1296,7 @@ final class ChatRuntime {
                         model: selected?.model,
                         project: records[id]?.summary.projectName,
                     ),
-                    modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,
+                    modelParameters: ModelParameters.values(for: selected?.provider, storeID: selected?.storeID, model: selected?.model).wire,
                 ),
                 descriptors: descriptors,
             )
@@ -1600,7 +1600,7 @@ final class ChatRuntime {
                 model: selection.model,
                 reasoningEffort: selection.effort,
                 serviceTier: selection.tier,
-                modelParameters: ModelParameters.values(for: selection.provider, model: selection.model).wire,
+                modelParameters: ModelParameters.values(for: selection.provider, storeID: selection.storeID, model: selection.model).wire,
             ))
             guard answer.applied, let tokens = answer.tokens, let window = answer.window else { return nil }
             return (tokens: tokens, window: window)
@@ -1660,7 +1660,7 @@ final class ChatRuntime {
             allowsUnlock: AgentPermissions.allowsUnlock,
             reasoningEffort: selected?.effort,
             serviceTier: selected?.tier,
-            modelParameters: ModelParameters.values(for: selected?.provider, model: selected?.model).wire,
+            modelParameters: ModelParameters.values(for: selected?.provider, storeID: selected?.storeID, model: selected?.model).wire,
             promptInjection: Preferences.PromptInjection.wire(for: selected?.model, project: record.summary.projectName),
             mcpServers: Preferences.MCPServers.wire,
             modelLimits: selected?.limits,
@@ -2042,12 +2042,12 @@ final class ChatRuntime {
     /// 从不切换：换一个账号的模型也发不出去。普通超时和网络抖动也不切——
     /// 模型本身可用，换一个纯属白折腾；开「超时重试」的由重试兜底。
     private static let switchableReasons: Set<ApelinError.Reason> = [
-        .authentication, .quota, .rateLimit, .server, .contextOverflow,
+        .authentication, ApelinError.Reason(rawValue: "accessDenied"), .quota, .rateLimit, .server, .contextOverflow,
     ]
 
     /// 一个候选的去重键：同一轮里已经试过、又失败的模型不再试。
     private static func candidateKey(_ selection: ComposerModelSelection) -> String {
-        (selection.storeID ?? selection.provider.rawValue) + "/" + selection.model
+        AccountPreferences.storageKey(provider: selection.provider, storeID: selection.storeID) + "/" + selection.model
     }
 
     /// 一轮里自动切换的上限：候选逐个试，全失败才停下等读者。没有余额的
@@ -2201,7 +2201,7 @@ final class ChatRuntime {
         for account in listed {
             guard account.signedIn else { continue }
             for model in account.models ?? [] {
-                guard !EnabledModels.hiddenIDs(for: account.provider).contains(model),
+                guard !EnabledModels.hiddenIDs(for: account.provider, storeID: account.storeID).contains(model),
                       !ModelExclusions.isModelExcluded(account.provider, model: model)
                 else { continue }
                 let selection = ComposerModelSelection(

@@ -124,12 +124,14 @@ final class DefaultModelsController: TableController {
             let models = account.models ?? []
             guard !models.isEmpty else { return nil }
             return ComposerChoiceSheet.Group(
-                title: account.account ?? account.provider.displayName,
+                title: AccountNames.groupTitle(for: account),
                 choices: models.map { model in
                     ComposerChoiceSheet.Choice(
                         title: account.displayName(for: model),
                         subtitle: account.catalogTitle(for: model) == nil ? nil : model,
-                        isSelected: current?.provider == account.provider && current?.model == model && current?.storeID == account.storeID,
+                        isSelected: current.map {
+                            AccountPreferences.matching(account, provider: $0.provider, storeID: $0.storeID) && model == $0.model
+                        } ?? false,
                         modelTest: AgentModelTestRequest(provider: account.provider, accountID: account.storeID, model: model),
                     ) { [weak self] in
                         Preferences.DefaultModels.save(

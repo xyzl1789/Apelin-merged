@@ -14,12 +14,12 @@ final class ModelParametersController: TableController {
     init(account: AgentAccount) {
         self.account = account
         capabilities = account.capabilities ?? [:]
-        let enabled = EnabledModels.ids(for: account.provider)
+        let enabled = EnabledModels.ids(for: account.provider, storeID: account.storeID)
         let known = account.models ?? []
         models = Set(known)
             .union(enabled)
-            .union(EnabledModels.customIDs(for: account.provider))
-            .subtracting(EnabledModels.hiddenIDs(for: account.provider))
+            .union(EnabledModels.customIDs(for: account.provider, storeID: account.storeID))
+            .subtracting(EnabledModels.hiddenIDs(for: account.provider, storeID: account.storeID))
             .sorted()
         super.init(style: .insetGrouped)
     }
@@ -36,14 +36,15 @@ final class ModelParametersController: TableController {
     private func loadCapabilities() {
         guard !models.isEmpty else { return }
         let provider = account.provider
+        let storeID = account.storeID
         let requested = models
         capabilitiesTask = Task { [weak self] in
             let response = try? await ApelinService.app.agentAccountList(
-                extraModels: [provider.rawValue: requested],
+                extraModels: [AccountPreferences.storageKey(provider: provider, storeID: storeID): requested],
                 onlyExtraModels: true,
             )
             guard !Task.isCancelled, let self,
-                  let found = response?.accounts.first(where: { $0.provider == provider })?.capabilities,
+                  let found = response?.accounts.first(where: { AccountPreferences.matching($0, provider: provider, storeID: storeID) })?.capabilities,
                   !found.isEmpty
             else { return }
             capabilities.merge(found) { _, newer in newer }
@@ -65,7 +66,7 @@ final class ModelParametersController: TableController {
         let catalog = self?.capabilities[model]
         content.text = catalog?.displayName(for: model) ?? self?.account.displayName(for: model) ?? model
         content.textProperties.numberOfLines = 0
-        let values = self.map { ModelParameters.values(for: $0.account.provider, model: model) }
+        let values = self.map { ModelParameters.values(for: $0.account.provider, storeID: $0.account.storeID, model: model) }
         // The figure a conversation is read against: the user's when set, and
         // the catalog entry's otherwise.
         let window = values?.contextWindow ?? catalog?.contextWindow
@@ -84,7 +85,7 @@ final class ModelParametersController: TableController {
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 52
         dataSource.headerTitle = { [weak self] _ in
-            self.map { $0.account.account ?? $0.account.provider.displayName }
+            self.map { AccountNames.groupTitle(for: $0.account) }
         }
         dataSource.footerTitle = { _ in
             String(localized: "A figure set here is the one your conversations read this model against, in place of what the catalog and the provider report.")
@@ -99,6 +100,7 @@ final class ModelParametersController: TableController {
         let form = ModelParameterFormController(
             model: model,
             provider: account.provider,
+            storeID: account.storeID,
             catalog: capabilities[model],
             onSave: { [weak self] in self?.dataSource.update([(0, self?.models ?? [])], changedItems: [model]) },
         )
@@ -113,6 +115,7 @@ final class ModelParametersController: TableController {
 final class ModelParameterFormController: TableController {
     fileprivate let model: String
     private let provider: AgentProvider
+    private let storeID: String?
     /// What the catalogs read this model as, when either named it.
     private var catalog: AgentModelCapabilities?
     private let onSave: () -> Void
@@ -129,14 +132,16 @@ final class ModelParameterFormController: TableController {
     init(
         model: String,
         provider: AgentProvider,
+        storeID: String? = nil,
         catalog: AgentModelCapabilities?,
         onSave: @escaping () -> Void,
     ) {
         self.model = model
         self.provider = provider
+        self.storeID = storeID
         self.catalog = catalog
         self.onSave = onSave
-        values = ModelParameters.values(for: provider, model: model)
+        values = ModelParameters.values(for: provider, storeID: storeID, model: model)
         super.init(style: .insetGrouped)
     }
 
@@ -313,7 +318,7 @@ final class ModelParameterFormController: TableController {
         }
         values.contextWindow = contextWindow
         values.maxTokens = maxTokens
-        ModelParameters.save(values, for: provider, model: model)
+        ModelParameters.save(values, for: provider, storeID: storeID, model: model)
         onSave()
         navigationController?.popViewController(animated: true)
     }

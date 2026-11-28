@@ -48,6 +48,16 @@ struct FailureReasonTests {
         #expect(FailureReason.of(Self.status(400, "prompt is too long: 250000 tokens > 200000 maximum"), hasRoute: true) == .contextOverflow)
     }
 
+    @Test
+    func `403拒绝访问但不是配额耗尽时返回权限拒绝`() {
+        #expect(FailureReason.of(Self.status(403), hasRoute: true) == .accessDenied)
+    }
+
+    @Test
+    func `403配额耗尽仍由SpentAllowance优先归类为配额`() {
+        #expect(FailureReason.of(Self.status(403, "quota_exceeded"), hasRoute: true) == .quota)
+    }
+
     /// kwwk's preflight, when compacting cannot bring the conversation under
     /// the window, as a device saw it with a 65,000-token window and one
     /// 100 KB tool result: the chat is too long, said as such.

@@ -36,7 +36,10 @@ struct ChatFailure: Hashable {
     /// The line a failure the agent named goes by, nil for one this
     /// version does not know.
     static func title(for reason: ApelinError.Reason) -> String? {
-        switch reason {
+        if reason.rawValue == "accessDenied" {
+            return String(localized: "Access Denied", table: "ModelAccessErrors")
+        }
+        return switch reason {
         case .offline: String(localized: "No Internet Connection")
         case .network: String(localized: "Unable to Reach Model Provider")
         case .timeout: String(localized: "Request Timed Out")

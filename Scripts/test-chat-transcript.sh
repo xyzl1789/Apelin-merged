@@ -72,6 +72,8 @@ sources=(
     "$root/Apelin/Interface/Feedback/StarPromptState.swift"
     "$root/Apelin/Interface/Settings/Accounts/SignInProgress.swift"
     "$root/Apelin/Interface/Settings/Accounts/ModelLimitsStore.swift"
+    "$root/Apelin/Interface/Settings/Accounts/ModelParameters.swift"
+    "$root/Apelin/Interface/Settings/Accounts/AccountNames.swift"
     "$root/Apelin/Interface/Settings/Accounts/EnabledModels.swift"
     "$root/Apelin/Interface/Chats/Composer/ComposerModelSelection.swift"
     "$root/Tests/ChatTranscript/TranscriptFold.swift"
@@ -106,6 +108,7 @@ sources=(
     "$root/Tests/ChatTranscript/WebAddressCheck.swift"
     "$root/Tests/ChatTranscript/LinkedPackageCheck.swift"
     "$root/Tests/ChatTranscript/RetiredProviderCleanupCheck.swift"
+    "$root/Tests/ChatTranscript/AccountPreferencesCheck.swift"
     "$root/Tests/ChatTranscript/ModelSwitchFitCheck.swift"
     "$root/Tests/ChatTranscript/main.swift"
 )

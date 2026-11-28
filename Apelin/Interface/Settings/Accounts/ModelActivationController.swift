@@ -26,9 +26,9 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
     init(account: AgentAccount) {
         self.account = account
         let available = account.models ?? []
-        let enabled = EnabledModels.ids(for: account.provider)
-        custom = Set(EnabledModels.customIDs(for: account.provider))
-        hidden = account.isAPIKeyAccount ? EnabledModels.hiddenIDs(for: account.provider) : []
+        let enabled = EnabledModels.ids(for: account.provider, storeID: account.storeID)
+        custom = Set(EnabledModels.customIDs(for: account.provider, storeID: account.storeID))
+        hidden = account.isAPIKeyAccount ? EnabledModels.hiddenIDs(for: account.provider, storeID: account.storeID) : []
         selected = account.isAPIKeyAccount ? enabled.subtracting(hidden) : enabled.intersection(available)
         models = account.isAPIKeyAccount
             ? Array(Set(available).union(custom).union(selected).subtracting(hidden)).sorted()
@@ -91,14 +91,14 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
     }
 
     @objc private dynamic func updateRows() {
-        dataSource.headerTitle = { [weak self] _ in self.map { $0.account.account ?? $0.account.provider.displayName } }
+        dataSource.headerTitle = { [weak self] _ in self.map { AccountNames.groupTitle(for: $0.account) } }
         dataSource.footerTitle = { _ in String(localized: "Choose the models to show in the chat model picker. You can change this later in Model Providers.") }
         dataSource.allowsEditing = usesAPIKey
         let rows = shown.map { model in
             ModelRow(
                 id: model,
                 selected: selected.contains(model),
-                limited: usesAPIKey && ModelLimitsStore.limits(for: account.provider, model: model) != nil,
+                limited: usesAPIKey && ModelLimitsStore.limits(for: account.provider, storeID: account.storeID, model: model) != nil,
             )
         }
         dataSource.update([(0, rows)], reconfigure: true)
@@ -265,7 +265,7 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
     /// The page that sets `model`'s context window and largest reply.
     @objc private dynamic func showLimits(of model: String) {
         guard !saving else { return }
-        let page = ModelLimitsController(provider: account.provider, model: model, automatic: automaticLimits[model])
+        let page = ModelLimitsController(provider: account.provider, storeID: account.storeID, model: model, automatic: automaticLimits[model])
         page.onSave = { [weak self] in self?.updateRows() }
         navigationController?.pushViewController(page, animated: true)
     }
@@ -395,7 +395,7 @@ final class ModelActivationController: TableController, UISearchResultsUpdating 
     }
 
     @objc private dynamic func finishSaving() {
-        EnabledModels.save(selected, custom: custom, hidden: hidden, for: account.provider)
+        EnabledModels.save(selected, custom: custom, hidden: hidden, for: account.provider, storeID: account.storeID)
         dismiss(animated: true)
     }
 }

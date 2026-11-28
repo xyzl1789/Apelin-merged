@@ -2,6 +2,11 @@ import ApelinProtocol
 import Foundation
 import KWWKAI
 
+public extension ApelinError.Reason {
+    /// 服务商已识别保存的凭据，但当前账号无权使用请求的模型或端点。
+    static let accessDenied = Self(rawValue: "accessDenied")
+}
+
 /// Why a model request failed, for the reader: kwwk's own reading of the
 /// failure (`ProviderFailure.category`) as the reason an `error` event
 /// carries (ApelinProtocol's `AgentFailure.swift`). The provider's words
@@ -33,6 +38,12 @@ public enum FailureReason {
         // same (`SpentAllowance`)
         if SpentAllowance.isSpent(failure) {
             return .quota
+        }
+        if failure.httpStatus == 401 {
+            return .authentication
+        }
+        if failure.httpStatus == 403 {
+            return .accessDenied
         }
         if failure.httpStatus == nil, failure.providerCode == nil,
            contextTooLarge.contains(where: failure.message.contains)

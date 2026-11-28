@@ -9,6 +9,7 @@ final class ModelLimitsController: TableController {
     @objc dynamic var onSave: (() -> Void)?
 
     private let provider: AgentProvider
+    private let storeID: String?
     private let model: String
     private let automatic: AgentModelLimits?
     private let windowField = UITextField()
@@ -30,8 +31,9 @@ final class ModelLimitsController: TableController {
         self?.cells[section]
     }
 
-    init(provider: AgentProvider, model: String, automatic: AgentModelLimits?) {
+    init(provider: AgentProvider, storeID: String? = nil, model: String, automatic: AgentModelLimits?) {
         self.provider = provider
+        self.storeID = storeID
         self.model = model
         self.automatic = automatic
         super.init(style: .insetGrouped)
@@ -53,7 +55,7 @@ final class ModelLimitsController: TableController {
         tableView.keyboardDismissMode = .interactive
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 52
-        let saved = ModelLimitsStore.limits(for: provider, model: model)
+        let saved = ModelLimitsStore.limits(for: provider, storeID: storeID, model: model)
         configure(windowField, title: Self.title(.window), value: saved?.contextWindow, automatic: automatic?.contextWindow)
         configure(outputField, title: Self.title(.output), value: saved?.maxOutputTokens, automatic: automatic?.maxOutputTokens)
         // the automatic reply follows the window typed (at most a quarter of it)
@@ -185,7 +187,7 @@ final class ModelLimitsController: TableController {
     }
 
     private func commit(_ limits: AgentModelLimits) {
-        ModelLimitsStore.save(limits, for: provider, model: model)
+        ModelLimitsStore.save(limits, for: provider, storeID: storeID, model: model)
         onSave?()
         navigationController?.popViewController(animated: true)
     }

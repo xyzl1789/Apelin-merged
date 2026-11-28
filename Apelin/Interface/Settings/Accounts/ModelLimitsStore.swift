@@ -1,25 +1,18 @@
 import ApelinProtocol
 import Foundation
 
-/// The context window and largest reply the user set for a model of an
-/// API-key account (#68): a device preference beside `EnabledModels`, kept
-/// per provider (`AgentProvider.rawValue`, so each OpenAI-compatible
-/// endpoint has its own) and model ID, never a secret, and cleared with
-/// the provider's sign-in. A field the user left empty is automatic.
-///
-/// Each model's entry is read by itself: one that does not read is
-/// automatic, and is written back as it was with the others.
+/// 每个账号自己的模型限额；首账号沿用旧键，坏条目原样保留。
 enum ModelLimitsStore {
     private static let contextWindowKey = "contextWindow"
     private static let maxOutputKey = "maxOutputTokens"
 
-    private static func key(_ provider: AgentProvider) -> String {
-        "modelLimits.\(provider.rawValue)"
+    private static func key(_ provider: AgentProvider, storeID: String?) -> String {
+        "modelLimits.\(AccountPreferences.storageKey(provider: provider, storeID: storeID))"
     }
 
-    /// What the user set for `model`; nil when every field is automatic.
-    static func limits(for provider: AgentProvider, model: String) -> AgentModelLimits? {
-        guard let entry = UserDefaults.standard.dictionary(forKey: key(provider))?[model] as? [String: Any] else {
+    static func limits(for provider: AgentProvider, storeID: String? = nil, model: String,
+                       defaults: UserDefaults = .standard) -> AgentModelLimits? {
+        guard let entry = defaults.dictionary(forKey: key(provider, storeID: storeID))?[model] as? [String: Any] else {
             return nil
         }
         let limits = AgentModelLimits(
@@ -29,15 +22,14 @@ enum ModelLimitsStore {
         return limits.isAutomatic ? nil : limits
     }
 
-    /// Sets `model`'s limits; nil, or limits with every field automatic,
-    /// takes its entry away.
-    static func save(_ limits: AgentModelLimits?, for provider: AgentProvider, model: String) {
-        let defaults = UserDefaults.standard
-        if let unreadable = defaults.object(forKey: key(provider)), !(unreadable is [String: Any]) {
-            // never written over: set aside where it can still be found
-            defaults.set(unreadable, forKey: key(provider) + ".unreadable")
+    static func save(_ limits: AgentModelLimits?, for provider: AgentProvider, storeID: String? = nil,
+                     model: String, defaults: UserDefaults = .standard) {
+        let storageKey = key(provider, storeID: storeID)
+        if let unreadable = defaults.object(forKey: storageKey), !(unreadable is [String: Any]) {
+            // 保存前先保留无法读取的整份偏好，不用空字典覆盖掉唯一原件。
+            defaults.set(unreadable, forKey: storageKey + ".unreadable")
         }
-        var entries = defaults.dictionary(forKey: key(provider)) ?? [:]
+        var entries = defaults.dictionary(forKey: storageKey) ?? [:]
         if let limits, !limits.isAutomatic {
             var entry: [String: Int] = [:]
             entry[contextWindowKey] = limits.contextWindow
@@ -46,16 +38,14 @@ enum ModelLimitsStore {
         } else {
             entries[model] = nil
         }
-        // read again with each message: nothing needs telling
-        defaults.set(entries.isEmpty ? nil : entries, forKey: key(provider))
+        defaults.set(entries.isEmpty ? nil : entries, forKey: storageKey)
     }
 
-    /// Every model's, on sign-out.
-    static func remove(for provider: AgentProvider) {
-        remove(forName: provider.rawValue)
+    static func remove(for provider: AgentProvider, storeID: String? = nil, defaults: UserDefaults = .standard) {
+        remove(forName: AccountPreferences.storageKey(provider: provider, storeID: storeID), in: defaults)
     }
 
-    /// 按协议 wire 名称清理模型限额，包括已退役服务商。
+    /// 退出账号及退役清理只删除对应账号的限额。
     static func remove(forName name: String, in defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: "modelLimits.\(name)")
         defaults.removeObject(forKey: "modelLimits.\(name).unreadable")

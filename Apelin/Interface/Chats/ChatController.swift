@@ -284,6 +284,12 @@ final class ChatController: UIViewController {
         )
         NotificationCenter.default.addObserver(
             self,
+            selector: #selector(accountNamesChanged),
+            name: .accountNamesChanged,
+            object: nil,
+        )
+        NotificationCenter.default.addObserver(
+            self,
             selector: #selector(enabledModelsChanged),
             name: .enabledModelsChanged,
             object: nil,
@@ -1416,7 +1422,9 @@ final class ChatController: UIViewController {
 
     @objc private func updateModelSelection() {
         let selection = chat.flatMap { ComposerModelSelection.selection(for: $0.id) }
-        composer.modelBar.setModel(selection?.provider, model: selection?.model)
+        composer.modelBar.setModel(selection?.provider, accountName: selection.flatMap {
+            AccountNames.customName(for: $0.provider, storeID: $0.storeID)
+        }, model: selection?.model)
         composer.modelBar.setEfforts(selection?.supportedEfforts ?? [], selected: selection?.effort)
         composer.modelBar.setTiers(selection?.supportedTiers ?? [], selected: selection?.tier)
         updateBalanceRing()
@@ -1506,6 +1514,14 @@ final class ChatController: UIViewController {
         sheet.present(navigation, animated: true)
     }
 
+    @objc private func accountNamesChanged() {
+        updateModelSelection()
+        if let id = chat?.id, let sheet = modelSheet,
+           presentedViewController === sheet, !sheet.isBeingDismissed {
+            refreshModelSheet(sheet, for: id)
+        }
+    }
+
     /// A model disabled in Settings stops being the one the next message uses.
     @objc private func enabledModelsChanged() {
         ensureModelSelection()
@@ -1576,15 +1592,18 @@ final class ChatController: UIViewController {
             return modelGroups(EnabledModels.accounts(from: cached.filter { $0.models != nil }), for: id)
         }
         let selection = ComposerModelSelection.selection(for: id)
-        return EnabledModels.providers.compactMap { provider in
-            guard let ids = models[provider.rawValue], !ids.isEmpty else { return nil }
+        return EnabledModels.configuredAccounts.compactMap { entry in
+            guard let ids = models[entry.key], !ids.isEmpty else { return nil }
+            let account = AgentAccount(provider: entry.provider, method: .apiKey, signedIn: false, storeID: entry.storeID)
             return ComposerChoiceSheet.Group(
-                title: provider.displayName,
-                note: Preferences.ProviderNotes.note(for: provider),
+                title: AccountNames.groupTitle(for: account),
+                note: Preferences.ProviderNotes.note(for: entry.provider),
                 choices: ids.map { model in
                     ComposerChoiceSheet.Choice(
                         title: model,
-                        isSelected: provider == selection?.provider && model == selection?.model,
+                        isSelected: selection.map {
+                            AccountPreferences.matching(account, provider: $0.provider, storeID: $0.storeID) && model == $0.model
+                        } ?? false,
                         handler: {},
                     )
                 },
@@ -1670,7 +1689,7 @@ final class ChatController: UIViewController {
         let selected = ComposerModelSelection.selection(for: id)
         return accounts.map { account in
             ComposerChoiceSheet.Group(
-                title: account.account ?? account.provider.displayName,
+                title: AccountNames.groupTitle(for: account),
                 note: Preferences.ProviderNotes.note(for: account.provider),
                 quota: { [weak self] in self?.presentQuotaSheet(for: account) },
                 choices: (account.models ?? []).map { model in
@@ -1679,9 +1698,9 @@ final class ChatController: UIViewController {
                         // id under it: the id is what the conversation sends.
                         title: account.displayName(for: model),
                         subtitle: account.catalogTitle(for: model) == nil ? nil : model,
-                        isSelected: account.provider == selected?.provider
-                            && (account.storeID ?? account.provider.rawValue) == (selected?.storeID ?? selected?.provider.rawValue)
-                            && model == selected?.model,
+                        isSelected: selected.map {
+                            AccountPreferences.matching(account, provider: $0.provider, storeID: $0.storeID) && model == $0.model
+                        } ?? false,
                         modelTest: AgentModelTestRequest(provider: account.provider, accountID: account.storeID, model: model),
                         badges: account.abilityBadges(for: model),
                     ) { [weak self] in
@@ -1938,7 +1957,7 @@ extension ChatController {
     /// reader set for it, and the catalogs' where they set none — the pair the
     /// model's own settings page shows.
     private static func window(of model: String, in account: AgentAccount) -> Int? {
-        ModelParameters.values(for: account.provider, model: model).contextWindow
+        ModelParameters.values(for: account.provider, storeID: account.storeID, model: model).contextWindow
             ?? account.capabilities?[model]?.contextWindow
     }
 
@@ -1959,8 +1978,7 @@ extension ChatController {
             else { return }
             if let current = ComposerModelSelection.selection(for: id) {
                 if let account = listed.first(where: {
-                    $0.provider == current.provider && $0.signedIn
-                        && ($0.storeID ?? $0.provider.rawValue) == (current.storeID ?? current.provider.rawValue)
+                    $0.signedIn && AccountPreferences.matching($0, provider: current.provider, storeID: current.storeID)
                 }) {
                     if account.models == nil || account.models?.contains(current.model) == true {
                         let refreshed = Self.selection(of: current.model, in: account)

@@ -44,13 +44,13 @@ enum ModelParameters {
         }
     }
 
-    private static func key(_ provider: AgentProvider, _ model: String) -> String {
-        "modelParameters.\(provider.rawValue).\(model)"
+    private static func key(_ provider: AgentProvider, storeID: String?, model: String) -> String {
+        "modelParameters.\(AccountPreferences.storageKey(provider: provider, storeID: storeID)).\(model)"
     }
 
-    static func values(for provider: AgentProvider?, model: String?) -> Values {
+    static func values(for provider: AgentProvider?, storeID: String? = nil, model: String?, defaults: UserDefaults = .standard) -> Values {
         guard let provider, let model, !model.isEmpty,
-              let stored = UserDefaults.standard.dictionary(forKey: key(provider, model))
+              let stored = defaults.dictionary(forKey: key(provider, storeID: storeID, model: model))
         else { return Values() }
         return Values(
             contextWindow: stored["contextWindow"] as? Int,
@@ -61,9 +61,11 @@ enum ModelParameters {
         )
     }
 
-    static func save(_ values: Values, for provider: AgentProvider, model: String) {
+    static func save(_ values: Values, for provider: AgentProvider, storeID: String? = nil,
+                     model: String, defaults: UserDefaults = .standard) {
+        let storageKey = key(provider, storeID: storeID, model: model)
         if values.isEmpty {
-            UserDefaults.standard.removeObject(forKey: key(provider, model))
+            defaults.removeObject(forKey: storageKey)
         } else {
             // Only what the user set is stored: a plist cannot hold an
             // optional, and an absent key is what the catalog or the record
@@ -74,7 +76,25 @@ enum ModelParameters {
             if let acceptsImages = values.acceptsImages { stored["acceptsImages"] = acceptsImages }
             if let reasoning = values.reasoning { stored["reasoning"] = reasoning }
             if let followsCatalog = values.followsCatalog { stored["followsCatalog"] = followsCatalog }
-            UserDefaults.standard.set(stored, forKey: key(provider, model))
+            defaults.set(stored, forKey: storageKey)
+        }
+        NotificationCenter.default.post(name: .modelParametersChanged, object: nil)
+    }
+
+    static func removeAll(for provider: AgentProvider, storeID: String? = nil, defaults: UserDefaults = .standard) {
+        removeAll(forName: AccountPreferences.storageKey(provider: provider, storeID: storeID), defaults: defaults)
+    }
+
+    static func removeAll(forName name: String, defaults: UserDefaults = .standard) {
+        let prefix = "modelParameters.\(name)."
+        // 首兼容端点的旧键是其他端点键的前缀，退出首端点不得顺带删除其他端点。
+        let protected = name == AgentProvider.openAICompatible.rawValue
+            ? AgentProvider.endpointNumbers.map { "modelParameters.\(AgentProvider.openAICompatibleEndpoint($0).rawValue)." }
+            : []
+        for key in defaults.dictionaryRepresentation().keys
+            where key.hasPrefix(prefix) && !protected.contains(where: { key.hasPrefix($0) })
+        {
+            defaults.removeObject(forKey: key)
         }
         NotificationCenter.default.post(name: .modelParametersChanged, object: nil)
     }

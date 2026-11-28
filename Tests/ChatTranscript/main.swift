@@ -973,6 +973,9 @@ precondition(noRoute?.failure?.detail == "Connect to the internet, then send you
 let spent = failureRow(["message": .string("You exceeded your current quota."), "reason": .string("quota")])
 precondition(spent?.failure?.title == "Usage Limit Reached" && spent?.failure?.detail == "You exceeded your current quota.",
              "a limit keeps what the provider said of it")
+let denied = failureRow(["message": .string("当前账号没有此模型权限"), "reason": .string("accessDenied")])
+precondition(denied?.failure?.title == "Access Denied", "403 使用独立的权限拒绝标题")
+precondition(denied?.failure?.detail == "当前账号没有此模型权限", "403 保留服务端详情，不替换为登录建议")
 let busyProvider = failureRow(["message": .string(""), "reason": .string("server")])
 precondition(busyProvider?.failure?.title == "Model Provider Error")
 precondition(busyProvider?.failure?.detail == "Wait a moment, then send your message again.", "with nothing said, what to do")
@@ -1713,3 +1716,4 @@ checkToolCallSections()
 checkUntrackedGroup()
 
 checkRetiredProviderCleanup()
+checkAccountPreferences()

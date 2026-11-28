@@ -1,0 +1,24 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Access Denied": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit": {"state": "translated", "value": "Access Denied"}},
+        "ar": {"stringUnit": {"state": "translated", "value": "الوصول مرفوض"}},
+        "de": {"stringUnit": {"state": "translated", "value": "Zugriff verweigert"}},
+        "es": {"stringUnit": {"state": "translated", "value": "Acceso denegado"}},
+        "fr": {"stringUnit": {"state": "translated", "value": "Accès refusé"}},
+        "it": {"stringUnit": {"state": "translated", "value": "Accesso negato"}},
+        "ja": {"stringUnit": {"state": "translated", "value": "アクセスが拒否されました"}},
+        "ko": {"stringUnit": {"state": "translated", "value": "액세스 거부됨"}},
+        "pt-BR": {"stringUnit": {"state": "translated", "value": "Acesso negado"}},
+        "ru": {"stringUnit": {"state": "translated", "value": "Доступ запрещён"}},
+        "vi": {"stringUnit": {"state": "translated", "value": "Truy cập bị từ chối"}},
+        "zh-Hans": {"stringUnit": {"state": "translated", "value": "无权使用此模型"}},
+        "zh-Hant": {"stringUnit": {"state": "translated", "value": "無權使用此模型"}}
+      }
+    }
+  },
+  "version": "1.0"
+}

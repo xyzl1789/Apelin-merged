@@ -10,6 +10,7 @@ enum Preferences {
     enum DefaultModels {
         struct Selection {
             var provider: AgentProvider
+            var storeID: String? = nil
             var model: String
         }
 
