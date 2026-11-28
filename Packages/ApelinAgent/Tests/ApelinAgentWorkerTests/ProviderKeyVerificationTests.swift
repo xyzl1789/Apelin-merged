@@ -35,7 +35,7 @@ struct ProviderKeyVerificationTests {
             }
             server.newConnectionHandler = { connection in
                 connection.start(queue: DispatchQueue(label: "provider-verification-connection"))
-                Self.respond(connection, status: status, body: body)
+                Self.respond(connection, status: status, body: body, expectCompatibleUA: expectCompatibleUA)
             }
             server.start(queue: DispatchQueue(label: "provider-verification-listener"))
             var iterator = ports.makeAsyncIterator()
@@ -72,14 +72,14 @@ struct ProviderKeyVerificationTests {
         #expect(!ProviderEndpointRequirement.isResponsesOnly("chat completions are unavailable"))
     }
 
-    private static func respond(_ connection: NWConnection, status: Int, body: String, received: Data = Data()) {
+    private static func respond(_ connection: NWConnection, status: Int, body: String, expectCompatibleUA: Bool, received: Data = Data()) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, ended, error in
             let request = received + (data ?? Data())
             guard let separator = request.range(of: Data("\r\n\r\n".utf8)) else {
                 if ended || error != nil {
                     connection.cancel(); return
                 }
-                respond(connection, status: status, body: body, received: request)
+                respond(connection, status: status, body: body, expectCompatibleUA: expectCompatibleUA, received: request)
                 return
             }
             let header = String(decoding: request[..<separator.lowerBound], as: UTF8.self)
@@ -90,7 +90,7 @@ struct ProviderKeyVerificationTests {
                 if ended || error != nil {
                     connection.cancel(); return
                 }
-                respond(connection, status: status, body: body, received: request)
+                respond(connection, status: status, body: body, expectCompatibleUA: expectCompatibleUA, received: request)
                 return
             }
             #expect(header.hasPrefix("POST /v1/chat/completions HTTP/1.1"))
