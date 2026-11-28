@@ -43,6 +43,7 @@ for other in ["https://example.com/conversation/x", "file:///tmp/a.apeproj", "ig
 require(ApelinLink.conversation(session).url.absoluteString == "apelin://conversation/\(session)", "The documented form")
 require(ApelinLink.project("I3 Chain Tweak").url.absoluteString == "apelin://project/I3%20Chain%20Tweak", "Spaces escaped")
 require(ApelinLink.app.url.absoluteString == "apelin://", "The app")
+require(ChatWidgetSnapshot().activityLink == ApelinLink.app.url, "空实时活动仍应打开 Apelin")
 require(ApelinLink.chat(prompt: "Fix the build").url.absoluteString == "apelin://chat?prompt=Fix%20the%20build", "A prompt")
 require(ApelinLink.chat(prompt: "").url.absoluteString == "apelin://chat", "No prompt")
 for prompt in ["a&b=c+d", "line one\nline two\ttab", "100% 相机 #tag ?q", ""] {
@@ -324,5 +325,30 @@ require(fitted.mostUrgent?.id == oversized.mostUrgent?.id && fitted.mostUrgent?.
 require(fitted.inProgressCount == oversized.inProgressCount, "Trimming never reduces the live count")
 let fittedData = try JSONEncoder().encode(fitted)
 require(fittedData.count <= 3_500, "Even escaped text fits within the activity budget")
+
+// MARK: - 实时活动点击与主实例选择
+
+require(snapshot.activityLink == ApelinLink.conversation("waiting").url, "待审批活动应打开对应会话")
+require(pinnedOrder.activityLink == ApelinLink.conversation("pinned-working").url, "固定活动应打开固定会话")
+require(finishedActivity.activityLink == ApelinLink.conversation("a").url, "完成态活动仍应保留会话链接")
+require(oldActivity.activityLink == ApelinLink.conversation("legacy").url, "旧格式活动仍应保留会话链接")
+require(transientActivity.forActivityDisplay(isStale: true).activityLink == ApelinLink.conversation("working").url,
+        "短提示过期不能改变活动的点击目标")
+require(fitted.activityLink == oversized.activityLink, "裁剪载荷不能改变活动的点击目标")
+let legacyEmpty = try JSONDecoder().decode(ChatWidgetSnapshot.self, from: Data("{}".utf8))
+require(legacyEmpty.activityLink == ApelinLink.app.url, "缺少会话列表的旧活动应回退到应用")
+
+require(ChatActivitySelection.canonicalID(activeIDs: [], staleIDs: [], currentID: "gone") == nil,
+        "没有可更新活动时不保留已经消失的 ID")
+require(ChatActivitySelection.canonicalID(activeIDs: ["b", "a"], staleIDs: ["old"], currentID: nil) == "a",
+        "冷启动的主活动选择不依赖系统枚举顺序")
+require(ChatActivitySelection.canonicalID(activeIDs: ["a", "b"], staleIDs: ["old"], currentID: "b") == "b",
+        "已有 active 主实例不能随枚举顺序切换")
+require(ChatActivitySelection.canonicalID(activeIDs: ["new"], staleIDs: ["old"], currentID: "old") == "new",
+        "新的 active 实例应优先于旧的 stale 实例")
+require(ChatActivitySelection.canonicalID(activeIDs: [], staleIDs: ["b", "a"], currentID: "b") == "b",
+        "没有 active 时保留可恢复的 stale 主实例")
+require(ChatActivitySelection.canonicalID(activeIDs: ["new"], staleIDs: [], currentID: "gone") == "new",
+        "主实例消失后应选择仍存在的实例")
 
 print("ok: ApelinLink, RepositoryImportPlan and ChatWidgetSnapshot")

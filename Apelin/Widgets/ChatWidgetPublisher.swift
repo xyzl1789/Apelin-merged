@@ -43,6 +43,8 @@ final class ChatWidgetPublisher {
     /// 最多一个 ActivityKit 调用在执行，后面只留最新快照，不排队重播旧回答。
     private var activityWork: Task<Void, Never>?
     private var pendingActivity: ChatWidgetSnapshot?
+    private var pendingActivityReconcile = false
+    private static var canonicalActivityID: String?
 
     /// 每批事件都会来问一次：事件条数、工作状态、标题和项目都没变的会话，
     /// 复用上次算出的行，不再把它的整份历史重扫一遍。
@@ -317,13 +319,19 @@ final class ChatWidgetPublisher {
         }
     }
 
-    private func showActivity(_ state: ChatWidgetSnapshot) {
-        guard #available(iOS 16.2, *), !Self.isClosedForQuit else { return }
-        pendingActivity = state
-        guard activityWork == nil else { return }
+    /// 将活动更新和去重请求排在同一个串行队列，避免同时 request/update 两个实例。
+    private func startActivityWorkIfNeeded() {
+        guard #available(iOS 16.2, *), activityWork == nil else { return }
         activityWork = Task { [weak self] in
             guard let self else { return }
-            while !Self.isClosedForQuit, let next = pendingActivity {
+            while !Self.isClosedForQuit && (pendingActivity != nil || pendingActivityReconcile) {
+                if pendingActivityReconcile {
+                    pendingActivityReconcile = false
+                    if #available(iOS 16.2, *) {
+                        _ = await Self.canonicalActivity()
+                    }
+                }
+                guard let next = pendingActivity else { continue }
                 pendingActivity = nil
                 if !(await Self.apply(next)), shownActivity == next, pendingActivity == nil {
                     // 系统在后台可能拒绝新建。下次收到事件或回前台时，允许重试同一快照。
@@ -334,30 +342,69 @@ final class ChatWidgetPublisher {
         }
     }
 
+    private func showActivity(_ state: ChatWidgetSnapshot) {
+        guard #available(iOS 16.2, *), !Self.isClosedForQuit else { return }
+        pendingActivity = state
+        startActivityWorkIfNeeded()
+    }
+
+    /// 无 URL 的旧活动可由系统给出的活动 ID 找回其原始会话；找不到就仅打开应用。
+    @available(iOS 16.2, *)
+    func linkForActivity(id: String?) -> URL {
+        if let id, let activity = Activity<ChatActivityAttributes>.activities.first(where: { $0.id == id }) {
+            return activity.content.state.activityLink
+        }
+        return ApelinLink.app.url
+    }
+
+    /// 应用重新回到前台时主动清理系统仍保留的重复活动；不改变当前活动的背景或内容。
+    @available(iOS 16.2, *)
+    func reconcileActivities() {
+        guard !Self.isClosedForQuit else { return }
+        pendingActivityReconcile = true
+        // 即使快照未变化也重推，避免清理后保留的实例仍显示旧内容。
+        if let shownActivity {
+            pendingActivity = shownActivity
+        } else {
+            publishNow()
+        }
+        startActivityWorkIfNeeded()
+    }
+
+    /// 优先保留正在更新的 active 实例；结束态仍可能在锁屏停留，也要立即撤下。
+    @available(iOS 16.2, *)
+    private static func canonicalActivity() async -> Activity<ChatActivityAttributes>? {
+        let existing = Activity<ChatActivityAttributes>.activities
+        let primaryID = ChatActivitySelection.canonicalID(
+            activeIDs: existing.filter { $0.activityState == .active }.map(\.id),
+            staleIDs: existing.filter { $0.activityState == .stale }.map(\.id),
+            currentID: canonicalActivityID
+        )
+        canonicalActivityID = primaryID
+        let duplicates = existing.filter { $0.id != primaryID && $0.activityState != .dismissed }
+        if !duplicates.isEmpty {
+            Self.shared.log.notice("清理多余实时活动：\(duplicates.count, privacy: .public) 个")
+        }
+        for duplicate in duplicates {
+            await duplicate.end(nil, dismissalPolicy: .immediate)
+        }
+        return existing.first {
+            $0.id == primaryID && ($0.activityState == .active || $0.activityState == .stale)
+        }
+    }
+
     /// 有现存活动就原地更新，不在切换时结束再重建。
     @available(iOS 16.2, *)
     private static func apply(_ state: ChatWidgetSnapshot) async -> Bool {
         guard !isClosedForQuit else { return true }
-        let existing = Activity<ChatActivityAttributes>.activities.filter {
-            $0.activityState == .active || $0.activityState == .stale
-        }
+        let primary = await canonicalActivity()
+        // 清理旧实例期间可能已经进入退出流程，不能再更新或新建活动。
+        guard !isClosedForQuit else { return true }
         guard !state.chats.isEmpty else {
-            for activity in existing {
-                await activity.end(nil, dismissalPolicy: .immediate)
+            if let primary {
+                await primary.end(nil, dismissalPolicy: .immediate)
             }
             return true
-        }
-
-        // ActivityKit can retain an older stale instance while a newer active
-        // one is already present. Keep exactly one canonical activity before
-        // updating or creating; otherwise every later refresh keeps the extra
-        // activity alive because only `existing.first` was updated.
-        let primary = existing.first(where: { $0.activityState == .active }) ?? existing.first
-        if let primary {
-            let duplicates = existing.filter { $0.id != primary.id }
-            for duplicate in duplicates {
-                await duplicate.end(nil, dismissalPolicy: .immediate)
-            }
         }
 
         // 让系统到期重绘；组件只隐藏提示，不清除运行中的会话。
@@ -370,7 +417,10 @@ final class ChatWidgetPublisher {
         guard state.inProgressCount > 0 else { return true }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return false }
         do {
-            _ = try Activity.request(attributes: ChatActivityAttributes(), content: content)
+            let created = try Activity.request(attributes: ChatActivityAttributes(), content: content)
+            canonicalActivityID = created.id
+            // request 后重新枚举，撤下系统迟到呈现的旧实例；仍复用本次创建的活动。
+            _ = await canonicalActivity()
             return true
         } catch {
             Self.shared.log.error("无法创建实时活动：\(error.localizedDescription, privacy: .public)")

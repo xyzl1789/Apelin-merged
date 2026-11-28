@@ -2,6 +2,7 @@ import AlertController
 import ApelinCore
 import ApelinProtocol
 import UIKit
+import WidgetKit
 
 /// Not `@main`: `main.swift` clears saved scenes before `UIApplicationMain`.
 final class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -107,6 +108,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     @objc dynamic var window: UIWindow?
 
     @objc dynamic func sceneDidBecomeActive(_: UIScene) {
+        if #available(iOS 16.2, *) {
+            ChatWidgetPublisher.shared.reconcileActivities()
+        }
         (window?.rootViewController as? RootInterfaceController)?.checkShareInbox()
     }
 
@@ -121,14 +125,29 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         AppAppearance.apply(to: window)
         let root = RootInterfaceController()
         let urls = connectionOptions.urlContexts.map(\.url)
+        let liveActivityURL: URL?
+        if #available(iOS 16.2, *) {
+            liveActivityURL = connectionOptions.userActivities.first(where: Self.isLiveActivity).map {
+                ChatWidgetPublisher.shared.linkForActivity(id: $0.userInfo?[WidgetCenter.UserInfoKey.activityID] as? String)
+            }
+        } else {
+            liveActivityURL = nil
+        }
         // 在视图恢复上次会话之前先把附件排进队列。
         root.attachFiles(urls.filter(Self.isAttachment).sorted { $0.absoluteString < $1.absoluteString })
         window.rootViewController = root
         window.makeKeyAndVisible()
         self.window = window
-        // 冷启动的「在 Apelin 中打开」或 `apelin://` 链接随场景到达，
+        // 冷启动的「在 Apelin 中打开」、实时活动或 `apelin://` 链接随场景到达，
         // 下一轮再打开，此时根控制器已在屏幕上可以弹出。
-        DispatchQueue.main.async { [weak self] in self?.openSpecialURL(in: urls, scene: scene) }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if !urls.isEmpty {
+                openSpecialURL(in: urls, scene: scene)
+            } else if let liveActivityURL {
+                openSpecialURL(in: [liveActivityURL], scene: scene)
+            }
+        }
     }
 
     /// App 运行时收到「在 Apelin 中打开」或 `apelin://` 链接。
@@ -137,6 +156,24 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let urls = contexts.map(\.url).sorted { $0.absoluteString < $1.absoluteString }
         (window?.rootViewController as? RootInterfaceController)?.attachFiles(urls.filter(Self.isAttachment))
         openSpecialURL(in: urls, scene: scene)
+    }
+
+    /// 实时活动没有显式 deep link 时，系统通过这个用户活动启动应用。
+    @available(iOS 16.2, *)
+    private static func isLiveActivity(_ userActivity: NSUserActivity) -> Bool {
+        userActivity.activityType == NSUserActivityTypeLiveActivity
+    }
+
+    /// App 运行时收到系统默认的 Live Activity 启动活动。
+    @objc dynamic func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        guard #available(iOS 16.2, *),
+              let scene = scene as? UIWindowScene,
+              Self.isLiveActivity(userActivity)
+        else { return }
+        let url = ChatWidgetPublisher.shared.linkForActivity(
+            id: userActivity.userInfo?[WidgetCenter.UserInfoKey.activityID] as? String
+        )
+        openSpecialURL(in: [url], scene: scene)
     }
 
     /// 普通文件是聊天附件；toolchain / SDK / project / transfer 包走各自入口。

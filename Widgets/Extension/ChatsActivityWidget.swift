@@ -86,7 +86,7 @@ struct ChatsActivityWidget: Widget {
             } minimal: {
                 ChatActivityIslandIcon(state: state, font: .caption)
             }
-            .widgetURL(state.mostUrgent?.link)
+            .widgetURL(state.activityLink)
         }
     }
 }
@@ -413,6 +413,6 @@ private struct ChatLockScreenView: View {
         .padding()
         .activityBackgroundTint(ChatWidgetAppearance.backgroundTint(for: colorScheme))
         .activitySystemActionForegroundColor(theme.green)
-        .widgetURL(state.mostUrgent?.link)
+        .widgetURL(state.activityLink)
     }
 }

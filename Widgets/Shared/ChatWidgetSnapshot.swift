@@ -323,6 +323,11 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         chats.first
     }
 
+    /// 即使旧活动没有会话行，点击也必须先把 Apelin 打开；有会话时再直达会话。
+    var activityLink: URL {
+        mostUrgent?.link ?? ApelinLink.app.url
+    }
+
     private static func rank(_ status: Chat.Status) -> Int {
         switch status {
         case .waiting: 0
@@ -330,6 +335,16 @@ struct ChatWidgetSnapshot: Codable, Hashable, Sendable {
         case .working: 2
         case .done, .failed: 3
         }
+    }
+}
+
+/// 活动枚举次序不代表新旧：优先 active，并稳定保留已选实例。
+/// 独立于 ActivityKit，供生命周期协调与回归测试共用。
+enum ChatActivitySelection {
+    static func canonicalID(activeIDs: [String], staleIDs: [String], currentID: String?) -> String? {
+        let candidates = activeIDs.isEmpty ? staleIDs : activeIDs
+        if let currentID, candidates.contains(currentID) { return currentID }
+        return candidates.min()
     }
 }
 
