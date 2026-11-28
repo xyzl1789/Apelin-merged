@@ -1305,7 +1305,6 @@ actor WeChatChannel {
         case "cursor": .cursor
         case "devin": .devin
         case "kiro": .kiro
-        case "antigravity": .antigravity
         case "qoder": .qoder
         case "qoder-cn": .qoderCN
         case "workbuddy": .workBuddy
