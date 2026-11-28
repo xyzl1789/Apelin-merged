@@ -400,7 +400,7 @@ final class ChatUsageDetailController: UIViewController {
             } catch {
                 guard let self, self.loadGeneration == generation else { return }
                 let alert = UIAlertController(title: String(localized: "无法读取用量统计", table: "UsageStatistics"), message: error.localizedDescription, preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: String(localized: "好"), style: .default))
+                alert.addAction(UIAlertAction(title: String(localized: "好", table: "UsageStatistics"), style: .default))
                 self.present(alert, animated: true)
             }
         }
