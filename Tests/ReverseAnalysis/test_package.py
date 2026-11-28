@@ -114,6 +114,12 @@ class PackageContractTests(unittest.TestCase):
             (root / (target + '-verification.json')).write_text(json.dumps(report))
         return root
 
+    def test_package_author_credit_changes_without_changing_maintainer(self):
+        control = (ROOT / 'Extensions/AgentTools/ReverseAnalysis/Packaging/control.in').read_text()
+        self.assertIn('Maintainer: xyzl1789\n', control)
+        self.assertIn('Author: xyzl 和上游贡献者\n', control)
+        self.assertNotIn('Author: xyzl1789', control)
+
     def test_ci_version_is_shared_and_idempotent(self):
         self.assertEqual(build_package.prepare_ci_version('77')['version'], '0.1.3+ci.77')
 

@@ -22,6 +22,9 @@ actor ToolExtensionSessions {
     private var entries: [String: Entry] = [:]
     private var closed = false
     private var shutdown: Task<Void, Never>?
+    /// 最近一次两轮之间刷新所提供的扩展版本。
+    /// 拒绝迟到的旧工具闭包，避免重新启动已退役的版本。
+    private var offeredVersions: [String: Set<String>]?
 
     init(backend: any AgentHostBackend) {
         self.backend = backend
@@ -51,6 +54,32 @@ actor ToolExtensionSessions {
         }
     }
 
+    /// 扩展清单在两轮之间更新时，退役已移除或替换版本的会话，并保留未变扩展。
+    /// 首次挂起前登记关闭任务，使并发打开的新版本等待旧进程退出。
+    func refresh(keeping tools: [ExtensionTool]) async {
+        guard !closed else { return }
+        var versionsByID: [String: Set<String>] = [:]
+        for tool in tools {
+            versionsByID[tool.extensionID, default: []].insert(tool.extensionVersion)
+        }
+        offeredVersions = versionsByID
+
+        let stale = entries.keys.sorted().compactMap { id -> (String, Entry, Task<Void, Never>)? in
+            guard let entry = entries[id] else { return nil }
+            let versions = versionsByID[id] ?? []
+            guard entry.closing != nil || versions.count != 1 || !versions.contains(entry.version) else {
+                return nil
+            }
+            return (id, entry, retire(entry))
+        }
+        for (id, entry, closing) in stale {
+            await closing.value
+            if entries[id] === entry {
+                entries[id] = nil
+            }
+        }
+    }
+
     func closeAll() async {
         if let shutdown {
             await shutdown.value
@@ -68,6 +97,11 @@ actor ToolExtensionSessions {
 
     private func session(for tool: ExtensionTool) async throws -> (Entry, String) {
         guard !closed else { throw Self.closing }
+        if let offeredVersions,
+           offeredVersions[tool.extensionID]?.contains(tool.extensionVersion) != true
+        {
+            throw Self.offerChanged
+        }
         let entry: Entry
         if let current = entries[tool.extensionID], current.version == tool.extensionVersion, current.closing == nil {
             entry = current
@@ -91,7 +125,7 @@ actor ToolExtensionSessions {
             }
             throw error
         }
-        guard !closed, entries[tool.extensionID] === entry else {
+        guard !closed, entries[tool.extensionID] === entry, entry.closing == nil else {
             await retire(entry).value
             throw Self.closing
         }
@@ -113,9 +147,16 @@ actor ToolExtensionSessions {
     }
 
     private static let closing = ConversationClosingError()
+    private static let offerChanged = ExtensionOfferChangedError()
 
     private static func request(_ tool: ExtensionTool, _ arguments: JSONValue, in session: String) -> ToolExtensionCallRequest {
         ToolExtensionCallRequest(sessionID: session, tool: tool.name, arguments: arguments, timeoutSeconds: tool.timeoutSeconds)
+    }
+}
+
+private struct ExtensionOfferChangedError: Error, LocalizedError {
+    var errorDescription: String? {
+        "扩展定义已在两轮之间更新。请使用刷新后的工具定义重试。"
     }
 }
 

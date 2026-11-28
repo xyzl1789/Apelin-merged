@@ -194,6 +194,92 @@ struct ToolExtensionSessionTests {
     }
 
     @Test
+    func `清单刷新先关闭旧版并拒绝迟到的旧闭包但保留未变扩展`() async throws {
+        let backend = MockBackend()
+        let sessions = ToolExtensionSessions(backend: backend)
+        let old = Self.tool("1.0.0", id: "changed.extension")
+        let stable = Self.tool("1.0.0", id: "stable.extension")
+        _ = try await sessions.call(old, arguments: [:])
+        _ = try await sessions.call(stable, arguments: [:])
+
+        let upgraded = Self.tool("1.0.1", id: "changed.extension")
+        await sessions.refresh(keeping: [upgraded, stable])
+        #expect(await backend.toolSessionsClosed == ["tool-session-1"])
+
+        do {
+            _ = try await sessions.call(old, arguments: [:])
+            Issue.record("刷新后不应再启动旧版本工具闭包")
+        } catch {
+            #expect(error.localizedDescription.contains("更新"))
+        }
+        _ = try await sessions.call(upgraded, arguments: [:])
+        _ = try await sessions.call(stable, arguments: [:])
+
+        #expect(await backend.toolSessionsOpened == ["changed.extension", "stable.extension", "changed.extension"])
+        #expect(await backend.toolCalls.map(\.sessionID) == ["tool-session-1", "tool-session-2", "tool-session-3", "tool-session-2"])
+        await sessions.closeAll()
+        #expect(Set(await backend.toolSessionsClosed) == Set(["tool-session-1", "tool-session-2", "tool-session-3"]))
+    }
+
+    @Test
+    func `刷新移除扩展会关闭旧会话并拒绝其迟到闭包`() async throws {
+        let backend = MockBackend()
+        let sessions = ToolExtensionSessions(backend: backend)
+        let removed = Self.tool("1.0.0", id: "removed.extension")
+        _ = try await sessions.call(removed, arguments: [:])
+
+        await sessions.refresh(keeping: [])
+        #expect(await backend.toolSessionsClosed == ["tool-session-1"])
+        do {
+            _ = try await sessions.call(removed, arguments: [:])
+            Issue.record("移除后不应再启动已卸载扩展")
+        } catch {
+            #expect(error.localizedDescription.contains("更新"))
+        }
+        #expect(await backend.toolSessionsOpened == ["removed.extension"])
+        await sessions.closeAll()
+        #expect(await backend.toolSessionsClosed == ["tool-session-1"])
+    }
+
+    @Test
+    func `版本刷新等待旧服务退出后再打开新版且并发等待者只打开一次`() async throws {
+        let backend = MockBackend()
+        let closing = ExtensionSessionGate(), release = ExtensionSessionGate()
+        let trace = ExtensionSessionTrace()
+        await backend.setToolSessionHooks(opening: { id in
+            await trace.add("打开 \(id)")
+        }, closing: { id in
+            await trace.add("关闭开始 \(id)")
+            if id == "tool-session-1" {
+                await closing.release()
+                await release.wait()
+            }
+            await trace.add("关闭结束 \(id)")
+        })
+        let sessions = ToolExtensionSessions(backend: backend)
+        _ = try await sessions.call(Self.tool("1.0.0"), arguments: [:])
+
+        let refreshed = Task { await sessions.refresh(keeping: [Self.tool("1.0.1")]) }
+        await closing.wait()
+        let first = Task { try await sessions.call(Self.tool("1.0.1"), arguments: [:]) }
+        let second = Task { try await sessions.call(Self.tool("1.0.1"), arguments: [:]) }
+        await release.release()
+        await refreshed.value
+        _ = try await first.value
+        _ = try await second.value
+
+        #expect(await trace.events == [
+            "打开 tool-session-1",
+            "关闭开始 tool-session-1",
+            "关闭结束 tool-session-1",
+            "打开 tool-session-2",
+        ])
+        #expect(await backend.toolSessionsOpened.count == 2)
+        #expect(await backend.toolCalls.map(\.sessionID) == ["tool-session-1", "tool-session-2", "tool-session-2"])
+        await sessions.closeAll()
+    }
+
+    @Test
     func `旧调用迟到的失效错误不能替换已升级会话`() async throws {
         let backend = MockBackend()
         let calling = ExtensionSessionGate(), release = ExtensionSessionGate()

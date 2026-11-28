@@ -568,7 +568,7 @@ public actor AgentSession {
     /// between runs and compactions: a run keeps the tools it started with,
     /// and setting them during a compaction would undo it. The model hears
     /// of the change in the same message's delta, as its tools change.
-    private func refreshToolExtensions() {
+    private func refreshToolExtensions() async {
         guard runTask == nil, compaction == nil else { return }
         let installed = ToolExtensionOffer.read(
             installRoot: configuration.installRoot,
@@ -577,6 +577,7 @@ public actor AgentSession {
         guard installed != toolExtensions else { return }
         installed.logLeftOut()
         if installed.extensions != toolExtensions.extensions {
+            await runner.refreshToolExtensions(keeping: installed.tools)
             agent.state.tools = runner.agentTools(mcp: mcpTools, extensions: installed.extensions)
         }
         toolExtensions = installed
@@ -671,7 +672,7 @@ public actor AgentSession {
         let restartUntoldBefore = restartUntold
         var changes: [String] = []
         if delta {
-            refreshToolExtensions()
+            await refreshToolExtensions()
             let now = currentState()
             changes = now.changes(since: told)
             told = now
@@ -1280,7 +1281,7 @@ public actor AgentSession {
             let suffix = ConversationHistory.attachmentSuffix(item.attachments.map { (name: $0.name, path: $0.path) })
             let toldBefore = told
             let restartBefore = restartUntold
-            refreshToolExtensions()
+            await refreshToolExtensions()
             let now = currentState()
             facts.changes = now.changes(since: told)
             facts.hostRestarted = restartUntold

@@ -43,6 +43,7 @@ struct InstalledToolExtensions {
     static func manifest(
         _ id: String,
         name: String,
+        version: String = "1.0.0",
         tools: [(name: String, parameters: [String: Any])],
     ) throws -> Data {
         let declared: [[String: Any]] = tools.map { tool in
@@ -59,7 +60,7 @@ struct InstalledToolExtensions {
             "schemaVersion": 1,
             "id": id,
             "name": name,
-            "version": "1.0.0",
+            "version": version,
             "license": "MIT",
             "executable": "usr/libexec/apelin/agent-tools/\(id)",
             "protocolVersions": [1],
@@ -361,6 +362,67 @@ struct ToolExtensionTests {
             try await symbols.execute("call-5", ["reason": "Late", "binary": "/usr/lib/dyld"], nil, nil)
         }
         #expect(await backend.toolSessionsOpened.count == 3, "nothing opens once the session closed")
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func `打开中的 AgentSession 在扩展清单升级后先回收旧服务再调用新版`() async throws {
+        let home = try TemporaryHome()
+        defer { home.remove() }
+        let installed = try InstalledToolExtensions(in: home)
+        let id = "example.upgrade"
+        func manifest(_ version: String) throws -> Data {
+            try InstalledToolExtensions.manifest(
+                id,
+                name: "Upgrade fixture",
+                version: version,
+                tools: [("inspect", [:])],
+            )
+        }
+        try installed.install(id, manifest: try manifest("1.0.0"))
+
+        let faux = await registerFauxProvider()
+        defer { faux.unregister() }
+        func inspectCall(_ reason: String) -> FauxResponseStep {
+            .message(fauxAssistantMessage(blocks: [
+                fauxToolCall(name: "inspect", arguments: ["reason": reason]),
+            ], stopReason: .toolUse))
+        }
+        faux.setResponses([
+            inspectCall("before upgrade"),
+            .message(fauxAssistantMessage("First version completed.")),
+            inspectCall("after upgrade"),
+            .message(fauxAssistantMessage("Second version completed.")),
+        ])
+
+        let backend = MockBackend()
+        let session = try await AgentSession(
+            configuration: AgentSessionConfiguration(
+                project: home.project,
+                provider: .registered(faux.getModel()),
+                approval: ApprovalPolicy(mode: .relaxed),
+                dataRoot: home.dataRoot,
+                installRoot: installed.path,
+                toolExtensionPolicy: InstalledToolExtensions.policy,
+            ),
+            backend: backend,
+            digests: MockDigestLedger(),
+            credentials: DeliveredCredentialSource(),
+        )
+
+        try await session.prompt("第一次调用扩展。")
+        await session.waitForIdle()
+        #expect(await backend.toolSessionsOpened == [id])
+        #expect(await backend.toolCalls.map(\.sessionID) == ["tool-session-1"])
+
+        try installed.install(id, manifest: try manifest("1.0.1"))
+        try await session.prompt("升级扩展后再次调用。")
+        await session.waitForIdle()
+
+        #expect(await backend.toolSessionsClosed == ["tool-session-1"], "新一轮工具调用前先退出旧服务")
+        #expect(await backend.toolSessionsOpened == [id, id])
+        #expect(await backend.toolCalls.map(\.sessionID) == ["tool-session-1", "tool-session-2"])
+        await session.close()
+        #expect(await backend.toolSessionsClosed == ["tool-session-1", "tool-session-2"])
     }
 
     @Test

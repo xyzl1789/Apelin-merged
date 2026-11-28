@@ -230,6 +230,11 @@ actor ToolRunner {
         await toolExtensions.closeAll()
     }
 
+    /// 扩展清单在两轮之间更新；只退役变化或移除的会话，保留仍有效的版本。
+    func refreshToolExtensions(keeping tools: [ExtensionTool]) async {
+        await toolExtensions.refresh(keeping: tools)
+    }
+
     static let maxImageBytes = 4 * 1024 * 1024
 
     /// kwwk tool definitions for the §7 tools, then wrapped MCP tools, then
