@@ -277,7 +277,8 @@ public struct AgentQuotaDisplayRecord: Codable, Sendable, Equatable {
         guard let updatedAt = snapshot.updatedAt else { return [] }
         let stale = ![AgentQuotaStatus.available, .exhausted].contains(snapshot.status)
         let problem = stale ? "刷新失败，保留上次数据" : nil
-        let label = snapshot.accountLabel ?? provider.displayName
+        // 展示名由应用UI提供，协议模块只使用自身公开的服务商标识作回退。
+        let label = snapshot.accountLabel ?? provider.rawValue
         let figures = snapshot.balances.compactMap { balance -> ProviderBalance? in
             let amount: String
             if balance.isUnlimited { amount = "不限额" }

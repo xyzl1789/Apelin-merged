@@ -12,6 +12,21 @@ final class AgentQuotaDisplayTests: XCTestCase {
         )
     }
 
+    func testLabelsUseOnlyProtocolFieldsForBalancesAndWindows() {
+        var quota = snapshot()
+        let record = AgentQuotaDisplayRecord(accountID: "deepseek", snapshot: quota)
+        XCTAssertEqual(record.balances.first?.label, quota.provider.rawValue)
+
+        quota.accountLabel = "api.example.test"
+        XCTAssertEqual(AgentQuotaDisplayRecord(accountID: "deepseek", snapshot: quota).balances.first?.label, "api.example.test")
+        quota.kind = .window
+        quota.balances = []
+        quota.windows = [AgentQuotaWindow(id: "fiveHour", label: "5小时", usedPercent: 25)]
+        XCTAssertEqual(AgentQuotaDisplayRecord(accountID: "deepseek", snapshot: quota).balances.first?.label, "api.example.test · 5小时")
+        quota.accountLabel = nil
+        XCTAssertEqual(AgentQuotaDisplayRecord(accountID: "deepseek", snapshot: quota).balances.first?.label, quota.provider.rawValue + " · 5小时")
+    }
+
     func testMoneyRoundsButTokensAndOriginalUnitsKeepPrecision() throws {
         let money = AgentQuotaDisplayRecord(accountID: "deepseek", snapshot: snapshot())
         XCTAssertEqual(try XCTUnwrap(money.balances.first).displayedAmount, "12.35")
