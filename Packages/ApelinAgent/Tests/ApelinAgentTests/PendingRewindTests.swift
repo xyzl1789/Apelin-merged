@@ -70,7 +70,8 @@ struct PendingRewindTests {
             await session.waitForIdle()
         }
         try await session.rewind(to: first, truncate: true)
-        let state = try JSONDecoder().decode(PendingQueue.State.self, from: Data(contentsOf: session.log.directory.appendingPathComponent("pending.json")))
+        let directory = await session.log.directory
+        let state = try JSONDecoder().decode(PendingQueue.State.self, from: Data(contentsOf: directory.appendingPathComponent("pending.json")))
         #expect(state.messages.isEmpty && state.handoffs.isEmpty && state.paused)
         #expect(state.seen.isSuperset(of: [first, held, source]))
         let events = try await session.log.records(afterSeq: 0).map(\.event)
@@ -107,7 +108,8 @@ struct PendingRewindTests {
         let source = UUID()
         try await session.prompt("later source", messageID: source, from: .init(sessionID: "reviewer", title: "Review"))
         await session.waitForIdle()
-        let state = try JSONDecoder().decode(PendingQueue.State.self, from: Data(contentsOf: session.log.directory.appendingPathComponent("pending.json")))
+        let directory = await session.log.directory
+        let state = try JSONDecoder().decode(PendingQueue.State.self, from: Data(contentsOf: directory.appendingPathComponent("pending.json")))
         #expect(state.paused && state.messages.map(\.id) == [source])
         await session.close()
     }

@@ -1202,7 +1202,7 @@ struct AccountDeskTests {
 
         // With nothing stored, a new id in kwwk's format.
         let fresh = KimiIdentity.identity(recordedIn: nil).deviceId
-        #expect(fresh.count == 32 && fresh.allSatisfy(\.isHexDigit) && fresh == fresh.lowercased())
+        #expect(fresh.count == 32 && fresh.allSatisfy({ $0.isHexDigit }) && fresh == fresh.lowercased())
     }
 
     /// A page the flow polls the provider for (Cursor, Qoder, WorkBuddy,
@@ -1471,7 +1471,7 @@ struct AccountDeskTests {
             .accounts.filter { $0.provider == provider }
         try #require(rows.count == 3)
         #expect(rows.map(\.storeID) == [base, second, broken])
-        #expect(rows.allSatisfy(\.signedIn))
+        #expect(rows.allSatisfy({ $0.signedIn }))
         #expect(rows[0].models == ["custom"])
         #expect(rows[1].models == ["custom"])
         #expect(rows[0].poolID != rows[1].poolID)

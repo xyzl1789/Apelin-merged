@@ -23,7 +23,7 @@ struct ProviderStartupTests {
     func `a local Kimi identity includes device metadata`() {
         let identity = KimiIdentity.identity(recordedIn: nil)
         #expect(identity.deviceId.count == 32)
-        #expect(identity.deviceId.allSatisfy(\.isHexDigit))
+        #expect(identity.deviceId.allSatisfy({ $0.isHexDigit }))
         #expect(!identity.deviceName.isEmpty)
         #expect(!identity.deviceModel.isEmpty)
         #expect(!identity.osVersion.isEmpty)
@@ -46,7 +46,7 @@ struct ProviderStartupTests {
         let first = KimiIdentity.identity(recordedIn: nil).deviceId
         let second = KimiIdentity.identity(recordedIn: empty).deviceId
         for id in [first, second] {
-            #expect(id.count == 32 && id.allSatisfy(\.isHexDigit) && id == id.lowercased())
+            #expect(id.count == 32 && id.allSatisfy({ $0.isHexDigit }) && id == id.lowercased())
         }
         #expect(first != second)
     }

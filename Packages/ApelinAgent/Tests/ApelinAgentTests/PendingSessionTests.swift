@@ -75,7 +75,8 @@ struct PendingSessionTests {
         try await continuation.value
         await session.waitForIdle()
         let events = try await session.log.records(afterSeq: 0).map(\.event)
-        let state = try JSONDecoder().decode(PendingQueue.State.self, from: Data(contentsOf: session.log.directory.appendingPathComponent("pending.json")))
+        let directory = await session.log.directory
+        let state = try JSONDecoder().decode(PendingQueue.State.self, from: Data(contentsOf: directory.appendingPathComponent("pending.json")))
         #expect(state.messages.isEmpty && state.handoffs.isEmpty && !state.paused)
         #expect(events.filter { $0 == .finished(reason: .completed) }.count == (send ? 2 : 1))
         if send {
@@ -135,7 +136,8 @@ struct PendingSessionTests {
         await barrier.release()
         try await send.value
         await session.waitForIdle()
-        let state = try JSONDecoder().decode(PendingQueue.State.self, from: Data(contentsOf: session.log.directory.appendingPathComponent("pending.json")))
+        let directory = await session.log.directory
+        let state = try JSONDecoder().decode(PendingQueue.State.self, from: Data(contentsOf: directory.appendingPathComponent("pending.json")))
         #expect(state.paused && state.messages.map(\.id) == [first, second])
         let events = try await session.log.records(afterSeq: 0).map(\.event)
         #expect(!events.contains { if case .messageStarted = $0 { return true }; return false })
@@ -251,7 +253,8 @@ struct PendingSessionTests {
                 modelChoice: PendingModelChoice(provider: .openAICompatible(model: "missing")))
         }
         await barrier.waitUntilEntered()
-        let path = session.log.directory.appendingPathComponent("pending.json")
+        let directory = await session.log.directory
+        let path = directory.appendingPathComponent("pending.json")
         let reserved = try JSONDecoder().decode(PendingQueue.State.self, from: Data(contentsOf: path))
         #expect(reserved.messages.isEmpty && reserved.handoffs.map(\.id) == [first])
         try await session.prompt("duplicate", messageID: first)
