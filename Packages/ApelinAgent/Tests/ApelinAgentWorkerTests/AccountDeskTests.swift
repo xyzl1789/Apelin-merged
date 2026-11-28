@@ -841,7 +841,7 @@ struct AccountDeskTests {
     }
 
     @Test
-    func `the interface format is validated, stored and restored for an OpenAI-compatible endpoint` async throws {
+    func `the interface format is validated, stored and restored for an OpenAI-compatible endpoint`() async throws {
         let store = DeliveredCredentialSource()
         let desk = AccountDesk(store: store, login: Self.neverCalled, listener: Self.silent, verifyKey: { _, _, _ in })
         let recorder = SignInRecorder()
@@ -874,7 +874,7 @@ struct AccountDeskTests {
     }
 
     @Test
-    func `interface options are validated, stored and restored for a compatible endpoint` async throws {
+    func `interface options are validated, stored and restored for a compatible endpoint`() async throws {
         let store = DeliveredCredentialSource()
         let desk = AccountDesk(store: store, login: Self.neverCalled, listener: Self.silent, verifyKey: { _, _, _ in })
         let recorder = SignInRecorder()

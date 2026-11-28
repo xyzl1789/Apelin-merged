@@ -1,14 +1,15 @@
+import ApelinProtocol
 import Foundation
+import KWWKAI
 import Testing
 @testable import ApelinAgentWorker
-@testable import ApelinKit
 
 /// 中转站余额探测的纯逻辑回归：三类公开响应结构、金额与比例、baseURL
 /// 路径规则，以及官方域名必须保持原样。网络请求本身不在此测。
 @Suite struct ProviderBalanceRelayTests {
     private func data(_ text: String) -> Data { Data(text.utf8) }
 
-    @Test func `sub2api quota mode exposes remaining and fraction`() {
+    @Test func `sub2api quota mode exposes remaining and fraction`() throws {
         let adapter = ProviderBalanceService.relayAdapter(.sub2api)
         let body = data(#"{"isValid":true,"mode":"quota_limited","quota":{"limit":100,"remaining":25.5,"used":74.5}}"#)
         #expect(adapter.recognize(body))
@@ -18,7 +19,7 @@ import Testing
         #expect(figure.fraction == 0.255)
     }
 
-    @Test func `sub2api unlimited balance has no fraction`() {
+    @Test func `sub2api unlimited balance has no fraction`() throws {
         let adapter = ProviderBalanceService.relayAdapter(.sub2api)
         let body = data(#"{"isValid":true,"remaining":-1}"#)
         #expect(adapter.recognize(body))
@@ -27,7 +28,7 @@ import Testing
         #expect(figure.fraction == nil)
     }
 
-    @Test func `new api parses granted and available`() {
+    @Test func `new api parses granted and available`() throws {
         let adapter = ProviderBalanceService.relayAdapter(.newAPI)
         let body = data(#"{"data":{"total_granted":50,"total_used":12.5,"total_available":37.5,"unlimited_quota":false}}"#)
         #expect(adapter.recognize(body))
@@ -37,14 +38,14 @@ import Testing
         #expect(figure.fraction == 0.75)
     }
 
-    @Test func `new api unlimited quota has no fraction`() {
+    @Test func `new api unlimited quota has no fraction`() throws {
         let adapter = ProviderBalanceService.relayAdapter(.newAPI)
         let body = data(#"{"data":{"unlimited_quota":true,"total_available":999}}"#)
         let figure = try #require(adapter.parse(body))
         #expect(figure.fraction == nil)
     }
 
-    @Test func `openai billing parses hard limit and balance`() {
+    @Test func `openai billing parses hard limit and balance`() throws {
         let adapter = ProviderBalanceService.relayAdapter(.openAIBilling)
         let body = data(#"{"object":"billing_subscription","hard_limit_usd":120,"balance":30}"#)
         #expect(adapter.recognize(body))
@@ -61,7 +62,7 @@ import Testing
         #expect(!ProviderBalanceService.relayAdapter(.openAIBilling).recognize(body))
     }
 
-    @Test func `relay base strips trailing v1 but keeps path prefix`() {
+    @Test func `relay base strips trailing v1 but keeps path prefix`() throws {
         let credentials = OAuthCredentials(access: "k", refresh: "", expires: .max, extras: [
             "baseUrl": .string("https://relay.example/gw/v1/"),
         ])
@@ -73,7 +74,7 @@ import Testing
         #expect(rootPath + ProviderBalanceService.RelayFamily.sub2api.path == "/gw/v1/usage")
     }
 
-    @Test func `official host keeps its path and is not a relay`() {
+    @Test func `official host keeps its path and is not a relay`() throws {
         let credentials = OAuthCredentials(access: "k", refresh: "", expires: .max, extras: [
             "baseUrl": .string("https://api.deepseek.com/v1"),
         ])
@@ -89,7 +90,7 @@ import Testing
         #expect(ProviderBalanceService.RelayFamily.tokenQuota.display == "今日 token 配额")
     }
 
-    @Test func `token quota headers give remaining tokens and fraction`() {
+    @Test func `token quota headers give remaining tokens and fraction`() throws {
         let figure = try #require(ProviderBalanceService.parseTokenQuota([
             "x-quota-limit": "100000000",
             "x-quota-remaining": "80852458",
@@ -101,7 +102,7 @@ import Testing
         #expect(figure.relayKind == "今日 token 配额：100000000")
     }
 
-    @Test func `token quota clamp and malformed headers`() {
+    @Test func `token quota clamp and malformed headers`() throws {
         let clamped = try #require(ProviderBalanceService.parseTokenQuota([
             "x-quota-limit": "100", "x-quota-remaining": "-5",
         ]))
