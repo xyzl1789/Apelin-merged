@@ -61,8 +61,12 @@ struct ApprovalMatrixTests {
             #expect(isAsk(verdict(mode, InvocationFacts(tool: .local(.gitResetToRemote)))), "\(mode)")
             #expect(isAsk(verdict(mode, InvocationFacts(tool: .local(.gitBranchDelete)))), "\(mode)")
             let paths = ["Sources/Tweak.m"]
-            #expect(isAsk(verdict(mode, InvocationFacts(tool: .local(.gitRestore), discardedPaths: paths))), "\(mode)")
-            #expect(isAsk(verdict(mode, InvocationFacts(tool: .local(.gitClean), discardedPaths: paths))), "\(mode)")
+            var restore = InvocationFacts(tool: .local(.gitRestore))
+            restore.discardedPaths = paths
+            var clean = InvocationFacts(tool: .local(.gitClean))
+            clean.discardedPaths = paths
+            #expect(isAsk(verdict(mode, restore)), "\(mode)")
+            #expect(isAsk(verdict(mode, clean)), "\(mode)")
         }
     }
 

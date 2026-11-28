@@ -1813,7 +1813,9 @@ public actor AgentSession {
     /// Stops the run. Waiting approvals resolve as denied. Once the loop's
     /// already-emitted message events settle, untaken reader and source
     /// messages are dropped separately; sources never return to the composer.
-    public func abort() async {
+    @discardableResult
+    public func abort() async -> StoppedWork {
+        let stopped = StoppedWork([runTask, compaction].compactMap { $0 })
         aborted = true
         stopGeneration &+= 1
         titleTask?.cancel()
@@ -1830,6 +1832,7 @@ public actor AgentSession {
         // entries in runEnded; clearing kwwk's queues above prevents more.
         if runTask == nil || runEnding { await dropQueued() }
         await gate.cancelAll(reason: "aborted")
+        return stopped
     }
 
     /// Answers a waiting approval. The host relays this from the app after

@@ -1,3 +1,4 @@
+@testable import ApelinAgent
 import Foundation
 import KWWKAI
 import Testing

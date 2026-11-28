@@ -699,20 +699,21 @@ actor WorkerState {
 
     func stop() async {
         guard let session else { return }
-        await session.abort()
+        let stopped = await session.abort()
         stopWatch?.cancel()
         let patience = stopPatience
         stopWatch = Task { [weak self] in
             try? await Task.sleep(for: patience)
             guard let self, !Task.isCancelled else { return }
-            await self.endUnstoppedIfRunning()
+            await self.endUnstoppedIfRunning(stopped)
         }
     }
 
     /// The timed fallback: if the stopped run has not ended, end the task
     /// with the reason the app says as "Did Not Stop in Time".
-    private func endUnstoppedIfRunning() async {
-        guard runActive, !finished else { return }
+    private func endUnstoppedIfRunning(_ stopped: AgentSession.StoppedWork) async {
+        // 只判断这次停止捕获的旧工作，不能被后来启动的任务延长。
+        guard !stopped.hasEnded, runActive, !finished else { return }
         runActive = false
         let message = "This chat did not stop in time, so Apelin ended it. Send a message to continue."
         if let context, let taskID {
