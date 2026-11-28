@@ -92,12 +92,21 @@ enum NetworkRecovery {
         inner: @escaping StreamFn = { model, context, options in
             try await KWWKAI.stream(model: model, context: context, options: options)
         },
+        onRequest: @escaping @Sendable () -> Void = {},
+        onProviderFailure: @escaping @Sendable (ProviderFailure) -> Void = { _ in },
         onWait: @escaping @Sendable (Wait) async -> Void,
     ) -> StreamFn {
         { model, context, options in
+            onRequest()
             let cancellation = options?.cancellation
-            let first = try await cancellable(cancellation) {
-                try await inner(model, context, options)
+            let first: AssistantMessageStream
+            do {
+                first = try await cancellable(cancellation) {
+                    try await inner(model, context, options)
+                }
+            } catch let failure as ProviderFailure {
+                onProviderFailure(failure)
+                throw failure
             }
             let (stream, continuation) = AssistantMessageStream.makeStream()
             let out = Output(continuation)
@@ -121,6 +130,7 @@ enum NetworkRecovery {
                     // assistant message; turning it into an aborted reply makes
                     // AgentSession record an unclassified error.
                     if let failure = error as? ProviderFailure {
+                        onProviderFailure(failure)
                         var failed = AssistantMessage(
                             content: [], api: model.api, provider: model.provider, model: model.id,
                             stopReason: .error, errorMessage: failure.message,

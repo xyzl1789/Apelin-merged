@@ -5,6 +5,30 @@ import KWWKAgent
 import KWWKAI
 import KWWKMCP
 
+// kwwk 可能把流创建阶段抛出的错误转成 assistant 消息并丢掉结构化字段；
+// 此槽仅暂存本会话、当前请求的 ProviderFailure，供 messageEnd 恢复分类。
+private final class ProviderFailureCaptureSlot: @unchecked Sendable {
+    private let lock = NSLock()
+    private var failure: ProviderFailure?
+
+    func reset() {
+        lock.withLock { failure = nil }
+    }
+
+    func store(_ failure: ProviderFailure) {
+        lock.withLock { self.failure = failure }
+    }
+
+    func take(matching message: String?) -> ProviderFailure? {
+        lock.withLock {
+            guard let failure else { return nil }
+            self.failure = nil
+            guard let message, message == failure.message || message == failure.upstreamMessage else { return nil }
+            return failure
+        }
+    }
+}
+
 /// One agent session: the core of an `apelin-agent` process.
 ///
 /// It owns a kwwk `Agent` with the §7 tools, puts every call through the
@@ -156,6 +180,9 @@ public actor AgentSession {
     private var output = OutputTally()
     /// Why the current run's last failure happened, as its `error` said.
     private var runFailure: ApelinError.Reason?
+    /// HTTP/category details from a thrown provider stream creation, which
+    /// kwwk may turn into an assistant error message without its failure field.
+    private let streamFailureCapture: ProviderFailureCaptureSlot
     /// Where each message of the reader's is in the model's conversation,
     /// by message id (`HistoryAnchor`, `anchors.json`).
     var anchors: [String: HistoryAnchor] = [:]
@@ -304,6 +331,7 @@ public actor AgentSession {
             toolExtensions: toolExtensions.extensions,
         )
         let systemPrompt = Self.systemPrompt(configuration, root: root, state: snapshot, mcpAvailable: mcpStatus.availableNames)
+        let streamFailureCapture = ProviderFailureCaptureSlot()
 
         let agent = Agent(options: AgentOptions(
             initialState: AgentInitialState(
@@ -321,6 +349,8 @@ public actor AgentSession {
                 inner: SpentAllowance.stream(journal.observingRequests { model, context, options in
                     try await KWWKAI.stream(model: model, context: context, options: options)
                 }),
+                onRequest: { streamFailureCapture.reset() },
+                onProviderFailure: { streamFailureCapture.store($0) },
             ) { wait in
                 journal.waitingForNetwork()
                 _ = try? await log.append(wait == .route ? .waitingForNetwork : .reconnecting)
@@ -350,6 +380,7 @@ public actor AgentSession {
         self.credentials = credentials
         self.modelDefaults = configuration.modelDefaults
         self.log = log
+        self.streamFailureCapture = streamFailureCapture
         let savedAnchors = await log.readAnchors()
         let taken = Set(savedAnchors.keys.compactMap(UUID.init(uuidString:)).filter { id in
             guard let anchor = savedAnchors[id.uuidString.lowercased()] else { return false }
@@ -2010,8 +2041,11 @@ public actor AgentSession {
             }
             if assistant.stopReason == .error {
                 runFailed = true
-                journal.replyFailed(assistant)
-                let failure = assistant.providerFailure
+                let capturedFailure = streamFailureCapture.take(matching: assistant.errorMessage)
+                let failure = assistant.providerFailure ?? capturedFailure
+                var failedAssistant = assistant
+                failedAssistant.failure = failure
+                journal.replyFailed(failedAssistant)
                 if let limitMessage = ConversationTurnLimit.matchingMessage([
                     assistant.errorMessage,
                     failure?.upstreamMessage,
