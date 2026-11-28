@@ -9,8 +9,12 @@ enum UsageProviderPresentation {
     }
 
     static func summaries(_ records: [UsageRecord], includingCache: Bool = false) -> [UsageProviderSummary] {
+        summaries(records.map { UsageRollup(record: $0) }, includingCache: includingCache)
+    }
+
+    static func summaries(_ rollups: [UsageRollup], includingCache: Bool = false) -> [UsageProviderSummary] {
         var titles: [String: String] = [:]
-        for identity in Set(records.compactMap(\.providerIdentity)) {
+        for identity in Set(rollups.compactMap(\.record.providerIdentity)) {
             guard let provider = AgentProvider(rawValue: identity.accountID) else { continue }
             if let note = Preferences.ProviderNotes.note(for: provider),
                !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -21,7 +25,7 @@ enum UsageProviderPresentation {
             // 自定义端点无备注时交给共享汇总显示域名，不显示通用协议名称。
         }
         return UsageProviderSummary.summarize(
-            records,
+            rollups,
             titles: titles,
             unknown: String(localized: "未知供应商"),
             includingCache: includingCache,

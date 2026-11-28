@@ -1,0 +1,78 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "无法读取用量统计": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit":{"state":"translated","value":"Unable to Read Usage Statistics"}},
+        "ar": {"stringUnit":{"state":"translated","value":"تعذّرت قراءة إحصاءات الاستخدام"}},
+        "de": {"stringUnit":{"state":"translated","value":"Nutzungsstatistik kann nicht gelesen werden"}},
+        "es": {"stringUnit":{"state":"translated","value":"No se pueden leer las estadísticas de uso"}},
+        "fr": {"stringUnit":{"state":"translated","value":"Impossible de lire les statistiques d’utilisation"}},
+        "it": {"stringUnit":{"state":"translated","value":"Impossibile leggere le statistiche di utilizzo"}},
+        "ja": {"stringUnit":{"state":"translated","value":"使用統計を読み込めません"}},
+        "ko": {"stringUnit":{"state":"translated","value":"사용 통계를 읽을 수 없음"}},
+        "pt-BR": {"stringUnit":{"state":"translated","value":"Não foi possível ler as estatísticas de uso"}},
+        "ru": {"stringUnit":{"state":"translated","value":"Не удалось прочитать статистику использования"}},
+        "vi": {"stringUnit":{"state":"translated","value":"Không thể đọc thống kê sử dụng"}},
+        "zh-Hans": {"stringUnit":{"state":"translated","value":"无法读取用量统计"}},
+        "zh-Hant": {"stringUnit":{"state":"translated","value":"無法讀取用量統計"}}
+      }
+    },
+    "累计用量长期保留，最近请求明细保留最近 5000 条。升级前已清理的历史不包含在内。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit":{"state":"translated","value":"Usage totals are retained long-term; request details retain the latest 5,000 entries. History removed before upgrading is not included."}},
+        "ar": {"stringUnit":{"state":"translated","value":"تُحفظ إجماليات الاستخدام على المدى الطويل، وتُحفظ تفاصيل أحدث 5000 طلب. لا يتضمن ذلك السجل المحذوف قبل الترقية."}},
+        "de": {"stringUnit":{"state":"translated","value":"Gesamtwerte bleiben langfristig erhalten, Anfragedetails für die letzten 5000 Einträge. Vor dem Upgrade gelöschter Verlauf ist nicht enthalten."}},
+        "es": {"stringUnit":{"state":"translated","value":"Los totales se conservan a largo plazo; se guardan los detalles de las últimas 5000 solicitudes. No se incluye el historial eliminado antes de actualizar."}},
+        "fr": {"stringUnit":{"state":"translated","value":"Les totaux sont conservés à long terme, avec le détail des 5 000 dernières requêtes. L’historique supprimé avant la mise à niveau n’est pas inclus."}},
+        "it": {"stringUnit":{"state":"translated","value":"I totali sono conservati a lungo termine, con i dettagli delle ultime 5000 richieste. La cronologia eliminata prima dell’aggiornamento non è inclusa."}},
+        "ja": {"stringUnit":{"state":"translated","value":"累計使用量は長期保存され、リクエストの詳細は最新5000件を保持します。更新前に削除された履歴は含まれません。"}},
+        "ko": {"stringUnit":{"state":"translated","value":"누적 사용량은 장기 보관되며 요청 세부 정보는 최근 5000건을 유지합니다. 업데이트 전에 삭제된 기록은 포함되지 않습니다."}},
+        "pt-BR": {"stringUnit":{"state":"translated","value":"Os totais são mantidos a longo prazo, com detalhes das últimas 5.000 solicitações. O histórico removido antes da atualização não está incluído."}},
+        "ru": {"stringUnit":{"state":"translated","value":"Итоги хранятся долгосрочно, подробности — для последних 5000 запросов. История, удалённая до обновления, не включена."}},
+        "vi": {"stringUnit":{"state":"translated","value":"Tổng mức sử dụng được lưu lâu dài; chi tiết giữ 5000 yêu cầu gần nhất. Không bao gồm lịch sử đã xóa trước khi nâng cấp."}},
+        "zh-Hans": {"stringUnit":{"state":"translated","value":"累计用量长期保留，最近请求明细保留最近 5000 条。升级前已清理的历史不包含在内。"}},
+        "zh-Hant": {"stringUnit":{"state":"translated","value":"累計用量長期保留，最近請求明細保留最近 5000 筆。不包含升級前已清理的歷史。"}}
+      }
+    },
+    "部分旧记录无法读取，原文件已保留，累计可能不完整。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit":{"state":"translated","value":"Some older records could not be read. The original file is preserved; totals may be incomplete."}},
+        "ar": {"stringUnit":{"state":"translated","value":"تعذّرت قراءة بعض السجلات القديمة. حُفظ الملف الأصلي؛ قد تكون الإجماليات غير مكتملة."}},
+        "de": {"stringUnit":{"state":"translated","value":"Einige ältere Einträge konnten nicht gelesen werden. Die Originaldatei bleibt erhalten; Gesamtwerte können unvollständig sein."}},
+        "es": {"stringUnit":{"state":"translated","value":"No se pudieron leer algunos registros antiguos. Se conserva el archivo original; los totales pueden estar incompletos."}},
+        "fr": {"stringUnit":{"state":"translated","value":"Certains anciens enregistrements sont illisibles. Le fichier d’origine est conservé ; les totaux peuvent être incomplets."}},
+        "it": {"stringUnit":{"state":"translated","value":"Alcuni vecchi record non sono leggibili. Il file originale è conservato; i totali potrebbero essere incompleti."}},
+        "ja": {"stringUnit":{"state":"translated","value":"一部の古い記録を読み込めませんでした。元のファイルは保持されており、累計が不完全な可能性があります。"}},
+        "ko": {"stringUnit":{"state":"translated","value":"일부 이전 기록을 읽지 못했습니다. 원본 파일은 보존되며 누적 수치가 불완전할 수 있습니다."}},
+        "pt-BR": {"stringUnit":{"state":"translated","value":"Alguns registros antigos não puderam ser lidos. O arquivo original foi preservado; os totais podem estar incompletos."}},
+        "ru": {"stringUnit":{"state":"translated","value":"Часть старых записей не удалось прочитать. Исходный файл сохранён; итоги могут быть неполными."}},
+        "vi": {"stringUnit":{"state":"translated","value":"Không đọc được một số bản ghi cũ. Tệp gốc được giữ nguyên; tổng có thể chưa đầy đủ."}},
+        "zh-Hans": {"stringUnit":{"state":"translated","value":"部分旧记录无法读取，原文件已保留，累计可能不完整。"}},
+        "zh-Hant": {"stringUnit":{"state":"translated","value":"部分舊記錄無法讀取，原始檔案已保留，累計可能不完整。"}}
+      }
+    },
+    "将清空累计统计与近期请求明细，无法撤销。旧导入原件保留，但不会重新计入统计。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {"stringUnit":{"state":"translated","value":"This clears totals and recent request details and cannot be undone. The original import file is kept but will not be counted again."}},
+        "ar": {"stringUnit":{"state":"translated","value":"سيؤدي هذا إلى مسح الإجماليات وتفاصيل الطلبات الأخيرة ولا يمكن التراجع عنه. يُحفظ ملف الاستيراد الأصلي لكنه لن يُحتسب مجددًا."}},
+        "de": {"stringUnit":{"state":"translated","value":"Gesamtwerte und aktuelle Anfragedetails werden unwiderruflich geleert. Die ursprüngliche Importdatei bleibt erhalten, wird aber nicht erneut gezählt."}},
+        "es": {"stringUnit":{"state":"translated","value":"Se borrarán los totales y detalles recientes sin posibilidad de deshacerlo. Se conserva el archivo importado original, pero no volverá a contarse."}},
+        "fr": {"stringUnit":{"state":"translated","value":"Les totaux et les détails récents seront effacés sans possibilité d’annulation. Le fichier importé d’origine est conservé mais ne sera pas recompté."}},
+        "it": {"stringUnit":{"state":"translated","value":"I totali e i dettagli recenti saranno cancellati senza possibilità di annullamento. Il file importato originale è conservato ma non sarà conteggiato di nuovo."}},
+        "ja": {"stringUnit":{"state":"translated","value":"累計と最近のリクエスト詳細を消去します。この操作は取り消せません。元のインポートファイルは保持されますが、再集計されません。"}},
+        "ko": {"stringUnit":{"state":"translated","value":"누적 통계와 최근 요청 세부 정보를 지우며 취소할 수 없습니다. 가져온 원본 파일은 보존되지만 다시 집계되지 않습니다."}},
+        "pt-BR": {"stringUnit":{"state":"translated","value":"Os totais e detalhes recentes serão apagados sem possibilidade de desfazer. O arquivo original importado será mantido, mas não será contado novamente."}},
+        "ru": {"stringUnit":{"state":"translated","value":"Итоги и подробности последних запросов будут очищены без возможности отмены. Исходный файл импорта сохранится, но не будет учтён повторно."}},
+        "vi": {"stringUnit":{"state":"translated","value":"Thao tác này xóa tổng và chi tiết yêu cầu gần đây, không thể hoàn tác. Tệp nhập gốc được giữ lại nhưng sẽ không được tính lại."}},
+        "zh-Hans": {"stringUnit":{"state":"translated","value":"将清空累计统计与近期请求明细，无法撤销。旧导入原件保留，但不会重新计入统计。"}},
+        "zh-Hant": {"stringUnit":{"state":"translated","value":"將清空累計統計與近期請求明細，無法復原。舊匯入原件保留，但不會重新計入統計。"}}
+      }
+    }
+  },
+  "version": "1.0"
+}

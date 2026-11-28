@@ -2005,6 +2005,7 @@ public actor AgentSession {
                     output: usage.output,
                     cacheRead: usage.cacheRead,
                     cacheWrite: usage.cacheWrite,
+                    requestID: UsageRecorder.requestID(sessionID: configuration.id, message: message),
                 ))
             }
             if assistant.stopReason == .error {

@@ -50,7 +50,7 @@ let package = Package(
     ],
     targets: [
         // System only: paths, the data folder, project naming, JSON.
-        .target(name: "ApelinCore", swiftSettings: swiftSettings),
+        .target(name: "ApelinCore", swiftSettings: swiftSettings, linkerSettings: [.linkedLibrary("sqlite3")]),
         // System only: the wire, the task model, the worker channel and the
         // typed ApelinService facade.
         .target(name: "ApelinProtocol", dependencies: ["ApelinCore"], swiftSettings: swiftSettings),

@@ -50,9 +50,20 @@ public struct UsageProviderSummary: Sendable, Equatable {
         unknown: String,
         includingCache: Bool = false,
     ) -> [Self] {
+        summarize(records.map { UsageRollup(record: $0) }, titles: titles, unknown: unknown, includingCache: includingCache)
+    }
+
+    /// 累计行已经合并 token，只对请求次数使用 count，不能再将 token 乘次数。
+    public static func summarize(
+        _ rollups: [UsageRollup],
+        titles: [String: String] = [:],
+        unknown: String,
+        includingCache: Bool = false,
+    ) -> [Self] {
         var groups: [Key: Self] = [:]
         var latest: [Key: Date] = [:]
-        for record in records {
+        for rollup in rollups {
+            let record = rollup.record
             let identity = record.providerIdentity
             let key = identity.map(Key.account) ?? .legacy(record.provider)
             let fallback = nonempty(record.provider) ?? unknown
@@ -67,7 +78,7 @@ public struct UsageProviderSummary: Sendable, Equatable {
                 entry.name = name
                 latest[key] = record.time
             }
-            entry.count += 1
+            entry.count += rollup.count
             entry.input += record.input + (includingCache ? record.cacheRead + record.cacheWrite : 0)
             entry.output += record.output
             groups[key] = entry

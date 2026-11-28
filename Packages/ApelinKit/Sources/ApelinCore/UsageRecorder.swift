@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// 一条用量记录：一次模型回复完成时由供应商统计的 token 数。
 /// 与会话日志（events.jsonl）分开，落在数据根下，供设置页的用量统计读取。
@@ -7,6 +8,8 @@ import Foundation
 public struct UsageRecord: Codable, Sendable, Equatable {
     /// 记录时刻。
     public var time: Date
+    /// 一次模型回复的稳定标识；老文件缺少它时由迁移器按原行及出现次序生成标识。
+    public var requestID: String?
     /// 记录它的会话 id。
     public var sessionID: String
     /// 该会话的项目名（临时对话为其临时 id）。
@@ -29,7 +32,9 @@ public struct UsageRecord: Codable, Sendable, Equatable {
 
     public init(time: Date, sessionID: String, project: String, model: String,
                 provider: String? = nil, providerIdentity: UsageProviderIdentity? = nil,
-                input: Int, output: Int, cacheRead: Int, cacheWrite: Int) {
+                input: Int, output: Int, cacheRead: Int, cacheWrite: Int,
+                requestID: String? = UUID().uuidString) {
+        self.requestID = requestID
         self.time = time
         self.sessionID = sessionID
         self.project = project
@@ -45,12 +50,12 @@ public struct UsageRecord: Codable, Sendable, Equatable {
     public var promptTokens: Int { input + cacheRead + cacheWrite }
 }
 
-/// 用量记录器：向 `<数据根>/usage/usage.jsonl` 追加一条 JSON 行。
-/// 追加失败只被放弃，绝不影响会话本身。
+/// 用量写入门面。旧 JSONL 仅作为一次性导入源，之后只写事务账本。
 public struct UsageRecorder {
     public let root: URL
+    private static let log = Logger(subsystem: "wiki.qaq.apelin", category: "用量账本")
 
-    /// `usage/usage.jsonl` 的位置。
+    /// 旧文件位置不变，升级时保留原件，不再裁剪或追加。
     public static func file(in dataRootURL: URL) -> URL {
         dataRootURL.appendingPathComponent("usage", isDirectory: true)
             .appendingPathComponent("usage.jsonl", isDirectory: false)
@@ -62,52 +67,37 @@ public struct UsageRecorder {
         root = Self.file(in: dataRoot)
     }
 
-    /// 追加一条记录。行数超过上限时从头截掉最旧的一半，避免文件无限增长。
-    public func record(_ entry: UsageRecord) {
+    private var ledger: UsageLedger {
+        UsageLedger(dataRoot: root.deletingLastPathComponent().deletingLastPathComponent(), recentLimit: Self.maximumLines)
+    }
+
+    public static func requestID<Message: Encodable>(sessionID: String, message: Message) -> String {
+        do { return try UsageLedger.requestID(sessionID: sessionID, message: message) }
+        catch {
+            log.error("无法生成用量去重标识，已为本次记录分配独立标识。")
+            return UUID().uuidString
+        }
+    }
+
+    /// 失败不打断对话。已进入待入账目录的请求会在后续读写时重试。
+    @discardableResult
+    public func record(_ entry: UsageRecord) -> Bool {
         do {
-            let directory = root.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(entry)
-            guard let line = String(data: data, encoding: .utf8) else { return }
-            // FileHandle(forWritingTo:) 要求文件已存在：首次写入前先落一个空文件。
-            if !FileManager.default.fileExists(atPath: root.path) {
-                guard FileManager.default.createFile(atPath: root.path, contents: nil) else { return }
-            }
-            let handle = try FileHandle(forWritingTo: root)
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try handle.write(contentsOf: Data((line + "\n").utf8))
-            try Self.trimIfNeeded(root, limit: Self.maximumLines)
+            try ledger.record(entry)
+            return true
         } catch {
-            // 打不开、写不进都不算会话的错：静默放弃这一条。
+            Self.log.error("用量暂未入账；若待入账记录已落盘，后续将自动重试。")
+            return false
         }
     }
 
-    /// 文件行数超过 `limit` 时，保留最新的约一半。
-    public static func trimIfNeeded(_ url: URL, limit: Int) throws {
-        guard limit > 0,
-              let current = try? String(contentsOf: url, encoding: .utf8),
-              current.split(separator: "\n", omittingEmptySubsequences: false).count > limit else { return }
-        let lines = current.split(separator: "\n", omittingEmptySubsequences: false)
-        let kept = lines.suffix(limit / 2)
-        let next = kept.joined(separator: "\n").appending("\n")
-        try next.write(to: url, atomically: true, encoding: .utf8)
-    }
-
-    /// 读出全部记录；坏行跳过，好行保留。
+    /// 兼容旧读取接口，只返回近期明细。累计统计必须用 snapshot()。
     public static func readAll(from url: URL) -> [UsageRecord] {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return text.split(separator: "\n").compactMap {
-            try? decoder.decode(UsageRecord.self, from: Data($0.utf8))
+        do {
+            return try UsageLedger(dataRoot: url.deletingLastPathComponent().deletingLastPathComponent()).snapshot().recent
+        } catch {
+            log.error("无法读取近期用量，原数据已保留。")
+            return []
         }
-    }
-
-    /// 清空全部记录：删掉文件本身。
-    public static func clear(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
     }
 }

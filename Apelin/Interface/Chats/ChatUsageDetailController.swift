@@ -7,7 +7,7 @@ import UIKit
 /// 卡片样式参考 TrollAgent 的 TokenUsageDetailView：
 /// 「当前上下文」进度条按占用分级着色（≥75% 橙、≥90% 红），
 /// 下方四格统计输入（含缓存）、输出、缓存读、缓存写与缓存命中率。
-/// 数据来自本会话在 `usage/usage.jsonl` 里的记录与最后的上下文占用。
+/// 数据来自用量累计账本与最后的上下文占用。
 final class ChatUsageDetailController: UIViewController {
     private enum Level {
         case normal, elevated, high
@@ -32,8 +32,9 @@ final class ChatUsageDetailController: UIViewController {
     private let sessionID: String
     private var totals = Totals()
     private var usage: ChatContextUsage?
-    /// 全量记录（不分会话），供「总览」与「最大会话 TOP8」两卡用。
-    private var allRecords: [UsageRecord] = []
+    /// 全局累计行，不依赖近期明细的保留数量。
+    private var allRecords: [UsageRollup] = []
+    private var loadGeneration = UUID()
     /// 会话 id → 标题，TOP 卡的行名。
     private var sessionTitles: [String: String] = [:]
 
@@ -338,13 +339,15 @@ final class ChatUsageDetailController: UIViewController {
     }
 
     private func loadRecords() {
-        let url = UsageRecorder.file(in: DataFolder.app.root)
+        let ledger = UsageLedger(dataRoot: DataFolder.app.root)
+        let generation = UUID()
+        loadGeneration = generation
         let session = sessionID
         // 标题读取走 ChatStore.load()：遍历 Chats/、还原或移走坏文件，可能变慢
         // 甚至挂起。它不能挡住统计——用量记录与它在两套目录，互不依赖。
         // 两者并行，统计先渲染，标题拿到后只补刷 TOP8 卡。
         let usage = Task.detached {
-            UsageRecorder.readAll(from: url)
+            try ledger.snapshot()
         }
         let titles = Task.detached {
             var result: [String: String] = [:]
@@ -360,35 +363,46 @@ final class ChatUsageDetailController: UIViewController {
             return result
         }
         Task { [weak self] in
-            let all = await usage.value
-            guard let self else { return }
-            self.allRecords = all
-            let records = all.filter { $0.sessionID == session }.sorted { $0.time < $1.time }
-            var totals = Totals()
-            var models: [String: (count: Int, prompt: Int, output: Int)] = [:]
-            for record in records {
-                totals.count += 1
-                totals.input += record.input
-                totals.output += record.output
-                totals.cacheRead += record.cacheRead
-                totals.cacheWrite += record.cacheWrite
-                let entry = models[record.model, default: (0, 0, 0)]
-                models[record.model] = (
-                    entry.count + 1,
-                    entry.prompt + record.input + record.cacheRead + record.cacheWrite,
-                    entry.output + record.output,
-                )
-            }
-            self.totals = totals
-            self.byModel = models
-                .map { (model: $0.key, count: $0.value.count, prompt: $0.value.prompt, output: $0.value.output) }
-                .sorted { $0.prompt + $0.output > $1.prompt + $1.output }
-            self.render()
+            do {
+                let snapshot = try await usage.value
+                guard let self, self.loadGeneration == generation else { return }
+                self.allRecords = snapshot.rollups
+                let records = snapshot.rollups.filter { $0.record.sessionID == session }
+                var totals = Totals()
+                var models: [String: (count: Int, prompt: Int, output: Int)] = [:]
+                for rollup in records {
+                    let record = rollup.record
+                    totals.count += rollup.count
+                    totals.input += record.input
+                    totals.output += record.output
+                    totals.cacheRead += record.cacheRead
+                    totals.cacheWrite += record.cacheWrite
+                    let entry = models[record.model, default: (0, 0, 0)]
+                    models[record.model] = (
+                        entry.count + rollup.count,
+                        entry.prompt + record.promptTokens,
+                        entry.output + record.output,
+                    )
+                }
+                self.totals = totals
+                self.byModel = models
+                    .map { (model: $0.key, count: $0.value.count, prompt: $0.value.prompt, output: $0.value.output) }
+                    .sorted { $0.prompt + $0.output > $1.prompt + $1.output }
+                self.estimateNote.text = snapshot.unreadableLegacyLines > 0
+                    ? String(localized: "部分旧记录无法读取，原文件已保留，累计可能不完整。", table: "UsageStatistics")
+                    : String(localized: "累计用量长期保留，最近请求明细保留最近 5000 条。升级前已清理的历史不包含在内。", table: "UsageStatistics")
+                self.render()
 
-            let loadedTitles = await titles.value
-            guard !loadedTitles.isEmpty else { return }
-            self.sessionTitles = loadedTitles
-            self.renderRanking()
+                let loadedTitles = await titles.value
+                guard self.loadGeneration == generation, !loadedTitles.isEmpty else { return }
+                self.sessionTitles = loadedTitles
+                self.renderRanking()
+            } catch {
+                guard let self, self.loadGeneration == generation else { return }
+                let alert = UIAlertController(title: String(localized: "无法读取用量统计", table: "UsageStatistics"), message: error.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: String(localized: "好"), style: .default))
+                self.present(alert, animated: true)
+            }
         }
     }
 
@@ -483,15 +497,18 @@ final class ChatUsageDetailController: UIViewController {
         var allPrompt = 0
         var allOutput = 0
         var bySession: [String: Int] = [:]
-        for record in allRecords {
+        var requestCount = 0
+        for rollup in allRecords {
+            let record = rollup.record
+            requestCount += rollup.count
             allPrompt += record.promptTokens
             allOutput += record.output
             bySession[record.sessionID, default: 0] += record.promptTokens + record.output
         }
-        let sessions = Set(allRecords.map(\.sessionID)).count
+        let sessions = bySession.count
         let maxSession = bySession.values.max() ?? 0
         overviewStack.addArrangedSubview(statRow(title: String(localized: "会话数"), value: String(sessions)))
-        overviewStack.addArrangedSubview(statRow(title: String(localized: "请求次数"), value: String(allRecords.count)))
+        overviewStack.addArrangedSubview(statRow(title: String(localized: "请求次数"), value: String(requestCount)))
         overviewStack.addArrangedSubview(statRow(title: String(localized: "输入（含缓存）"), value: Self.tokenText(allPrompt)))
         overviewStack.addArrangedSubview(statRow(title: String(localized: "输出"), value: Self.tokenText(allOutput)))
         overviewStack.addArrangedSubview(statRow(title: String(localized: "最大会话"), value: Self.tokenText(maxSession)))
@@ -506,9 +523,10 @@ final class ChatUsageDetailController: UIViewController {
             return
         }
         var bySession: [String: (count: Int, tokens: Int)] = [:]
-        for record in allRecords {
+        for rollup in allRecords {
+            let record = rollup.record
             let entry = bySession[record.sessionID, default: (0, 0)]
-            bySession[record.sessionID] = (entry.count + 1, entry.tokens + record.promptTokens + record.output)
+            bySession[record.sessionID] = (entry.count + rollup.count, entry.tokens + record.promptTokens + record.output)
         }
         let top = bySession
             .map { (id: $0.key, count: $0.value.count, tokens: $0.value.tokens) }

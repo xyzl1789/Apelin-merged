@@ -300,6 +300,7 @@ check:
 	@! grep -nE '[A-Za-z0-9_@]2>' "$(ROOT_DIR)"/Packaging/DEBIAN/* \
 		|| { echo "error: a redirect is glued to the word before it above — launchctl would be handed '<label>2' and its errors would show" >&2; exit 65; }
 	@python3 "$(ROOT_DIR)/Scripts/test-daemon-registration.py"
+	@python3 -I -B "$(ROOT_DIR)/Scripts/test-usage-ledger-sql.py"
 	@! grep -nw 'uicache' "$(ROOT_DIR)"/Packaging/DEBIAN/* \
 		|| { echo "error: a maintainer hook calls uicache — uikittools' triggers register the app" >&2; exit 65; }
 	@grep -qE '^Depends:.*firmware \(>= $(IOS_DEPLOYMENT_FLOOR)\).*uikittools.*launchctl' "$(CONTROL_TEMPLATE)" \

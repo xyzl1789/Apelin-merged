@@ -5,7 +5,7 @@ import UIKit
 
 /// 设置 ▸ Agent ▸ 用量统计：照抄 TrollAgent 的用量统计版式——
 /// 彩色数字的「总览」卡、按供应商、按模型与最近请求明细。
-/// 数据来自 AgentSession 写下的 `<数据根>/usage/usage.jsonl`。
+/// 数据来自同一用量账本；累计不随近期明细清理而减少。
 final class UsageStatsController: UIViewController {
     /// 总览格：大数字配小字，每个数字一种颜色（TrollAgent 同款）。
     private struct Tile {
@@ -15,6 +15,9 @@ final class UsageStatsController: UIViewController {
     }
 
     private var records: [UsageRecord] = []
+    private var rollups: [UsageRollup] = []
+    private var loadGeneration = UUID()
+    private var unreadableLegacyLines = 0
     private var tiles: [Tile] = []
     /// 按供应商汇总（旧记录归「未知」），按请求量排。
     private var byProvider: [(name: String, count: Int, input: Int, output: Int)] = []
@@ -142,15 +145,30 @@ final class UsageStatsController: UIViewController {
     // MARK: - 数据与渲染
 
     private func reload() {
-        let url = UsageRecorder.file(in: DataFolder.app.root)
-        let loaded = Task.detached { UsageRecorder.readAll(from: url) }
+        let ledger = UsageLedger(dataRoot: DataFolder.app.root)
+        let generation = UUID()
+        loadGeneration = generation
+        let loaded = Task.detached { try ledger.snapshot() }
         Task { [weak self] in
-            let loaded = await loaded.value
-            guard let self else { return }
-            self.records = loaded
-            self.rebuildSummary()
-            self.render()
+            do {
+                let snapshot = try await loaded.value
+                guard let self, self.loadGeneration == generation else { return }
+                self.records = snapshot.recent
+                self.rollups = snapshot.rollups
+                self.unreadableLegacyLines = snapshot.unreadableLegacyLines
+                self.rebuildSummary()
+                self.render()
+            } catch {
+                guard let self, self.loadGeneration == generation else { return }
+                self.showUsageError(error)
+            }
         }
+    }
+
+    private func showUsageError(_ error: Error) {
+        let alert = UIAlertController(title: String(localized: "无法读取用量统计", table: "UsageStatistics"), message: error.localizedDescription, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "好"), style: .default))
+        present(alert, animated: true)
     }
 
     private func rebuildSummary() {
@@ -161,10 +179,14 @@ final class UsageStatsController: UIViewController {
         var allInput = 0
         var allOutput = 0
         var allCacheRead = 0
-        for record in records {
+        var allCacheWrite = 0
+        var requestCount = 0
+        for rollup in rollups {
+            let record = rollup.record
+            requestCount += rollup.count
             let m = models[record.model, default: (0, 0, 0, 0, 0)]
             models[record.model] = (
-                m.count + 1,
+                m.count + rollup.count,
                 m.input + record.promptTokens,
                 m.output + record.output,
                 m.cacheRead + record.cacheRead,
@@ -174,21 +196,22 @@ final class UsageStatsController: UIViewController {
             allInput += record.input
             allOutput += record.output
             allCacheRead += record.cacheRead
+            allCacheWrite += record.cacheWrite
         }
         sessionCount = bySessionTokens.count
         maxSession = bySessionTokens.values.max() ?? 0
-        let allPrompt = allInput + allCacheRead
+        let allPrompt = allInput + allCacheRead + allCacheWrite
         let hitRate = allPrompt > 0 ? Double(allCacheRead) / Double(allPrompt) : 0
 
         tiles = [
             Tile(caption: String(localized: "会话数"), color: .systemBlue, value: String(sessionCount)),
-            Tile(caption: String(localized: "请求次数"), color: .systemPurple, value: String(records.count)),
+            Tile(caption: String(localized: "请求次数"), color: .systemPurple, value: String(requestCount)),
             Tile(caption: String(localized: "最大会话"), color: .systemOrange, value: Self.tokenText(maxSession)),
-            Tile(caption: String(localized: "输入（含缓存）"), color: .systemRed, value: Self.tokenText(allInput + allCacheRead)),
+            Tile(caption: String(localized: "输入（含缓存）"), color: .systemRed, value: Self.tokenText(allPrompt)),
             Tile(caption: String(localized: "输出"), color: .systemGreen, value: Self.tokenText(allOutput)),
             Tile(caption: String(localized: "缓存命中率"), color: .systemTeal, value: String(format: "%.1f%%", hitRate * 100)),
         ]
-        byProvider = UsageProviderPresentation.summaries(records)
+        byProvider = UsageProviderPresentation.summaries(rollups)
             .map { (name: $0.name, count: $0.count, input: $0.input, output: $0.output) }
         byModel = models
             .map { (model: $0.key, count: $0.value.count, input: $0.value.input, output: $0.value.output, cacheRead: $0.value.cacheRead, cacheWrite: $0.value.cacheWrite) }
@@ -198,7 +221,7 @@ final class UsageStatsController: UIViewController {
     private func render() {
         if stack.arrangedSubviews.isEmpty { buildCards() }
         emptyCard.removeFromSuperview()
-        if records.isEmpty {
+        if rollups.isEmpty {
             stack.insertArrangedSubview(emptyCard, at: 0)
         }
 
@@ -239,6 +262,10 @@ final class UsageStatsController: UIViewController {
 
         // 最近请求：新到旧，最多 50 条。
         for row in recentStack.arrangedSubviews { row.removeFromSuperview() }
+        recentStack.addArrangedSubview(emptyNote(String(localized: "累计用量长期保留，最近请求明细保留最近 5000 条。升级前已清理的历史不包含在内。", table: "UsageStatistics")))
+        if unreadableLegacyLines > 0 {
+            recentStack.addArrangedSubview(emptyNote(String(localized: "部分旧记录无法读取，原文件已保留，累计可能不完整。", table: "UsageStatistics")))
+        }
         let recent = records.sorted { $0.time > $1.time }.prefix(50)
         if recent.isEmpty {
             recentStack.addArrangedSubview(emptyNote(String(localized: "还没有任何请求记录。")))
@@ -433,13 +460,23 @@ final class UsageStatsController: UIViewController {
     private func confirmClear() {
         let alert = UIAlertController(
             title: String(localized: "清空用量记录？"),
-            message: String(localized: "全部 token 用量统计将被删除，无法恢复。"),
+            message: String(localized: "将清空累计统计与近期请求明细，无法撤销。旧导入原件保留，但不会重新计入统计。", table: "UsageStatistics"),
             preferredStyle: .alert,
         )
         alert.addAction(UIAlertAction(title: String(localized: "取消"), style: .cancel))
         alert.addAction(UIAlertAction(title: String(localized: "清空"), style: .destructive) { [weak self] _ in
-            UsageRecorder.clear(UsageRecorder.file(in: DataFolder.app.root))
-            self?.reload()
+            guard let self else { return }
+            self.loadGeneration = UUID()
+            let ledger = UsageLedger(dataRoot: DataFolder.app.root)
+            let clearing = Task.detached { try ledger.clear() }
+            Task { [weak self] in
+                do {
+                    try await clearing.value
+                    self?.reload()
+                } catch {
+                    self?.showUsageError(error)
+                }
+            }
         })
         present(alert, animated: true)
     }
